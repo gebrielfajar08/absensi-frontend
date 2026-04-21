@@ -33,8 +33,8 @@ const Landing = () => {
 
   const [showStandaloneQRScanner, setShowStandaloneQRScanner] = useState(false);
 
-  const [studentForm, setStudentForm] = useState({ user_id: '' });
-  const [teacherForm, setTeacherForm] = useState({ nip: '' });
+  const [studentForm, setStudentForm] = useState({ user_id: '', fullName: '' });
+  const [teacherForm, setTeacherForm] = useState({ nip: '', fullName: '' });
   const [izinForm, setIzinForm] = useState({
     fullName: '',
     parentPhone: '',
@@ -58,7 +58,6 @@ const Landing = () => {
 
   const audioContextRef = useRef(null);
 
-
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentBgIndex((prev) => (prev + 1) % schoolBackgrounds.length);
@@ -68,12 +67,7 @@ const Landing = () => {
 
   useEffect(() => {
     const loadSettings = async () => {
-      try {
-        const token = localStorage.getItem('token');
-      } catch (err) {
-        console.log('Backend settings fetch skipped');
-      }
-
+      // Load settings dari localStorage yang disimpan oleh Admin
       const savedSettings = localStorage.getItem('school_settings');
       if (savedSettings) {
         try {
@@ -86,8 +80,7 @@ const Landing = () => {
             schoolLogo: settings.schoolLogo || null,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false
           });
-        } catch (err) {
-        }
+        } catch (err) {}
       }
     };
 
@@ -163,7 +156,6 @@ const Landing = () => {
 
   useEffect(() => {
     return () => {
-      // Cleanup saat komponen unmount
       const cleanup = async () => {
         await stopQRScanner();
       };
@@ -182,7 +174,6 @@ const Landing = () => {
   const getAttendanceStatus = () => {
     const now = currentTime;
     const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    
     if (currentTimeStr <= attendanceSettings.attendanceEndTime) {
       return 'hadir';
     } else {
@@ -196,35 +187,30 @@ const Landing = () => {
     setSubmitMessage({ type: '', text: '' });
     try {
       const status = getAttendanceStatus();
-      const formData = new FormData();
-      formData.append('user_id', studentForm.user_id);
-      formData.append('attendance_time', currentTime.toISOString());
-      formData.append('status', status);
 
-      const token = localStorage.getItem('token');
-      const config = token ? {
-        timeout: 120000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      } : {
-        timeout: 120000,
-        headers: { 'Content-Type': 'multipart/form-data' }
+      // ✨ PERBAIKAN: Payload ganda (Redundant) untuk memastikan kecocokan key di backend
+      const payload = {
+        name: studentForm.fullName.trim(),
+        full_name: studentForm.fullName.trim(),
+        user_id: studentForm.user_id.trim(),
+        nis: studentForm.user_id.trim(),
+        attendance_time: currentTime.toISOString(),
+        status: status,
+        role: 'siswa',
+        type: 'manual'
       };
 
-      const response = await api.post('/attendance/student/manual', formData, config);
-      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
-      showSubmitNotificationMessage(`Absensi siswa berhasil! ${statusText}`, 'success');
-      setSubmitMessage({ type: 'success', text: `✅ Absensi siswa berhasil! ${statusText}` });
-      
-      if (status === 'hadir') {
-        playSound('success');
-      } else {
-        playSound('late');
-      }
+      await api.post('/attendance/student/manual', payload);
 
-      setStudentForm({ user_id: '' });
+      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
+      const successMsg = `Absensi siswa berhasil! ${statusText}`;
+      showSubmitNotificationMessage(successMsg, 'success');
+      setSubmitMessage({ type: 'success', text: successMsg });
+      
+      if (status === 'hadir') playSound('success');
+      else playSound('late');
+
+      setStudentForm({ user_id: '', fullName: '' });
       localStorage.setItem('attendance_updated', Date.now().toString());
       
       setTimeout(() => {
@@ -232,15 +218,28 @@ const Landing = () => {
         setSubmitMessage({ type: '', text: '' });
       }, 2000);
     } catch (err) {
-      if (err.response?.status !== 401 && err.code !== 'ERR_NETWORK') {
-        console.error('Error submitting attendance:', err);
+      const responseData = err.response?.data;
+      console.error('Student Attendance Error:', responseData || err);
+      
+      let errorMsg = responseData?.message || err.message || 'Gagal menyimpan absensi';
+
+      // ✨ PERBAIKAN: Deteksi Tunnel Mati (ERR_NAME_NOT_RESOLVED)
+      if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
+        errorMsg = 'Server tidak terjangkau. Link Cloudflare Tunnel Anda mungkin sudah expired. Mohon update file .env dan restart terminal.';
       }
-      const errorMsg = err.response?.data?.message || err.message || 'Gagal menyimpan absensi';
+      
+      // ✨ PERBAIKAN: Tampilkan detail error validasi (422) agar tahu field yang salah
+      if (responseData?.errors) {
+        errorMsg = Object.entries(responseData.errors)
+          .map(([key, value]) => {
+            const fieldName = key === 'user_id' || key === 'nis' ? 'NIS' : key;
+            return `• ${fieldName}: ${Array.isArray(value) ? value[0] : value}`;
+          })
+          .join('\n');
+      }
+
       showSubmitNotificationMessage(`❌ Gagal: ${errorMsg}`, 'error');
-      setSubmitMessage({
-        type: 'error',
-        text: '❌ Gagal: ' + (err.response?.data?.message || err.message)
-      });
+      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
       playSound('failed');
     } finally {
       setIsSubmitting(false);
@@ -253,46 +252,51 @@ const Landing = () => {
     setSubmitMessage({ type: '', text: '' });
     try {
       const status = getAttendanceStatus();
-      const formData = new FormData();
-      formData.append('nip', teacherForm.nip);
-      formData.append('attendance_time', currentTime.toISOString());
-      formData.append('status', status);
 
-      const token = localStorage.getItem('token');
-      const config = token ? {
-        timeout: 120000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      } : {
-        timeout: 120000,
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const payload = {
+        name: teacherForm.fullName.trim(),
+        full_name: teacherForm.fullName.trim(),
+        user_id: teacherForm.nip.trim(),
+        nip: teacherForm.nip.trim(),
+        attendance_time: currentTime.toISOString(),
+        status: status,
+        role: 'guru',
+        type: 'manual'
       };
 
-      await api.post('/attendance/teacher/manual', formData, config);
-      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
-      showSubmitNotificationMessage(`Absensi guru berhasil! ${statusText}`, 'success');
-      setSubmitMessage({ type: 'success', text: `✅ Absensi guru berhasil! ${statusText}` });
-      
-      if (status === 'hadir') {
-        playSound('success');
-      } else {
-        playSound('late');
-      }
+      await api.post('/attendance/teacher/manual', payload);
 
-      setTeacherForm({ nip: '' });
+      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
+      const successMsg = `Absensi guru berhasil! ${statusText}`;
+      showSubmitNotificationMessage(successMsg, 'success');
+      setSubmitMessage({ type: 'success', text: successMsg });
+      
+      if (status === 'hadir') playSound('success');
+      else playSound('late');
+
+      setTeacherForm({ nip: '', fullName: '' });
       localStorage.setItem('attendance_updated', Date.now().toString());
     } catch (err) {
-      if (err.response?.status !== 401 && err.code !== 'ERR_NETWORK') {
-        console.error('Gagal submit absen guru:', err);
+      const responseData = err.response?.data;
+      console.error('Teacher Attendance Error:', responseData || err);
+      
+      let errorMsg = responseData?.message || err.message || 'Gagal menyimpan absensi';
+
+      if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
+        errorMsg = 'Server tidak terjangkau. Periksa apakah Cloudflare Tunnel masih aktif.';
       }
-      const errorMsg = err.response?.data?.message || err.message || 'Gagal menyimpan absensi';
+      
+      if (responseData?.errors) {
+        errorMsg = Object.entries(responseData.errors)
+          .map(([key, value]) => {
+            const fieldName = key === 'user_id' || key === 'nip' ? 'NIP' : key;
+            return `• ${fieldName}: ${Array.isArray(value) ? value[0] : value}`;
+          })
+          .join('\n');
+      }
+
       showSubmitNotificationMessage(`❌ Gagal: ${errorMsg}`, 'error');
-      setSubmitMessage({
-        type: 'error',
-        text: '❌ Gagal: ' + (err.response?.data?.message || err.message)
-      });
+      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
       playSound('failed');
     } finally {
       setIsSubmitting(false);
@@ -304,35 +308,26 @@ const Landing = () => {
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
-      const formData = new FormData();
-      formData.append('full_name', izinForm.fullName);
-      formData.append('parent_phone', izinForm.parentPhone);
-      formData.append('reason', izinForm.reason);
-      formData.append('attendance_time', currentTime.toISOString());
-      formData.append('status', 'izin');
-
-      const token = localStorage.getItem('token');
-      const config = token ? {
-        timeout: 120000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      } : {
-        timeout: 120000,
-        headers: { 'Content-Type': 'multipart/form-data' }
+        const token = localStorage.getItem('token');
+      
+      // ✨ PERBAIKAN: Gunakan JSON payload
+      const payload = {
+        full_name: izinForm.fullName.trim(),
+        parent_phone: izinForm.parentPhone.trim(),
+        reason: izinForm.reason,
+        attendance_time: currentTime.toISOString(),
+        status: 'izin'
       };
 
-      await api.post('/attendance/izin', formData, config);
+      await api.post('/attendance/izin', payload, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
       showSubmitNotificationMessage('✅ Pengajuan izin berhasil dikirim!', 'success');
       setSubmitMessage({ type: 'success', text: '✅ Pengajuan izin berhasil dikirim!' });
       playSound('success');
 
-      setIzinForm({
-        fullName: '',
-        parentPhone: '',
-        reason: ''
-      });
+      setIzinForm({ fullName: '', parentPhone: '', reason: '' });
       localStorage.setItem('attendance_updated', Date.now().toString());
       
       setTimeout(() => {
@@ -345,10 +340,7 @@ const Landing = () => {
       }
       const errorMsg = err.response?.data?.message || err.message || 'Gagal mengirim pengajuan izin';
       showSubmitNotificationMessage(`❌ Gagal: ${errorMsg}`, 'error');
-      setSubmitMessage({
-        type: 'error',
-        text: '❌ Gagal: ' + (err.response?.data?.message || err.message)
-      });
+      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
       playSound('failed');
     } finally {
       setIsSubmitting(false);
@@ -357,7 +349,6 @@ const Landing = () => {
 
   const handleQRScan = async (decodedText) => {
     try {
-      console.log('📱 QR Data received:', decodedText);
       const qrData = JSON.parse(decodedText);
       setQrResult(qrData);
       
@@ -374,7 +365,6 @@ const Landing = () => {
         return;
       }
 
-      // Pastikan tidak mengirim double jika sedang proses
       if (isSubmittingRef.current) return;
 
       setShowSubmitNotification(false);
@@ -396,8 +386,6 @@ const Landing = () => {
     isSubmittingRef.current = true;
     try {
       const status = getAttendanceStatus();
-      console.log('📤 Submitting QR attendance:', qrData);
-      console.log('🔑 Token:', token ? 'Tersedia' : 'Tidak Ada (Mode Publik)');
       
       const requestData = {
         qr_data: qrData,
@@ -411,8 +399,6 @@ const Landing = () => {
         role: qrData.role || ''
       };
 
-      console.log('📦 Request data:', requestData);
-      
       const response = await api.post('/scan', requestData, {
         timeout: 120000,
         headers: {
@@ -431,7 +417,6 @@ const Landing = () => {
         return;
       }
 
-      console.log('✅ QR Submit Response:', response.data);
       const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       playSound('success');
       showQRNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
@@ -451,7 +436,6 @@ const Landing = () => {
       const backendMessage = err.response?.data?.message;
       
       if (status === 400 && backendMessage && backendMessage.toLowerCase().includes('sudah absen')) {
-        console.info('⚠️ Already absent today:', backendMessage);
         playSound('already');
         showQRNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
         showSubmitNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
@@ -463,19 +447,13 @@ const Landing = () => {
 
       if (status !== 401 && err.code !== 'ERR_NETWORK') {
         console.error('❌ QR Submit Error:', err);
-        console.error('❌ Error response:', err.response);
-        console.error('❌ Error status:', status);
-        console.error('❌ Error data:', err.response?.data);
       }
 
       const errorMsg = backendMessage || err.response?.data?.error || 'Gagal menyimpan absensi';
       playSound('failed');
       showQRNotificationMessage(`❌ ${errorMsg}`, 'error');
       showSubmitNotificationMessage(`❌ ${errorMsg}`, 'error');
-      setSubmitMessage({
-        type: 'error',
-        text: '❌ Gagal: ' + errorMsg
-      });
+      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
     } finally {
       setIsSubmitting(false);
       isSubmittingRef.current = false;
@@ -487,16 +465,11 @@ const Landing = () => {
       setCameraError('');
       const readerElement = document.getElementById('qr-reader');
       if (!readerElement) {
-        console.warn('qr-reader belum ada, menunggu render...');
-        setTimeout(() => {
-          startQRScanner();
-        }, 300);
+        setTimeout(() => startQRScanner(), 300);
         return;
       }
-      if (qrScanner) {
-        console.warn('Scanner sudah aktif');
-        return;
-      }
+      if (qrScanner) return;
+      
       const scanner = new Html5Qrcode('qr-reader');
       setQrScanner(scanner);
       
@@ -507,11 +480,8 @@ const Landing = () => {
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1.0
         },
-        (decodedText) => {
-          handleQRScan(decodedText);
-        },
-        () => {
-        }
+        (decodedText) => handleQRScan(decodedText),
+        () => {}
       );
     } catch (err) {
       console.error('Failed to start QR scanner:', err);
@@ -525,9 +495,7 @@ const Landing = () => {
     if (scanner) {
       setQrScanner(null);
       try {
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
+        if (scanner.isScanning) await scanner.stop();
         await scanner.clear();
       } catch (err) {
         console.warn('QR scanner stop warning:', err.message);
@@ -539,26 +507,20 @@ const Landing = () => {
     setQrNotificationMessage(message);
     setQrNotificationType(type);
     setShowQRNotification(true);
-    setTimeout(() => {
-      setShowQRNotification(false);
-    }, 3000);
+    setTimeout(() => setShowQRNotification(false), 3000);
   };
 
   const showSubmitNotificationMessage = (message, type = 'error') => {
     setSubmitNotificationMessage(message);
     setSubmitNotificationType(type);
     setShowSubmitNotification(true);
-    setTimeout(() => {
-      setShowSubmitNotification(false);
-    }, 3000);
+    setTimeout(() => setShowSubmitNotification(false), 3000);
   };
 
   const handleOpenScanner = () => {
     setShowQRScanner(true);
     setCameraError('');
-    setTimeout(() => {
-      startQRScanner();
-    }, 300); // Beri jeda sedikit lebih lama agar DOM siap
+    setTimeout(() => startQRScanner(), 300);
   };
 
   const handleCloseScanner = async () => {
@@ -572,9 +534,7 @@ const Landing = () => {
     setShowStandaloneQRScanner(true);
     setShowQRScanner(true);
     setCameraError('');
-    setTimeout(() => {
-      startQRScanner();
-    }, 400);
+    setTimeout(() => startQRScanner(), 400);
   };
 
   const handleCloseStandaloneQRScanner = async () => {
@@ -608,44 +568,60 @@ const Landing = () => {
   };
 
   return (
-    <div className="min-h-screen transition-colors duration-300 bg-gradient-to-br from-blue-50 via-white to-blue-100 text-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 text-slate-900 font-sans">
+      
+      {/* ========== NAVBAR ========== */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled ? 'bg-white/95 backdrop-blur-md shadow-lg border-b border-blue-100' : 'bg-white/80 backdrop-blur-sm'
+        isScrolled 
+          ? 'bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200/60' 
+          : 'bg-transparent'
       }`}>
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl flex items-center justify-center shadow-lg bg-gradient-to-br from-blue-600 to-blue-700">
-                <img 
-                  src={attendanceSettings.schoolLogo ? `${api.defaults.baseURL.replace('/api', '')}/${attendanceSettings.schoolLogo}` : "logo sekolah.jpeg"} 
-                  alt="Logo" 
-                  className="w-11 h-11 object-contain rounded-lg bg-white p-0.5"
-                />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md flex-shrink-0">
+                {attendanceSettings.schoolLogo && !cameraError ? (
+                  <img 
+                    src={`${api.defaults.baseURL?.replace('/api', '') || ''}/${attendanceSettings.schoolLogo}`} 
+                    alt="Logo" 
+                    className="w-7 h-7 object-contain bg-white/90 rounded-md p-0.5"
+                    onError={() => setCameraError(true)}
+                  />
+                ) : (
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                )}
               </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight text-blue-900">
-  {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
-</h1>
-                <p className="text-xs font-medium text-blue-600">Sistem Absensi Digital</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 px-5 py-2.5 rounded-xl border bg-blue-50 border-blue-200">
-                <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" />
-</svg>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-blue-900">{formatDate(currentTime)}</p>
-                  <p className="text-sm font-bold font-mono text-blue-600">{formatTime(currentTime)}</p>
+              <div className="flex flex-col">
+                <h1 className="text-sm font-bold text-slate-800 leading-tight">
+                  {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
+                </h1>
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                  <span>{formatDate(currentTime)}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-mono text-blue-600">{formatTime(currentTime)}</span>
                 </div>
               </div>
             </div>
+            
+            {/* Unified Login Button */}
+            <Link 
+              to="/login" 
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+              </svg>
+              Login
+            </Link>
           </div>
         </div>
       </nav>
 
-      <section className="pt-36 pb-24 px-6 relative overflow-hidden"> 
+      {/* ========== HERO SECTION ========== */}
+      <section className="pt-32 pb-20 px-6 relative overflow-hidden"> 
+        {/* Background Slider */}
         <div className="absolute inset-0">
           {schoolBackgrounds.map((bg, index) => (
             <div
@@ -660,203 +636,187 @@ const Landing = () => {
               }}
             />
           ))}
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/90 via-blue-800/90 to-blue-950/90"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/85 via-slate-800/80 to-indigo-900/85"></div>
         </div>
         
+        {/* Background Dots Pattern */}
+        <div className="absolute inset-0 opacity-10" style={{
+          backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
+          backgroundSize: '32px 32px'
+        }}></div>
+        
+        {/* Background Indicators */}
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
           {schoolBackgrounds.map((_, index) => (
             <button
               key={index}
               onClick={() => setCurrentBgIndex(index)}
-              className={`w-3 h-3 rounded-full transition-all ${
-                index === currentBgIndex ? 'bg-white w-8' : 'bg-white/50'
+              className={`w-2 h-2 rounded-full transition-all ${
+                index === currentBgIndex ? 'bg-white w-6' : 'bg-white/40 hover:bg-white/60'
               }`}
+              aria-label={`Background ${index + 1}`}
             />
           ))}
         </div>
 
-        <div className="max-w-5xl mx-auto text-center relative z-10">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/15 backdrop-blur-sm rounded-full text-white text-sm font-medium mb-8 border border-white/25">
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            Sistem Absensi Digital Modern
+        {/* Hero Content */}
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-sm rounded-full text-white/90 text-xs font-medium mb-8 border border-white/20">
+            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+            Sistem Absensi Digital • Real-time
           </div>
           
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">
-            Selamat Datang di<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-300">
-              Sistem Absensi Digital
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight tracking-tight">
+            Absensi Sekolah<br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-300 to-indigo-300">
+              Lebih Cerdas & Efisien
             </span>
           </h1>
           
-          <p className="text-lg text-blue-100 mb-10 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-lg text-slate-200 mb-10 max-w-2xl mx-auto leading-relaxed font-light">
             Platform absensi berbasis QR code untuk sekolah modern. 
-            Pantau kehadiran real-time, laporan otomatis, dan akses multi-role.
+            Pantau kehadiran real-time, laporan otomatis, dan akses multi-role dalam satu sistem terintegrasi.
           </p>
           
-          <div className="flex flex-wrap justify-center gap-4">
+          {/* Action Buttons - Clean & Minimal */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
             <button
               onClick={() => setShowAbsenModal(true)}
-              className="px-8 py-3.5 bg-white text-blue-700 font-semibold rounded-xl shadow-xl hover:shadow-2xl hover:bg-blue-50 transition-all transform hover:-translate-y-1 flex items-center gap-2"
+              className="group px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2.5"
+            >
+              <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              Absensi Cepat
+            </button>
+            
+            <Link 
+              to="/login"
+              className="px-8 py-3.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/30 text-white font-medium rounded-xl transition-all flex items-center gap-2.5"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              Mulai Absensi
-            </button>
+              Login Ke Dashboard
+            </Link>
           </div>
 
-          <p className="mt-6 text-blue-100/80 text-sm animate-fade-in">
-            Belum punya akun?{' '}
-            <Link to="/register" className="text-cyan-300 font-bold hover:underline hover:text-cyan-200 transition-colors">
-              Buat akun di sini secara gratis
+          <p className="mt-8 text-slate-300/80 text-sm">
+            Belum terdaftar?{' '}
+            <Link to="/register" className="text-cyan-300 font-medium hover:text-cyan-200 transition-colors hover:underline">
+              Buat akun gratis →
             </Link>
           </p>
         </div>
       </section>
 
+      {/* ========== FEATURES SECTION ========== */}
       <section className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold uppercase tracking-wider mb-3 text-blue-600">Portal Akses</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Pilih Role Anda</h2>
-            <p className="mt-3 max-w-2xl mx-auto text-gray-600">Akses sistem sesuai dengan peran Anda di sekolah</p>
+          <div className="text-center mb-16">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-3 text-blue-600">Fitur Utama</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">Mengapa Memilih Kami?</h2>
+            <p className="mt-4 text-slate-600 max-w-2xl mx-auto">
+              Solusi absensi digital yang dirancang untuk kebutuhan sekolah modern Indonesia
+            </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
-            <Link
-              to="/login/guru"
-              className="group p-7 rounded-2xl border-2 transition-all duration-300 bg-white border-gray-200 hover:border-blue-400 hover:shadow-2xl"
-            >
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform shadow-lg">
-                🎓
-              </div>
-              <h3 className="text-xl font-bold mb-2 text-gray-900">Guru</h3>
-              <p className="text-sm font-medium mb-3 text-blue-600">Input & Kelola Absensi</p>
-              <p className="text-sm leading-relaxed text-gray-600">Akses dashboard untuk mengelola kelas, input kehadiran, dan lihat laporan siswa.</p>
-              <div className="mt-5 flex items-center text-sm font-semibold group-hover:gap-2 transition-all text-blue-600">
-                <span>Akses Dashboard</span>
-                <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-            <Link
-              to="/login/siswa"
-              className="group p-7 rounded-2xl border-2 transition-all duration-300 bg-white border-gray-200 hover:border-blue-400 hover:shadow-2xl"
-            >
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform shadow-lg">
-                🧑‍🎓
-              </div>
-              <h3 className="text-xl font-bold mb-2 text-gray-900">Siswa</h3>
-              <p className="text-sm font-medium mb-3 text-blue-600">Cek Kehadiran & Jadwal</p>
-              <p className="text-sm leading-relaxed text-gray-600">Lihat riwayat absensi, jadwal pelajaran, dan download QR code pribadi.</p>
-              <div className="mt-5 flex items-center text-sm font-semibold group-hover:gap-2 transition-all text-blue-600">
-                <span>Lihat Profil</span>
-                <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-            <Link
-              to="/login/admin"
-              className="group p-7 rounded-2xl border-2 transition-all duration-300 bg-white border-gray-200 hover:border-blue-400 hover:shadow-2xl"
-            >
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform shadow-lg">
-                👮
-              </div>
-              <h3 className="text-xl font-bold mb-2 text-gray-900">Admin</h3>
-              <p className="text-sm font-medium mb-3 text-blue-600">Kelola Sistem & User</p>
-              <p className="text-sm leading-relaxed text-gray-600">Kelola data user, kelas, dan monitoring seluruh aktivitas sistem sekolah.</p>
-              <div className="mt-5 flex items-center text-sm font-semibold group-hover:gap-2 transition-all text-blue-600">
-                <span>Panel Admin</span>
-                <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 px-6 bg-blue-50">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold uppercase tracking-wider mb-3 text-blue-600">Fitur Unggulan</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Mengapa Memilih Kami?</h2>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="rounded-2xl p-7 shadow-lg border bg-white border-blue-100">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5 bg-blue-100">
-                <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Feature 1 */}
+            <div className="group rounded-2xl p-6 border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all bg-white">
+              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold mb-3 text-gray-900">QR Code Absensi</h3>
-              <p className="text-sm leading-relaxed text-gray-600">Absen dengan memindai QR Code, cepat dan akurat. Tidak perlu mengetik NIS/NIP.</p>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">QR Code Absensi</h3>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Absen dengan memindai QR Code dalam hitungan detik. Cepat, akurat, dan tanpa antrian.
+              </p>
             </div>
 
-            <div className="rounded-2xl p-7 shadow-lg border bg-white border-blue-100">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5 bg-blue-100">
-                <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {/* Feature 2 */}
+            <div className="group rounded-2xl p-6 border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all bg-white">
+              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m6 0a2 2 0 002-2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold mb-3 text-gray-900">Laporan Otomatis</h3>
-              <p className="text-sm leading-relaxed text-gray-600">Laporan kehadiran yang tersedia secara real-time. Dapat diunduh dalam format Excel atau PDF.</p>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Laporan Otomatis</h3>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Rekap kehadiran real-time yang bisa diunduh dalam format Excel atau PDF kapan saja.
+              </p>
             </div>
 
-            <div className="rounded-2xl p-7 shadow-lg border bg-white border-blue-100">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5 bg-blue-100">
-                <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {/* Feature 3 */}
+            <Link 
+              to="/login"
+              state={{ role: 'siswa' }} // Contoh: default ke portal siswa
+              className="group rounded-2xl p-6 border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all bg-white text-left"
+            >
+              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold mb-3 text-gray-900">Multi-Role Access</h3>
-              <p className="text-sm leading-relaxed text-gray-600">Akses sesuai peran Anda: Guru, Siswa, atau Admin dengan hak akses berbeda.</p>
-            </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Multi-Role Access</h3>
+              <p className="text-sm text-slate-600 leading-relaxed mb-3">
+                Klik di sini untuk memilih akses: Siswa, Guru, atau Admin.
+              </p>
+              <span className="text-xs font-bold text-blue-600">Pilih Role →</span>
+            </Link>
           </div>
         </div>
       </section>
 
-      <footer className="py-8 px-6 bg-blue-900 text-blue-200">
-        <div className="max-w-7xl mx-auto text-center">
-          <p>&copy; 2026 SMPK Don Bosco Semboro. All rights reserved.</p>
+      {/* ========== FOOTER ========== */}
+      <footer className="py-8 px-6 bg-slate-900 text-slate-400">
+        <div className="max-w-7xl mx-auto text-center text-sm">
+          <p>&copy; {new Date().getFullYear()} {attendanceSettings.schoolName || 'SMPK Don Bosco'}. All rights reserved.</p>
         </div>
       </footer>
 
-      {showQRNotification && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className={`bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full transform transition-all animate-fade-in ${
-            qrNotificationType === 'success' ? 'border-4 border-green-500' : 'border-4 border-red-500'
+      {/* ========== NOTIFICATIONS ========== */}
+      {[
+        { show: showQRNotification, message: qrNotificationMessage, type: qrNotificationType, onClose: () => setShowQRNotification(false) },
+        { show: showSubmitNotification, message: submitNotificationMessage, type: submitNotificationType, onClose: () => setShowSubmitNotification(false) }
+      ].map((notif, idx) => notif.show && (
+        <div key={idx} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className={`bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full transform transition-all animate-fade-in border-t-4 ${
+            notif.type === 'success' ? 'border-emerald-500' : notif.type === 'warning' ? 'border-amber-500' : 'border-red-500'
           }`}>
             <div className="text-center">
-              <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${
-                qrNotificationType === 'success' ? 'bg-green-100' : 'bg-red-100'
+              <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                notif.type === 'success' ? 'bg-emerald-50' : notif.type === 'warning' ? 'bg-amber-50' : 'bg-red-50'
               }`}>
-                {qrNotificationType === 'success' ? (
-                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {notif.type === 'success' ? (
+                  <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                   </svg>
+                ) : notif.type === 'warning' ? (
+                  <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
                 ) : (
-                  <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 )}
               </div>
-              <h3 className={`text-xl font-bold mb-2 ${
-                qrNotificationType === 'success' ? 'text-green-700' : 'text-red-700'
+              <h3 className={`text-lg font-semibold mb-2 ${
+                notif.type === 'success' ? 'text-emerald-700' : notif.type === 'warning' ? 'text-amber-700' : 'text-red-700'
               }`}>
-                {qrNotificationType === 'success' ? '✅ Berhasil!' : '❌ Error!'}
+                {notif.type === 'success' ? 'Berhasil!' : notif.type === 'warning' ? 'Perhatian' : 'Terjadi Kesalahan'}
               </h3>
-              <p className="text-gray-600 mb-6">{qrNotificationMessage}</p>
+                  {/* ✨ Tambahkan whitespace-pre-line agar poin-poin error 422 muncul berbaris */}
+                  <p className="text-slate-600 mb-5 text-sm whitespace-pre-line">{notif.message}</p>
               <button
-                onClick={() => setShowQRNotification(false)}
-                className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
-                  qrNotificationType === 'success'
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                onClick={notif.onClose}
+                className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
+                  notif.type === 'success'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : notif.type === 'warning'
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
                     : 'bg-red-600 hover:bg-red-700 text-white'
                 }`}
               >
@@ -865,59 +825,20 @@ const Landing = () => {
             </div>
           </div>
         </div>
-      )}
+      ))}
 
-      {showSubmitNotification && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className={`bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full transform transition-all animate-fade-in ${
-            submitNotificationType === 'success' ? 'border-4 border-green-500' : 'border-4 border-red-500'
-          }`}>
-            <div className="text-center">
-              <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${
-                submitNotificationType === 'success' ? 'bg-green-100' : 'bg-red-100'
-              }`}>
-                {submitNotificationType === 'success' ? (
-                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                )}
-              </div>
-              <h3 className={`text-xl font-bold mb-2 ${
-                submitNotificationType === 'success' ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {submitNotificationType === 'success' ? '✅ Berhasil!' : '❌ Error!'}
-              </h3>
-              <p className="text-gray-600 mb-6">{submitNotificationMessage}</p>
-              <button
-                onClick={() => setShowSubmitNotification(false)}
-                className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
-                  submitNotificationType === 'success'
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                }`}
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* ========== STANDALONE QR SCANNER MODAL ========== */}
       {showStandaloneQRScanner && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl relative">
-            <div className="sticky top-0 bg-white border-b border-blue-200 px-5 py-4 flex items-center justify-between z-10 rounded-t-2xl">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between z-10 rounded-t-2xl">
               <div>
-                <h3 className="text-lg font-bold text-gray-800">📷 Scan QR Code</h3>
-                <p className="text-xs text-gray-500">Scan QR untuk absensi (Guru/Siswa)</p>
+                <h3 className="text-base font-semibold text-slate-800">Scan QR Code</h3>
+                <p className="text-xs text-slate-500">Arahkan kamera ke QR code absensi</p>
               </div>
               <button
                 onClick={handleCloseStandaloneQRScanner}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -926,8 +847,8 @@ const Landing = () => {
             </div>
             <div className="p-5">
               {showQRScanner ? (
-                <div className="bg-white rounded-xl p-4 border border-blue-200">
-                  <div id="qr-reader" className="mb-4 rounded-lg overflow-hidden"></div>
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <div id="qr-reader" className="mb-4 rounded-lg overflow-hidden bg-white"></div>
                   {cameraError && (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
                       <p className="text-xs text-red-700">{cameraError}</p>
@@ -935,7 +856,7 @@ const Landing = () => {
                   )}
                   <button
                     onClick={handleCloseStandaloneQRScanner}
-                    className="w-full py-2.5 text-sm text-gray-600 hover:text-blue-700 font-medium rounded-lg hover:bg-blue-50 transition-colors"
+                    className="w-full py-2.5 text-sm text-slate-600 hover:text-slate-800 font-medium rounded-lg hover:bg-slate-100 transition-colors"
                   >
                     Tutup Scanner
                   </button>
@@ -943,35 +864,38 @@ const Landing = () => {
               ) : (
                 <button
                   onClick={handleOpenScanner}
-                  className="w-full py-14 bg-blue-50 border-2 border-dashed border-blue-300 rounded-xl text-blue-700 font-medium hover:border-blue-500 hover:bg-blue-100 transition-all flex flex-col items-center gap-4"
+                  className="w-full py-12 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl text-slate-600 font-medium hover:border-blue-400 hover:bg-blue-50 transition-all flex flex-col items-center gap-4"
                 >
-                  <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-14 h-14 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                   <div className="text-center">
-                    <span className="text-lg font-semibold">Klik untuk Buka Scanner</span>
-                    <p className="text-sm text-gray-500 mt-1">Pastikan QR code terlihat jelas</p>
+                    <span className="text-base font-medium">Klik untuk Mulai Scan</span>
+                    <p className="text-sm text-slate-500 mt-1">Pastikan QR code terlihat jelas di kamera</p>
                   </div>
                 </button>
               )}
               {qrResult && (
-                <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-sm text-green-700 font-medium mb-2">✅ QR Terdeteksi:</p>
-                  <pre className="text-xs text-green-600 bg-white rounded p-3 overflow-x-auto">
+                <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                  <p className="text-sm text-emerald-700 font-medium mb-2">✅ QR Terdeteksi:</p>
+                  <pre className="text-xs text-emerald-700 bg-white rounded p-3 overflow-x-auto max-h-32">
                     {JSON.stringify(qrResult, null, 2)}
                   </pre>
                 </div>
               )}
               <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-2 text-sm flex items-center gap-1">
-                  <span>ℹ️</span> Cara Scan
+                <h4 className="font-medium text-blue-900 mb-2 text-sm flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Panduan Scan
                 </h4>
                 <ul className="space-y-1.5 text-sm text-blue-800">
-                  <li>• Klik tombol "Buka Scanner"</li>
+                  <li>• Klik tombol "Mulai Scan"</li>
                   <li>• Arahkan kamera ke QR code</li>
                   <li>• Tunggu hingga terdeteksi otomatis</li>
-                  <li>• Data tersimpan otomatis</li>
+                  <li>• Data tersimpan secara real-time</li>
                 </ul>
               </div>
             </div>
@@ -979,13 +903,14 @@ const Landing = () => {
         </div>
       )}
 
+      {/* ========== ABSEN MODAL ========== */}
       {showAbsenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-2xl my-8 shadow-2xl relative">
-            <div className="sticky top-0 bg-white border-b border-blue-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl my-6 shadow-2xl relative">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
               <div>
-                <h3 className="text-lg font-bold text-gray-800">🚀 Absensi</h3>
-                <p className="text-xs text-gray-500">Pilih role dan metode absensi</p>
+                <h3 className="text-base font-semibold text-slate-800">Absensi</h3>
+                <p className="text-xs text-slate-500">Pilih metode absensi yang diinginkan</p>
               </div>
               <button
                 onClick={() => {
@@ -993,7 +918,7 @@ const Landing = () => {
                   setShowAbsenModal(false);
                   setSubmitMessage({ type: '', text: '' });
                 }}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1002,83 +927,66 @@ const Landing = () => {
             </div>
             
             <div className="p-6">
+              {/* Role Tabs */}
               <div className="flex justify-center mb-6">
-                <div className="inline-flex bg-blue-50 rounded-xl p-1">
-                  <button
-                    onClick={() => { setActiveUserRole('siswa'); setActiveMethodTab('scan'); }}
-                    className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-                      activeUserRole === 'siswa'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-blue-700'
-                    }`}
-                  >
-                    <span>🧑‍🎓</span> Absen Siswa
-                  </button>
-                  <button
-                    onClick={() => { setActiveUserRole('guru'); setActiveMethodTab('scan'); }}
-                    className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-                      activeUserRole === 'guru'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-blue-700'
-                    }`}
-                  >
-                    <span>🎓</span> Absen Guru
-                  </button>
+                <div className="inline-flex bg-slate-100 rounded-xl p-1">
+                  {['siswa', 'guru'].map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => { setActiveUserRole(role); setActiveMethodTab('scan'); }}
+                      className={`px-5 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${
+                        activeUserRole === role
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-800'
+                      }`}
+                    >
+                      {role === 'siswa' ? '🧑‍🎓' : '👨‍🏫'} {role === 'siswa' ? 'Siswa' : 'Guru'}
+                    </button>
+                  ))}
                 </div>
               </div>
 
+              {/* Method Tabs */}
               <div className="flex justify-center mb-6">
-                <div className="inline-flex bg-gray-100 rounded-xl p-1">
-                  <button
-                    onClick={() => setActiveMethodTab('scan')}
-                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
-                      activeMethodTab === 'scan'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-blue-700'
-                    }`}
-                  >
-                    📷 Scan
-                  </button>
-                  <button
-                    onClick={() => setActiveMethodTab('manual')}
-                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
-                      activeMethodTab === 'manual'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-blue-700'
-                    }`}
-                  >
-                    ✍️ Manual
-                  </button>
-                  <button
-                    onClick={() => setActiveMethodTab('izin')}
-                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
-                      activeMethodTab === 'izin'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-blue-700'
-                    }`}
-                  >
-                    📝 Izin
-                  </button>
+                <div className="inline-flex bg-slate-100 rounded-xl p-1">
+                  {[
+                    { id: 'scan', label: 'Scan QR', icon: '📷' },
+                    { id: 'manual', label: 'Manual', icon: '✍️' },
+                    { id: 'izin', label: 'Izin', icon: '📝' }
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveMethodTab(tab.id)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
+                        activeMethodTab === tab.id
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-800'
+                      }`}
+                    >
+                      <span>{tab.icon}</span> {tab.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="bg-blue-50 rounded-xl border border-blue-200 overflow-hidden">
+              {/* Content Area */}
+              <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
                 <div className="p-6 bg-white">
                   {activeMethodTab === 'scan' && (
-                    <div className="text-center py-8">
-                      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="text-center py-6">
+                      <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                       </div>
-                      <h4 className="text-lg font-semibold text-gray-800 mb-2">Scan QR Code</h4>
-                      <p className="text-sm text-gray-600 mb-6">Arahkan kamera ke QR code {activeUserRole === 'siswa' ? 'siswa' : 'guru'}</p>
+                      <h4 className="text-base font-semibold text-slate-800 mb-2">Scan QR Code</h4>
+                      <p className="text-sm text-slate-600 mb-6">Arahkan kamera ke QR code {activeUserRole === 'siswa' ? 'siswa' : 'guru'}</p>
                       <button
                         onClick={() => { handleOpenStandaloneQRScanner(); setShowAbsenModal(false); }}
-                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-medium hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg"
+                        className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition-all shadow-sm"
                       >
-                        Buka Scanner Kamera
+                        Buka Scanner
                       </button>
                     </div>
                   )}
@@ -1086,22 +994,31 @@ const Landing = () => {
                   {activeMethodTab === 'manual' && activeUserRole === 'siswa' && (
                     <form onSubmit={handleStudentSubmit} className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">
-                          NIS *
-                        </label>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Nama Lengkap *</label>
+                        <input
+                          type="text"
+                          value={studentForm.fullName}
+                          onChange={(e) => setStudentForm(prev => ({ ...prev, fullName: e.target.value }))}
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          placeholder="Nama lengkap sesuai data"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">NIS *</label>
                         <input
                           type="text"
                           value={studentForm.user_id}
                           onChange={(e) => setStudentForm(prev => ({ ...prev, user_id: e.target.value }))}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                           placeholder="Masukkan NIS siswa"
                           required
                         />
                       </div>
                       {submitMessage.text && (
-                        <div className={`p-3 rounded-xl text-xs ${
+                        <div className={`p-3 rounded-lg text-xs ${
                           submitMessage.type === 'success'
-                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-red-50 text-red-700 border border-red-200'
                         }`}>
                           {submitMessage.text}
@@ -1110,7 +1027,7 @@ const Landing = () => {
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {isSubmitting ? (
                           <>
@@ -1120,14 +1037,7 @@ const Landing = () => {
                             </svg>
                             Memproses...
                           </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Absen Siswa
-                          </>
-                        )}
+                        ) : 'Absen Siswa'}
                       </button>
                     </form>
                   )}
@@ -1135,22 +1045,31 @@ const Landing = () => {
                   {activeMethodTab === 'manual' && activeUserRole === 'guru' && (
                     <form onSubmit={handleTeacherSubmit} className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">
-                          NIP *
-                        </label>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Nama Lengkap *</label>
+                        <input
+                          type="text"
+                          value={teacherForm.fullName}
+                          onChange={(e) => setTeacherForm(prev => ({ ...prev, fullName: e.target.value }))}
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          placeholder="Nama lengkap guru"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">NIP *</label>
                         <input
                           type="text"
                           value={teacherForm.nip}
                           onChange={(e) => setTeacherForm(prev => ({ ...prev, nip: e.target.value }))}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                           placeholder="Masukkan NIP guru"
                           required
                         />
                       </div>
                       {submitMessage.text && (
-                        <div className={`p-3 rounded-xl text-xs ${
+                        <div className={`p-3 rounded-lg text-xs ${
                           submitMessage.type === 'success'
-                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-red-50 text-red-700 border border-red-200'
                         }`}>
                           {submitMessage.text}
@@ -1159,7 +1078,7 @@ const Landing = () => {
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {isSubmitting ? (
                           <>
@@ -1169,14 +1088,7 @@ const Landing = () => {
                             </svg>
                             Memproses...
                           </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Absen Guru
-                          </>
-                        )}
+                        ) : 'Absen Guru'}
                       </button>
                     </form>
                   )}
@@ -1184,48 +1096,42 @@ const Landing = () => {
                   {activeMethodTab === 'izin' && (
                     <form onSubmit={handleIzinSubmit} className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">
-                          Nama Lengkap *
-                        </label>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Nama Lengkap *</label>
                         <input
                           type="text"
                           value={izinForm.fullName}
                           onChange={(e) => setIzinForm(prev => ({ ...prev, fullName: e.target.value }))}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                           placeholder="Nama lengkap"
                           required
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">
-                          Nomor Telepon Orang Tua *
-                        </label>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">No. Telepon Orang Tua *</label>
                         <input
                           type="tel"
                           value={izinForm.parentPhone}
                           onChange={(e) => setIzinForm(prev => ({ ...prev, parentPhone: e.target.value }))}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                           placeholder="08123456789"
                           required
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">
-                          Keterangan *
-                        </label>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Keterangan *</label>
                         <textarea
                           value={izinForm.reason}
                           onChange={(e) => setIzinForm(prev => ({ ...prev, reason: e.target.value }))}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
                           rows="3"
                           placeholder="Alasan izin..."
                           required
                         />
                       </div>
                       {submitMessage.text && (
-                        <div className={`p-3 rounded-xl text-xs ${
+                        <div className={`p-3 rounded-lg text-xs ${
                           submitMessage.type === 'success'
-                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-red-50 text-red-700 border border-red-200'
                         }`}>
                           {submitMessage.text}
@@ -1234,7 +1140,7 @@ const Landing = () => {
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {isSubmitting ? (
                           <>
@@ -1244,28 +1150,25 @@ const Landing = () => {
                             </svg>
                             Memproses...
                           </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Kirim Pengajuan Izin
-                          </>
-                        )}
+                        ) : 'Kirim Pengajuan'}
                       </button>
                     </form>
                   )}
                 </div>
               </div>
 
-              <div className="mt-5 bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <h4 className="font-semibold text-blue-900 mb-2 text-xs flex items-center gap-1">
-                  <span>ℹ️</span> Info Waktu
+              {/* Info Box */}
+              <div className="mt-5 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2 text-xs flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Info Waktu
                 </h4>
-                <ul className="space-y-1.5 text-xs text-blue-800">
+                <ul className="space-y-1 text-xs text-blue-800">
                   <li>• Jam masuk: <strong>{attendanceSettings.attendanceStartTime}</strong></li>
                   <li>• Batas terlambat: <strong>{attendanceSettings.lateThreshold}</strong></li>
-                  <li>• Status ditentukan otomatis berdasarkan waktu</li>
+                  <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
                 </ul>
               </div>
             </div>
@@ -1273,14 +1176,13 @@ const Landing = () => {
         </div>
       )}
 
+      {/* ========== ANIMATIONS ========== */}
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
+          from { opacity: 0; transform: translateY(-8px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
-        }
+        .animate-fade-in { animation: fadeIn 0.25s ease-out; }
       `}</style>
     </div>
   );

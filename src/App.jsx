@@ -5,10 +5,7 @@ import Landing from './pages/Landing';
 import LoginGuru from './pages/LoginGuru';
 import LoginSiswa from './pages/LoginSiswa';
 import LoginAdmin from './pages/LoginAdmin';
-
-// Existing imports (tetap ada)
-// ← HAPUS import Login ini karena file tidak ada
-// import Login from './pages/Login';  // ← Comment atau hapus baris ini
+import LoginUnified from './pages/Login';
 
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -60,6 +57,9 @@ function App() {
             <Routes>
                 {/* ← Public Routes */}
                 <Route path="/" element={<Landing />} />
+                
+                {/* ← Unified Login (login.jsx) */}
+                <Route path="/login" element={<LoginUnified />} />
                 
                 {/* ← Login Terpisah per Role */}
                 <Route path="/login/guru" element={<LoginGuru />} />

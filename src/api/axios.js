@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'http://127.0.0.1:8000/api',
-    timeout: 60000,
+    // Menggunakan environment variable. Jika tidak ada, gunakan localhost Laragon sebagai default.
+    // Buat file .env di root folder dan isi: VITE_API_URL=https://link-baru-kamu.trycloudflare.com/api
+    baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api', 
+    timeout: 120000, // ✨ Tingkatkan ke 120 detik untuk Tunnel
     headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
@@ -68,4 +70,6 @@ api.interceptors.response.use(
     }
 );
 
+console.log("ENV:", import.meta.env);
+console.log("API URL:", import.meta.env.VITE_API_URL);
 export default api;

@@ -87,40 +87,88 @@ const Register = () => {
         setError('');
         setLoading(true);
 
-        if (formData.password !== formData.password_confirmation) {
-            setError('Kata sandi dan konfirmasi kata sandi tidak cocok!');
-            setLoading(false);
-            return;
-        }
-
-        // ✅ Validasi untuk Guru
-        if (formData.role === 'guru' && (!formData.nip || !formData.gender || !formData.phone || !formData.class_name)) {
-            setError('Data NIP, Jenis Kelamin, No. Telepon, dan Wali Kelas wajib diisi!');
-            setLoading(false);
-            return;
-        }
-
-        // ✅ Validasi kelas untuk siswa
-        if (formData.role === 'siswa' && (!formData.class_name || !formData.nis || !formData.gender || !formData.phone || !formData.parent_name || !formData.parent_phone)) {
-            setError('Semua data profil siswa wajib diisi!');
-            setLoading(false);
-            return;
-        }
-
+        console.log("📤 Mengirim data registrasi dengan payload:", formData);
         try {
-            await api.post('/register', formData);
+            // 1. Validasi Sisi Klien (Mencegah Request Sia-sia)
+            if (formData.password.length < 8) {
+                throw new Error('Kata sandi minimal harus 8 karakter!');
+            }
+
+            if (formData.password !== formData.password_confirmation) {
+                throw new Error('Kata sandi dan konfirmasi kata sandi tidak cocok!');
+            }
+
+            // 2. Persiapkan payload dasar
+            const payload = {
+                name: formData.name.trim(),
+                email: formData.email.trim(),
+                password: formData.password,
+                password_confirmation: formData.password_confirmation,
+                role: formData.role
+            };
+
+            // Tambahkan username (seringkali diwajibkan oleh backend Laravel)
+            payload.username = (formData.role === 'siswa' ? formData.nis : formData.nip) || formData.email.split('@')[0];
+
+            // 3. Tambahkan data spesifik berdasarkan role & Mapping Key yang Benar
+            if (formData.role === 'siswa') {
+                if (!formData.class_name || !formData.nis || !formData.gender || !formData.phone || !formData.parent_name || !formData.parent_phone) {
+                    throw new Error('Semua data profil siswa wajib diisi!');
+                }
+                payload.nis = formData.nis;
+                payload.user_id = formData.nis;
+                payload.class_id = parseInt(formData.class_name); 
+                payload.class_name = `Kelas ${formData.class_name}`;
+                payload.gender = formData.gender;
+                payload.phone = formData.phone;
+                payload.parent_name = formData.parent_name;
+                payload.parent_phone = formData.parent_phone;
+            } else if (formData.role === 'guru') {
+                if (!formData.nip || !formData.gender || !formData.phone || !formData.class_name) {
+                    throw new Error('Data NIP, Jenis Kelamin, No. Telepon, dan Wali Kelas wajib diisi!');
+                }
+                payload.nip = formData.nip;
+                payload.nis = formData.nip;
+                payload.user_id = formData.nip;
+                payload.class_id = parseInt(formData.class_name);
+                payload.class_name = `Kelas ${formData.class_name}`;
+                payload.gender = formData.gender;
+                payload.phone = formData.phone;
+            }
+
+            // 4. Kirim ke Server
+            await api.post('/register', payload);
+            
             alert('Registrasi berhasil! Silakan login dengan akun Anda.');
             setIsExiting(true);
             setTimeout(() => {
                 navigate('/');
             }, 600);
         } catch (err) {
-            if (err.response?.data?.errors) {
-                const errors = err.response.data.errors;
-                const errorMsg = Object.values(errors).flat().join('\n');
+            console.error("Detail Error Registrasi:", err.response?.data);
+            const responseData = err.response?.data;
+
+            if (!err.response) {
+                setError(err.message || '❌ Gagal terhubung ke server!');
+            } else if (responseData?.errors) {
+                const errors = responseData.errors;
+                const errorMsg = Object.entries(errors)
+                    .map(([key, value]) => {
+                        let message = Array.isArray(value) ? value[0] : value;
+                        
+                        // ✨ TAMBAHAN: Jika data sudah ada, beri instruksi jelas
+                        if (message.toLowerCase().includes('taken')) {
+                            message = "Sudah terdaftar! Gunakan nomor/email lain.";
+                        }
+
+                        // Ubah nama key agar lebih ramah dibaca (nis -> NIS/NIP)
+                        const fieldName = (key === 'nis' || key === 'nip' || key === 'user_id') ? 'NIS/NIP' : key;
+                        return `• ${fieldName}: ${message}`;
+                    })
+                    .join('\n');
                 setError(errorMsg);
             } else {
-                setError(err.response?.data?.message || 'Registrasi gagal!');
+                setError(responseData?.message || 'Registrasi gagal! Cek kembali data Anda.');
             }
         } finally {
             setLoading(false);

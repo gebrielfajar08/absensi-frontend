@@ -93,7 +93,11 @@ const LoginAdmin = () => {
             }, 100);
             
         } catch (err) {
-            setError(err.response?.data?.message || 'Email atau password salah!');
+            if (!err.response) {
+                setError('❌ Gagal terhubung ke server! Cek apakah Cloudflare Tunnel kamu masih aktif di terminal.');
+            } else {
+                setError(err.response?.data?.message || 'Email atau password salah!');
+            }
         } finally {
             setLoading(false);
         }

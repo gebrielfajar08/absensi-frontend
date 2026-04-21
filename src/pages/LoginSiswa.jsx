@@ -24,6 +24,7 @@ const LoginSiswa = () => {
     const [isExiting, setIsExiting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const [schoolSettings, setSchoolSettings] = useState({ name: 'AbsensiPro', logo: null });
+    const [connectionStatus, setConnectionStatus] = useState('checking');
     const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
@@ -46,6 +47,28 @@ const LoginSiswa = () => {
         return () => window.removeEventListener('storage', loadSettings);
     }, []);
     
+    useEffect(() => {
+        const verifyConnection = async () => {
+            try {
+                const baseURL = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+                const apiRoot = baseURL.replace(/\/api\/?$/, '');
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 3000);
+                const response = await fetch(`${apiRoot}/health`, { 
+                    method: 'GET',
+                    signal: controller.signal,
+                    mode: 'cors',
+                    cache: 'no-store'
+                });
+                clearTimeout(timeout);
+                setConnectionStatus('connected');
+            } catch (err) {
+                setConnectionStatus('disconnected');
+            }
+        };
+        verifyConnection();
+    }, []);
+
     const navigate = useNavigate();
      // Background images (logic tetap ada, tapi tidak ditampilkan)
     const backgroundImages = [
@@ -92,7 +115,7 @@ const LoginSiswa = () => {
     } finally {
         setLoading(false);
     }
-};
+  };
 
     return (
         <div className="min-h-screen relative flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100">
@@ -149,6 +172,13 @@ const LoginSiswa = () => {
                             <h2 className="text-xl font-bold text-gray-900 mb-1.5">Halo, Siswa! 👋</h2>
                             <p className="text-gray-600 text-sm">Masuk untuk melihat kehadiran dan jadwal</p>
                         </div>
+
+                        {connectionStatus === 'disconnected' && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg mb-4 text-[10px] animate-fade-in">
+                                ⚠️ <b>Koneksi Server Bermasalah:</b><br/> 
+                                Alamat API tidak ditemukan. Jika kamu menggunakan Cloudflare Tunnel, cek apakah prosesnya masih jalan di terminal.
+                            </div>
+                        )}
 
                         {error && (
                             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg mb-4 text-sm animate-fade-in">

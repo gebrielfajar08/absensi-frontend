@@ -22,3 +22,11 @@ export function dashboardPathForRole(role) {
   if (['admin', 'guru', 'siswa'].includes(r)) return `/dashboard/${r}`;
   return '/';
 }
+
+export function getRoleDisplayName(role) {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'admin') return 'Administrator';
+  if (r === 'guru') return 'Guru';
+  if (r === 'siswa') return 'Siswa';
+  return role;
+}

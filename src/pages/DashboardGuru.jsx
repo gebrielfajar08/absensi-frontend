@@ -17,7 +17,7 @@ const checkBackendConnection = async (baseURL) => {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
-    const response = await fetch(`${baseURL}/health`, {
+    const response = await api.get('/health', {
       signal: controller.signal,
       mode: 'cors'
     });

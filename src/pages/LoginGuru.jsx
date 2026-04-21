@@ -23,6 +23,7 @@ const LoginGuru = () => {
     const [isExiting, setIsExiting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const [schoolSettings, setSchoolSettings] = useState({ name: 'AbsensiPro', logo: null });
+    const [connectionStatus, setConnectionStatus] = useState('checking');
     const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
@@ -45,6 +46,28 @@ const LoginGuru = () => {
         return () => window.removeEventListener('storage', loadSettings);
     }, []);
     
+    useEffect(() => {
+        const verifyConnection = async () => {
+            try {
+                const baseURL = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+                const apiRoot = baseURL.replace(/\/api\/?$/, '');
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 3000);
+                const response = await fetch(`${apiRoot}/health`, { 
+                    method: 'GET',
+                    signal: controller.signal,
+                    mode: 'cors',
+                    cache: 'no-store'
+                });
+                clearTimeout(timeout);
+                setConnectionStatus('connected');
+            } catch (err) {
+                setConnectionStatus('disconnected');
+            }
+        };
+        verifyConnection();
+    }, []);
+
     const navigate = useNavigate();
 
     // Background images (logic tetap ada, tapi tidak ditampilkan)
@@ -94,7 +117,11 @@ const LoginGuru = () => {
             }, 600);
             
         } catch (err) {
-            setError(err.response?.data?.message || 'Email atau password salah!');
+            if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
+                setError('Gagal terhubung ke server. Pastikan URL API masih aktif dan backend berjalan.');
+            } else {
+                setError(err.response?.data?.message || 'Email atau password salah!');
+            }
         } finally {
             setLoading(false);
         }
@@ -155,6 +182,13 @@ const LoginGuru = () => {
                             <h2 className="text-xl font-bold text-gray-900 mb-1.5">Selamat Datang, Guru! 👋</h2>
                             <p className="text-gray-600 text-sm">Masuk untuk mengelola kelas dan absensi</p>
                         </div>
+
+                        {connectionStatus === 'disconnected' && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg mb-4 text-[10px] animate-fade-in">
+                                ⚠️ <b>Koneksi Server Bermasalah:</b><br/> 
+                                Host tidak ditemukan. Jika kamu menggunakan Cloudflare Tunnel, pastikan tunnel tersebut sudah dijalankan ulang.
+                            </div>
+                        )}
 
                         {error && (
                             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg mb-4 text-sm animate-fade-in">
