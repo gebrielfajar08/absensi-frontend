@@ -39,9 +39,25 @@ const LoginUnified = () => {
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [logoError, setLogoError] = useState(false);
   const [autoDetectedRole, setAutoDetectedRole] = useState(null); // Untuk UI dinamis
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const backgroundImages = [
+    'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80',
+    'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1920&q=80',
+    'https://images.unsplash.com/photo-1427504746696-ea5abd7dfe89?w=1920&q=80',
+    'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1920&q=80'
+  ];
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Auto change background setiap 6 detik
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [backgroundImages.length]);
 
   // Menangkap role yang dikirim dari halaman Landing
   useEffect(() => {
@@ -184,9 +200,29 @@ const LoginUnified = () => {
   const currentLabel = ROLE_LABELS[displayRole] || 'Portal Pengguna';
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100">
+    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden">
+      {/* Background Slideshow Layer */}
+      <div className="absolute inset-0 z-0">
+        {backgroundImages.map((img, index) => (
+          <div
+            key={index}
+            className={`absolute inset-0 transition-opacity duration-[2000ms] ease-in-out ${
+              index === currentImageIndex ? 'opacity-100' : 'opacity-0'
+            }`}
+            style={{
+              backgroundImage: `url(${img})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+        ))}
+        {/* Dark Overlay & Blur agar form tetap terbaca jelas */}
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" />
+      </div>
+
       <div 
-        className={`bg-white rounded-2xl shadow-xl w-full max-w-4xl flex overflow-hidden relative z-10 transition-all duration-500 ease-in-out transform border-2 border-blue-400 ${
+        className={`bg-white/95 backdrop-blur-md rounded-2xl shadow-xl w-full max-w-4xl flex overflow-hidden relative z-10 transition-all duration-500 ease-in-out transform border-2 border-blue-400 ${
           !isMounted 
             ? 'opacity-0 scale-95 -translate-x-10'
             : isExiting 

@@ -1300,280 +1300,253 @@ const DashboardSiswa = () => {
         </div>
 
       {/* MODAL ABSENSI */}
-      {showAbsenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-md my-8 shadow-2xl relative border-2 border-blue-200">
-            <div className="sticky top-0 bg-white border-b-2 border-blue-200 px-5 py-3 flex items-center justify-between z-10 rounded-t-2xl">
-              <div>
-                <h3 className="text-lg font-bold text-blue-800">
-                  {activeAbsenTab === 'my-qr' ? '🪪 Kode QR Saya' : '✅ Absensi'}
-                </h3>
-                <p className="text-xs text-blue-600">
-                  {activeAbsenTab === 'my-qr' ? 'Identitas digital Anda' : 'Scan QR, Manual, atau Izin'}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  handleCloseScanner();
-                  setShowAbsenModal(false);
-                  setSubmitMessage({ type: '', text: '' });
-                }}
-                className="p-1.5 text-blue-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-5" ref={modalContentRef}>
-              <div className="text-center mb-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-full border-2 border-blue-200">
-                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-mono font-semibold text-sm text-blue-800">{formatTime(currentTime)}</span>
-                  <span className="text-blue-400 text-xs">|</span>
-                  <span className="text-xs text-blue-600">{formatDate(currentTime)}</span>
-                </div>
-              </div>
-              <div className="flex justify-center mb-4">
-                {activeAbsenTab !== 'my-qr' && (
-                  <div className="inline-flex bg-blue-50 rounded-lg p-0.5 border-2 border-blue-200">
-                    <button
-                      onClick={() => setActiveAbsenTab('scan')}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                        activeAbsenTab === 'scan' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm' : 'text-blue-600 hover:text-blue-700'
-                      }`}
-                    >
-                      <span>📱</span> Scan QR
-                    </button>
-                    <button
-                      onClick={() => setActiveAbsenTab('manual')}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                        activeAbsenTab === 'manual' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm' : 'text-blue-600 hover:text-blue-700'
-                      }`}
-                    >
-                      <span>✍️</span> Manual
-                    </button>
-                    <button
-                      onClick={() => setActiveAbsenTab('izin')}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                        activeAbsenTab === 'izin' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm' : 'text-blue-600 hover:text-blue-700'
-                      }`}
-                    >
-                      <span>📋</span> Izin
-                    </button>
-                  </div>
-                )}
-              </div>
+{showAbsenModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+    <div className="bg-white rounded-2xl w-full max-w-md my-8 shadow-2xl relative border-2 border-blue-200 overflow-hidden flex flex-col">
+      
+      {/* Header Modal */}
+      <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
+        <div>
+          <h3 className="text-base font-bold text-slate-800">
+            {activeAbsenTab === 'my-qr' ? '🪪 Kode QR Saya' : '✅ Absensi'}
+          </h3>
+          <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+            {activeAbsenTab === 'my-qr' ? 'Identitas digital Anda' : 'Scan QR, Manual, atau Izin'}
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            handleCloseScanner();
+            setShowAbsenModal(false);
+            setSubmitMessage({ type: '', text: '' });
+          }}
+          className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-              {activeAbsenTab === 'scan' && (
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border-2 border-blue-200 p-4">
-                  <div className="text-center mb-4">
-                    <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl text-2xl text-white shadow-lg mb-2">
-                      📷
-                    </div>
-                    <h3 className="text-sm font-semibold text-blue-800 mb-1">Scan QR Code</h3>
-                    <p className="text-xs text-blue-600">Arahkan kamera ke QR code yang disediakan</p>
-                  </div>
-                  {/* ← TAMBAHAN: Element QR reader selalu dirender saat tab scan aktif */}
-                  <div className="bg-white rounded-lg p-3 border-2 border-blue-200">
-                    <div id="qr-reader-absen" className="mb-3 rounded-lg overflow-hidden" ref={qrReaderRef}></div> 
-                    {cameraError && (
-                      <div className="bg-red-50 border-2 border-red-200 rounded-lg p-3 mb-3">
-                        <p className="text-xs text-red-700">{cameraError}</p>
-                      </div>
-                    )}
-                    {!qrScanner && (
-                      <button
-                        onClick={startQRScanner} // Directly call startQRScanner
-                        className="w-full py-2 text-sm text-blue-600 hover:text-blue-700 font-medium border-2 border-blue-200 rounded-lg hover:bg-blue-50"
-                      >
-                        📷 Mulai Scanner
-                      </button>
-                    )}
-                    {qrScanner && (
-                      <button
-                        onClick={handleCloseScanner}
-                        className="w-full py-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium border-2 border-blue-200 rounded-lg hover:bg-blue-50"
-                      >
-                        Tutup Scanner
-                      </button>
-                    )}
-                  </div>
-                  {qrResult && (
-                    <div className="mt-4 bg-green-50 border-2 border-green-200 rounded-lg p-3">
-                      <p className="text-xs text-green-700 font-medium mb-1">✅ QR Terdeteksi:</p>
-                      <pre className="text-xs text-green-600 bg-white rounded p-2 overflow-x-auto">
-                        {JSON.stringify(qrResult, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeAbsenTab === 'manual' && (
-                <div className="bg-blue-50 rounded-xl border-2 border-blue-200 overflow-hidden">
-                  <div className="p-4 bg-white">
-                    <form onSubmit={handleManualSubmit} className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-blue-700 mb-1">
-                          NIS *
-                        </label>
-                        <input
-                          type="text"
-                          value={manualForm.nis}
-                          onChange={(e) => setManualForm(prev => ({...prev, nis: e.target.value}))}
-                          className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                          placeholder="Masukkan NIS"
-                          required
-                        />
-                      </div>
-                      {/* Menampilkan status kehadiran saat ini secara informatif */}
-                      <div className="text-[10px] text-blue-500 italic px-1">
-                        Status saat ini: {getAttendanceStatus() === 'hadir' ? 'Tepat Waktu' : 'Terlambat'}
-                      </div>
-                      {submitMessage.text && (
-                        <div className={`p-3 rounded-xl text-sm ${
-                          submitMessage.type === 'success'
-                            ? 'bg-green-50 text-green-700 border-2 border-green-200'
-                            : 'bg-red-50 text-red-700 border-2 border-red-200'
-                        }`}>
-                          {submitMessage.text}
-                        </div>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Memproses...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Absen Sekarang
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {activeAbsenTab === 'my-qr' && (
-                <div className="bg-white rounded-xl border-2 border-blue-200 p-6 text-center shadow-inner">
-                  <div className="mb-4">
-                    <h4 className="font-bold text-lg text-blue-800">QR Code Identitas</h4>
-                    <p className="text-sm text-blue-500">Gunakan untuk verifikasi kehadiran</p>
-                  </div>
-                  
-                  {qrLoading ? (
-                    <div className="p-8"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
-                  ) : myQRCode ? (
-                    <div className="inline-block p-2 bg-white rounded-2xl border-2 border-blue-100 shadow-md mb-4">
-                      <img src={myQRCode} alt="QR Saya" className="w-32 h-32 mx-auto" />
-                    </div>
-                  ) : (
-                    <div className="p-8 text-slate-400 text-sm">QR Code tidak tersedia</div>
-                  )}
-
-                  <div className="flex gap-2 justify-center mb-4">
-                    <button onClick={downloadQRCode} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-all">
-                      ⬇️ Unduh QR
-                    </button>
-                    <button onClick={fetchMyQRCode} className="px-4 py-2 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-100 border border-blue-200 transition-all">
-                      🔄 Refresh
-                    </button>
-                  </div>
-
-                  <div className="text-left bg-blue-50 rounded-lg p-3 text-[11px] text-blue-700 space-y-1">
-                    <div className="flex justify-between border-b border-blue-100 pb-1"><span>Nama:</span><span className="font-bold">{user.name}</span></div>
-                    <div className="flex justify-between border-b border-blue-100 pb-1"><span>NIS:</span><span className="font-bold">{user.nis || '-'}</span></div>
-                    <div className="flex justify-between capitalize"><span>Role:</span><span className="font-bold">{user.role || 'siswa'}</span></div>
-                  </div>
-                </div>
-              )}
-
-              {activeAbsenTab === 'izin' && (
-                <div className="bg-emerald-50 rounded-xl border-2 border-emerald-200 overflow-hidden">
-                  <div className="p-4 bg-white">
-                    {izinMessage.text && (
-                      <div className={`mb-4 p-3 rounded-xl text-sm border-2 ${izinMessage.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`}>
-                        {izinMessage.text}
-                      </div>
-                    )}
-                    <form onSubmit={handleIzinSubmit} className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-emerald-700 mb-1">Tanggal (opsional)</label>
-                        <input
-                          type="date"
-                          value={izinForm.tanggal}
-                          onChange={(e) => setIzinForm((p) => ({ ...p, tanggal: e.target.value }))}
-                          className="w-full px-4 py-2.5 border-2 border-emerald-100 rounded-xl text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-emerald-700 mb-1">Alasan / keterangan *</label>
-                        <textarea
-                          required
-                          rows={3}
-                          value={izinForm.reason}
-                          onChange={(e) => setIzinForm((p) => ({ ...p, reason: e.target.value }))}
-                          className="w-full px-4 py-2.5 border-2 border-emerald-100 rounded-xl text-sm resize-none"
-                          placeholder="Contoh: Sakit, Ada keperluan keluarga..."
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={izinSubmitting}
-                        className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold rounded-xl shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {izinSubmitting ? (
-                          <>
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Mengirim...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Kirim Izin
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-1.5 text-xs flex items-center gap-1">
-                  <span>ℹ️</span> Cara Pakai
-                </h4>
-                <ul className="space-y-1 text-xs text-blue-800">
-                  <li>• Pilih tab Scan QR atau Manual</li>
-                  <li>• Untuk scan, arahkan kamera ke QR code</li>
-                  <li>• Untuk manual, isi nama dan NIS</li>
-                  <li>• Data tersimpan otomatis</li>
-                </ul>
-              </div>
-            </div>
+      {/* Content Modal */}
+      <div className="p-5 flex-1 overflow-y-auto" ref={modalContentRef}>
+        
+        {/* Waktu & Tanggal */}
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200">
+            <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="font-mono font-bold text-sm text-slate-700">{formatTime(currentTime)}</span>
+            <span className="text-slate-300 text-xs">|</span>
+            <span className="text-xs text-slate-500 font-medium">{formatDate(currentTime)}</span>
           </div>
         </div>
-      )}
+
+        {/* Tab Navigation */}
+        {activeAbsenTab !== 'my-qr' && (
+          <div className="flex justify-center mb-4">
+            <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full">
+              <button
+                onClick={() => setActiveAbsenTab('scan')}
+                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeAbsenTab === 'scan' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span>📱</span> Scan QR
+              </button>
+              <button
+                onClick={() => setActiveAbsenTab('manual')}
+                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeAbsenTab === 'manual' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span>✍️</span> Manual
+              </button>
+              <button
+                onClick={() => setActiveAbsenTab('izin')}
+                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeAbsenTab === 'izin' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span>📋</span> Izin
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Content Area */}
+        <div className="bg-white rounded-2xl border-2 border-slate-100 shadow-inner overflow-hidden min-h-[380px] flex flex-col justify-center transition-all duration-300">
+          <div className="p-5">
+            
+            {/* TAB: Scan QR */}
+            {activeAbsenTab === 'scan' && (
+              <div className="animate-fade-in text-center">
+                <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-2xl mb-4 mx-auto max-w-[280px] aspect-square relative border-4 border-blue-50">
+                  <div id="qr-reader-absen" className="w-full h-full" ref={qrReaderRef}></div>
+                </div>
+                
+                {cameraError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-[10px] text-red-600 font-bold">
+                    ⚠️ {cameraError}
+                  </div>
+                )}
+
+                {!qrScanner ? (
+                  <button
+                    onClick={startQRScanner}
+                    className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>📷</span> Mulai Scanner
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleCloseScanner}
+                    className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                  >
+                    Tutup Scanner
+                  </button>
+                )}
+                
+                <p className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  Arahkan Ke QR Absensi
+                </p>
+              </div>
+            )}
+
+            {/* TAB: Manual */}
+            {activeAbsenTab === 'manual' && (
+              <div className="animate-fade-in">
+                <form onSubmit={handleManualSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">NIS Siswa *</label>
+                    <input
+                      type="text"
+                      value={manualForm.nis}
+                      onChange={(e) => setManualForm(prev => ({...prev, nis: e.target.value}))}
+                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      placeholder="Masukkan NIS Anda"
+                      required
+                    />
+                  </div>
+                  <div className="text-[10px] text-blue-500 font-bold italic">
+                    Status: {getAttendanceStatus() === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat'}
+                  </div>
+                  {submitMessage.text && (
+                    <div className={`p-3 rounded-lg text-xs font-medium ${
+                      submitMessage.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {submitMessage.text}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-3 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? 'Memproses...' : 'Absen Sekarang'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* TAB: My QR */}
+            {activeAbsenTab === 'my-qr' && (
+              <div className="animate-fade-in text-center">
+                <div className="mb-4">
+                  <h4 className="font-bold text-slate-800">QR Code Identitas</h4>
+                  <p className="text-xs text-slate-500">Gunakan untuk verifikasi kehadiran</p>
+                </div>
+                
+                {qrLoading ? (
+                  <div className="p-8"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
+                ) : myQRCode ? (
+                  <div className="inline-block p-3 bg-white rounded-2xl border-2 border-slate-100 shadow-md mb-6">
+                    <img src={myQRCode} alt="QR Saya" className="w-40 h-40 mx-auto" />
+                  </div>
+                ) : (
+                  <div className="p-8 text-slate-400 text-xs italic">QR Code tidak tersedia</div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  <button onClick={downloadQRCode} className="py-2.5 bg-blue-600 text-white text-[11px] font-black rounded-xl hover:bg-blue-700 transition-all shadow-md">
+                    ⬇️ Unduh QR
+                  </button>
+                  <button onClick={fetchMyQRCode} className="py-2.5 bg-slate-100 text-slate-600 text-[11px] font-black rounded-xl hover:bg-slate-200 border border-slate-200 transition-all">
+                    🔄 Refresh
+                  </button>
+                </div>
+
+                <div className="text-left bg-slate-50 rounded-xl p-4 text-[10px] text-slate-600 space-y-2 border border-slate-100">
+                  <div className="flex justify-between border-b border-slate-200 pb-1"><span>Nama:</span><span className="font-bold text-slate-800">{user.name}</span></div>
+                  <div className="flex justify-between border-b border-slate-200 pb-1"><span>NIS:</span><span className="font-bold text-slate-800">{user.nis || '-'}</span></div>
+                  <div className="flex justify-between uppercase tracking-tighter"><span>Role:</span><span className="font-bold text-blue-600">{user.role || 'siswa'}</span></div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: Izin */}
+            {activeAbsenTab === 'izin' && (
+              <div className="animate-fade-in">
+                <form onSubmit={handleIzinSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Tanggal</label>
+                    <input
+                      type="date"
+                      value={izinForm.tanggal}
+                      onChange={(e) => setIzinForm((p) => ({ ...p, tanggal: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Keterangan *</label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={izinForm.reason}
+                      onChange={(e) => setIzinForm((p) => ({ ...p, reason: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm resize-none"
+                      placeholder="Alasan izin..."
+                    />
+                  </div>
+                  {izinMessage.text && (
+                    <div className={`p-3 rounded-lg text-xs font-medium border ${izinMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                      {izinMessage.text}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={izinSubmitting}
+                    className="w-full py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-lg hover:bg-emerald-700 transition-all disabled:opacity-50"
+                  >
+                    {izinSubmitting ? 'Mengirim...' : 'Kirim Pengajuan Izin'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* Help Section */}
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <h4 className="font-bold text-slate-800 mb-1.5 text-xs flex items-center gap-1.5">
+            <span>ℹ️</span> Cara Pakai
+          </h4>
+          <ul className="space-y-1 text-[10px] text-slate-500 font-medium">
+            <li>• Pilih tab Scan QR atau Manual</li>
+            <li>• Untuk scan, arahkan kamera ke QR code</li>
+            <li>• Untuk manual, isi nama dan NIS</li>
+            <li>• Data tersimpan otomatis</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </div>
+)}
 
       {/* MODAL KONFIRMASI LOGOUT */}
       {showLogoutConfirm && (

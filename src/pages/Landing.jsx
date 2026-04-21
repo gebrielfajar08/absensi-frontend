@@ -3,6 +3,16 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../api/axios';
 import { Html5Qrcode } from 'html5-qrcode';
 
+// Helper: Resolve URL foto/logo dengan fallback
+const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
+  if (!photo || typeof photo !== 'string') return null;
+  const trimmed = photo.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
+  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || fallbackBase;
+  return `${base}/${trimmed.replace(/^\//, '')}`;
+};
+
 const Landing = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeUserRole, setActiveUserRole] = useState('siswa');
@@ -23,8 +33,10 @@ const Landing = () => {
   const qrScannerRef = useRef(null);
   const [qrScanner, setQrScanner] = useState(null);
   const [cameraError, setCameraError] = useState('');
+  const [logoError, setLogoError] = useState(false);
   const [showQRNotification, setShowQRNotification] = useState(false);
   const [qrNotificationMessage, setQrNotificationMessage] = useState('');
+  const [facingMode, setFacingMode] = useState('environment'); // 'user' atau 'environment'
   const [qrNotificationType, setQrNotificationType] = useState('error');
 
   const [showSubmitNotification, setShowSubmitNotification] = useState(false);
@@ -76,8 +88,8 @@ const Landing = () => {
             attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '07:00',
             attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '08:00',
             lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '08:00',
-            schoolName: settings.schoolName || 'SMPK DON BOSCO',
-            schoolLogo: settings.schoolLogo || null,
+            schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
+            schoolLogo: settings.schoolLogo || settings.logo || null,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false
           });
         } catch (err) {}
@@ -94,6 +106,19 @@ const Landing = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Manajemen Scanner di dalam modal absensi
+  useEffect(() => {
+    if (showAbsenModal && activeMethodTab === 'scan') {
+      const timer = setTimeout(() => startQRScanner(), 500);
+      return () => {
+        clearTimeout(timer);
+        stopQRScanner();
+      };
+    } else {
+      stopQRScanner();
+    }
+  }, [showAbsenModal, activeMethodTab]);
 
   const playSound = (type) => {
     try {
@@ -460,12 +485,12 @@ const Landing = () => {
     }
   };
 
-  const startQRScanner = async () => {
+  const startQRScanner = async (mode = facingMode) => {
     try {
       setCameraError('');
       const readerElement = document.getElementById('qr-reader');
       if (!readerElement) {
-        setTimeout(() => startQRScanner(), 300);
+        console.warn('QR reader element not found yet...');
         return;
       }
       if (qrScanner) return;
@@ -474,10 +499,10 @@ const Landing = () => {
       setQrScanner(scanner);
       
       await scanner.start(
-        { facingMode: 'environment' },
+        { facingMode: mode },
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
+          qrbox: { width: 220, height: 220 },
           aspectRatio: 1.0
         },
         (decodedText) => handleQRScan(decodedText),
@@ -488,6 +513,13 @@ const Landing = () => {
       setCameraError('Tidak dapat mengakses kamera. Pastikan izin kamera diberikan.');
       showQRNotificationMessage('Gagal memulai scanner. Silakan coba lagi.', 'error');
     }
+  };
+
+  const toggleCamera = async () => {
+    const newMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newMode);
+    await stopQRScanner();
+    setTimeout(() => startQRScanner(newMode), 300);
   };
 
   const stopQRScanner = async () => {
@@ -573,19 +605,19 @@ const Landing = () => {
       {/* ========== NAVBAR ========== */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled 
-          ? 'bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200/60' 
-          : 'bg-transparent'
+          ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-blue-100' 
+          : 'bg-slate-900/40 backdrop-blur-sm border-b border-white/10'
       }`}>
         <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md flex-shrink-0">
-                {attendanceSettings.schoolLogo && !cameraError ? (
+              {attendanceSettings.schoolLogo && !logoError ? (
                   <img 
-                    src={`${api.defaults.baseURL?.replace('/api', '') || ''}/${attendanceSettings.schoolLogo}`} 
+                    src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
                     alt="Logo" 
-                    className="w-7 h-7 object-contain bg-white/90 rounded-md p-0.5"
-                    onError={() => setCameraError(true)}
+                    className="w-7 h-7 object-contain bg-white rounded-md p-0.5 shadow-inner"
+                    onError={() => setLogoError(true)}
                   />
                 ) : (
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -594,13 +626,13 @@ const Landing = () => {
                 )}
               </div>
               <div className="flex flex-col">
-                <h1 className="text-sm font-bold text-slate-800 leading-tight">
+                <h1 className={`text-sm font-bold leading-tight transition-colors duration-300 ${isScrolled ? 'text-blue-900' : 'text-white'}`}>
                   {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
                 </h1>
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                <div className={`flex items-center gap-1.5 text-[10px] font-medium transition-colors duration-300 ${isScrolled ? 'text-slate-500' : 'text-slate-300'}`}>
                   <span>{formatDate(currentTime)}</span>
-                  <span className="text-slate-300">•</span>
-                  <span className="font-mono text-blue-600">{formatTime(currentTime)}</span>
+                  <span className={isScrolled ? 'text-slate-300' : 'text-white/20'}>•</span>
+                  <span className={`font-mono ${isScrolled ? 'text-blue-600' : 'text-cyan-400'}`}>{formatTime(currentTime)}</span>
                 </div>
               </div>
             </div>
@@ -855,6 +887,13 @@ const Landing = () => {
                     </div>
                   )}
                   <button
+                    onClick={toggleCamera}
+                    className="w-full mb-3 py-2 px-4 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span className="text-lg">🔄</span>
+                    Ganti Kamera ({facingMode === 'environment' ? 'Belakang' : 'Depan'})
+                  </button>
+                  <button
                     onClick={handleCloseStandaloneQRScanner}
                     className="w-full py-2.5 text-sm text-slate-600 hover:text-slate-800 font-medium rounded-lg hover:bg-slate-100 transition-colors"
                   >
@@ -906,11 +945,11 @@ const Landing = () => {
       {/* ========== ABSEN MODAL ========== */}
       {showAbsenModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-2xl my-6 shadow-2xl relative">
+          <div className="bg-white rounded-3xl w-full max-w-md my-auto shadow-2xl relative overflow-hidden flex flex-col">
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
               <div>
                 <h3 className="text-base font-semibold text-slate-800">Absensi</h3>
-                <p className="text-xs text-slate-500">Pilih metode absensi yang diinginkan</p>
+                <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Metode: {activeMethodTab}</p>
               </div>
               <button
                 onClick={() => {
@@ -947,8 +986,8 @@ const Landing = () => {
               </div>
 
               {/* Method Tabs */}
-              <div className="flex justify-center mb-6">
-                <div className="inline-flex bg-slate-100 rounded-xl p-1">
+              <div className="flex justify-center mb-5">
+                <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full">
                   {[
                     { id: 'scan', label: 'Scan QR', icon: '📷' },
                     { id: 'manual', label: 'Manual', icon: '✍️' },
@@ -957,9 +996,9 @@ const Landing = () => {
                     <button
                       key={tab.id}
                       onClick={() => setActiveMethodTab(tab.id)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
+                      className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
                         activeMethodTab === tab.id
-                          ? 'bg-white text-slate-900 shadow-sm'
+                          ? 'bg-blue-600 text-white shadow-lg border border-blue-400'
                           : 'text-slate-600 hover:text-slate-800'
                       }`}
                     >
@@ -970,24 +1009,29 @@ const Landing = () => {
               </div>
 
               {/* Content Area */}
-              <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
-                <div className="p-6 bg-white">
+              <div className="bg-white rounded-2xl border-2 border-slate-100 shadow-inner overflow-hidden min-h-[380px] flex flex-col justify-center transition-all duration-300">
+                <div className="p-5">
                   {activeMethodTab === 'scan' && (
-                    <div className="text-center py-6">
-                      <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
+                    <div className="animate-fade-in text-center">
+                      <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-2xl mb-4 mx-auto max-w-[280px] aspect-square relative border-4 border-blue-50">
+                        <div id="qr-reader" className="w-full h-full"></div>
                       </div>
-                      <h4 className="text-base font-semibold text-slate-800 mb-2">Scan QR Code</h4>
-                      <p className="text-sm text-slate-600 mb-6">Arahkan kamera ke QR code {activeUserRole === 'siswa' ? 'siswa' : 'guru'}</p>
-                      <button
-                        onClick={() => { handleOpenStandaloneQRScanner(); setShowAbsenModal(false); }}
-                        className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition-all shadow-sm"
+                      
+                      {cameraError && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-[10px] text-red-600 font-bold">
+                          ⚠️ {cameraError}
+                        </div>
+                      )}
+
+                      <button 
+                        onClick={toggleCamera}
+                        className="w-full py-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-black border-2 border-blue-100 hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
                       >
-                        Buka Scanner
+                        <span>🔄</span> Putar Kamera ({facingMode === 'environment' ? 'Belakang' : 'Depan'})
                       </button>
+                      <p className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        Arahkan Ke QR {activeUserRole}
+                      </p>
                     </div>
                   )}
 
