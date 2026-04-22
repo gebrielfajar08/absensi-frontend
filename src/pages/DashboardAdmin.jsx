@@ -867,27 +867,28 @@ const DashboardAdmin = () => {
       };
 
       const data = new FormData();
-      // ✨ PERBAIKAN: Pastikan semua data string tidak null/undefined sebelum di-append
-      data.append('nama_sekolah', String(settingsData.schoolName || ''));
-      data.append('alamat_sekolah', String(settingsData.schoolAddress || ''));
-      data.append('telepon', String(settingsData.schoolPhone || ''));
-      data.append('email', String(settingsData.schoolEmail || ''));
-      data.append('tahun_ajaran', String(settingsData.academicYear || ''));
-      data.append('jam_masuk', String(settingsData.attendanceStartTime || '07:00'));
-      data.append('jam_akhir', String(settingsData.attendanceEndTime || '08:00'));
-      data.append('batas_keterlambatan', String(settingsData.lateThreshold || '08:00'));
-      data.append('jam_pulang', String(settingsData.schoolEndTime || '15:30'));
+      // ✨ PERBAIKAN: Samakan nama field dengan ekspektasi Backend (snake_case) untuk menghindari Error 422
+      data.append('nama_sekolah', settingsData.schoolName || '');
+      data.append('alamat_sekolah', settingsData.schoolAddress || '');
+      data.append('telepon', settingsData.schoolPhone || '');
+      data.append('email', settingsData.schoolEmail || '');
+      data.append('tahun_ajaran', settingsData.academicYear || '');
+      data.append('jam_masuk', settingsData.attendanceStartTime || '07:00');
+      data.append('jam_akhir', settingsData.attendanceEndTime || '08:00');
+      data.append('batas_keterlambatan', settingsData.lateThreshold || '08:00');
+      data.append('jam_pulang', settingsData.schoolEndTime || '15:30');
 
-      // ✨ PERBAIKAN: Kirim boolean sebagai string '1'/'0' yang dikenali Laravel sebagai boolean
       data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
       data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
       data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
       data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
-      data.append('limit_one_scan_per_day', settingsData.limitOneScanPerDay ? '1' : '0');
+data.append('limit_one_scan_per_day', settingsData.limitOneScanPerDay ? '1' : '0');
       data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
 
       // Lampirkan file jika ada yang baru dipilih
-      if (logoFile instanceof File) data.append('logo', logoFile);
+      if (logoFile instanceof File) {
+        data.append('logo', logoFile);
+      }
 
       [1, 2, 3].forEach(i => {
         if (mediaPhotoFiles[i] instanceof File) {
@@ -900,8 +901,8 @@ const DashboardAdmin = () => {
       }
 
       // ✨ KEMBALI KE POST: Karena backend menggunakan Route::post dan error 405 muncul jika dipaksa PUT.
-      const response = await api.post('/admin/settings', data, { ...config });
-
+      const response = await api.post('/admin/settings', data, { ...config, timeout: 120000 });
+      
       if (response.status === 200 || response.status === 201) {
         // ✨ AGAR LANGSUNG MUNCUL: Refresh settings dari server
         await fetchSettings(); 
@@ -921,18 +922,15 @@ const DashboardAdmin = () => {
       }
     } catch (err) {
       console.error('Error saving settings:', err);
-      const responseData = err.response?.data;
-      const validationErrors = responseData?.errors;
-
-      if (validationErrors) {
-        const messages = Object.entries(validationErrors)
-          .map(([field, msgs]) => `• ${field}: ${Array.isArray(msgs) ? msgs[0] : msgs}`)
-          .join('\n');
-        alert(`❌ Validasi Gagal:\n${messages}`);
-      } else {
-        alert(`❌ Gagal menyimpan: ${responseData?.message || err.message}`);
+      const apiErr = err.response?.data;
+      let detailMsg = apiErr?.message || "Gagal menyimpan pengaturan";
+      
+      if (apiErr?.errors) {
+        detailMsg += "\n" + Object.entries(apiErr.errors)
+          .map(([key, val]) => `• ${key}: ${val}`)
+          .join("\n");
       }
-      console.error('Full Error Response:', responseData);
+      alert(`❌ Kesalahan Validasi:\n${detailMsg}`);
     } finally {
       setIsPromoting(false);
     }

@@ -53,6 +53,15 @@ const formatToIndonesiaTime = (utcDate) => {
   }
 };
 
+// Helper matching Admin for robust class name resolution
+const resolveClassName = (user, classInfo) => {
+  if (user?.class_name) return user.class_name;
+  if (user?.kelas) return user.kelas;
+  if (classInfo?.name) return classInfo.name;
+  if (typeof classInfo === 'string') return classInfo;
+  return '-';
+};
+
 const DashboardSiswa = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -76,9 +85,8 @@ const DashboardSiswa = () => {
   const [sessionInfo, setSessionInfo] = useState(null);
   const [izinForm, setIzinForm] = useState({ 
     fullName: '', 
-    parentPhone: '', 
-    reason: '', 
-    tanggal: new Date().toISOString().split('T')[0] 
+    parentPhone: user?.parent_phone || '', 
+    reason: ''
   });
   const [izinSubmitting, setIzinSubmitting] = useState(false);
   const [izinMessage, setIzinMessage] = useState({ type: '', text: '' });
@@ -87,7 +95,7 @@ const DashboardSiswa = () => {
   const [teacherInfo, setTeacherInfo] = useState(null);
   const [lastSync, setLastSync] = useState(null);
 
-  const [manualForm, setManualForm] = useState({ nis: '' });
+  const [manualForm, setManualForm] = useState({ fullName: '', nis: '' });
   const qrReaderRef = useRef(null);
   const audioContextRef = useRef(null);
   const modalContentRef = useRef(null);
@@ -111,6 +119,7 @@ const DashboardSiswa = () => {
   const [activeAbsenTab, setActiveAbsenTab] = useState('scan');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [qrScanner, setQrScanner] = useState(null);
+  const [facingMode, setFacingMode] = useState('environment');
   const [cameraError, setCameraError] = useState('');
   const [qrResult, setQrResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -180,9 +189,12 @@ const DashboardSiswa = () => {
     if (user?.id) {
       fetchStudentData();
       generateLocalQRCode();
-      // Pre-populate NIS
-      setManualForm({ nis: user.nis || user.user_id || '' });
-      setIzinForm(prev => ({ ...prev, fullName: user.name || '' }));
+      // Pre-populate forms
+      setManualForm({ 
+        fullName: user.name || '',
+        nis: user.nis || user.user_id || '' 
+      });
+      setIzinForm(prev => ({ ...prev, fullName: user.name || '', parentPhone: user.parent_phone || '' }));
 
       const syncInterval = setInterval(() => {
         if (document.visibilityState === 'visible' && user?.id) {
@@ -405,8 +417,16 @@ const DashboardSiswa = () => {
     }
   };
 
+  // Fungsi ganti kamera
+  const toggleCamera = async () => {
+    const newMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newMode);
+    await stopQRScanner();
+    setTimeout(() => startQRScanner(newMode), 300);
+  };
+
   // Fungsi QR Scanner
-  const startQRScanner = async () => {
+  const startQRScanner = async (mode = facingMode) => {
     try {
       setCameraError('');
       console.log('🎥 Memulai QR Scanner...');
@@ -421,7 +441,7 @@ const DashboardSiswa = () => {
       // Cek izin kamera dengan timeout yang lebih longgar
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' }
+          video: { facingMode: mode }
         });
         stream.getTracks().forEach(track => track.stop());
       } catch (permError) {
@@ -434,7 +454,7 @@ const DashboardSiswa = () => {
       
       // ✨ DIPERBAIKI: Ukuran QR box lebih kecil agar tidak terlalu zoom
       await scanner.start(
-        { facingMode: 'environment' },
+        { facingMode: mode },
         {
           fps: 10,
           qrbox: { width: 220, height: 220 },
@@ -591,8 +611,10 @@ const DashboardSiswa = () => {
       const status = getAttendanceStatus();
       // Kirim hanya nama dan NIS
       const requestData = {
-        name: user.name || user.full_name || '',
+        name: manualForm.fullName || user.name || '',
+        full_name: manualForm.fullName || user.name || '',
         user_id: manualForm.nis || user.nis || user.user_id || '',
+        nis: manualForm.nis || user.nis || user.user_id || '',
         attendance_time: currentTime.toISOString(),
         status: status,
         role: 'siswa',
@@ -624,7 +646,8 @@ const DashboardSiswa = () => {
       
       // Reset form
       setManualForm({ 
-        nis: ''
+        fullName: user.name || '',
+        nis: user.nis || user.user_id || ''
       });
       
       // Broadcast ke storage
@@ -749,9 +772,8 @@ const DashboardSiswa = () => {
       const requestData = {
         full_name: izinForm.fullName || user.name,
         user_id: user.nis || user.user_id,
-        parent_phone: izinForm.parentPhone,
+        parent_phone: izinForm.parentPhone || user.parent_phone,
         reason: izinForm.reason,
-        tanggal: izinForm.tanggal,
         status: 'izin',
         attendance_time: currentTime.toISOString()
       };
@@ -765,7 +787,7 @@ const DashboardSiswa = () => {
       playSound('success');
       
       // Reset Form
-      setIzinForm({ fullName: '', parentPhone: '', reason: '', tanggal: new Date().toISOString().split('T')[0] });
+      setIzinForm({ fullName: user.name || '', parentPhone: user.parent_phone || '', reason: '' });
       
       // Broadcast & Refresh data
       localStorage.setItem('attendance_updated', Date.now().toString());
@@ -1191,7 +1213,7 @@ const DashboardSiswa = () => {
                         )}
                       </div>
                       <h3 className="text-2xl font-bold text-blue-800">{user.name}</h3>
-                      <p className="text-blue-600 text-sm">{classInfo?.name || 'Siswa'}</p>
+                      <p className="text-blue-600 text-sm font-medium">{resolveClassName(user, classInfo)}</p>
                     </div>
 
                     <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-left mb-6">
@@ -1213,7 +1235,7 @@ const DashboardSiswa = () => {
                         </div>
                         <div className="flex justify-between py-2 border-b-2 border-blue-200">
                           <span className="text-blue-600">Kelas:</span>
-                          <span className="font-medium">{classInfo?.name || '-'}</span>
+                          <span className="font-medium">{resolveClassName(user, classInfo)}</span>
                         </div>
                         <div className="flex justify-between py-2 border-b-2 border-blue-200">
                           <span className="text-blue-600">Jenis Kelamin:</span>
@@ -1277,7 +1299,7 @@ const DashboardSiswa = () => {
                             {attendanceHistory.map((item) => (
                               <tr key={item.id} className="hover:bg-blue-50">
                                 <td className="px-6 py-4 text-sm text-blue-800">{formatDate(item.date)}</td>
-                                <td className="px-6 py-4 text-sm text-blue-600">{item.class_name || classInfo?.name}</td>
+                                <td className="px-6 py-4 text-sm text-blue-600">{item.class_name || resolveClassName(user, classInfo)}</td>
                                 <td className="px-6 py-4">
                                   <span className={`inline-flex px-3 py-1 text-xs font-bold rounded-full border-2 ${statusBadgeClass(item.status)}`}>
                                     {statusLabel(item.status)}
@@ -1301,17 +1323,17 @@ const DashboardSiswa = () => {
 
       {/* MODAL ABSENSI */}
 {showAbsenModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-    <div className="bg-white rounded-2xl w-full max-w-md my-8 shadow-2xl relative border-2 border-blue-200 overflow-hidden flex flex-col">
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+    <div className="bg-white rounded-3xl w-full max-w-md my-auto shadow-2xl relative border-2 border-blue-200 overflow-hidden flex flex-col">
       
       {/* Header Modal */}
       <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
         <div>
           <h3 className="text-base font-bold text-slate-800">
-            {activeAbsenTab === 'my-qr' ? '🪪 Kode QR Saya' : '✅ Absensi'}
+            {activeAbsenTab === 'my-qr' ? '🪪 Kode QR Saya' : 'Absensi'}
           </h3>
           <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
-            {activeAbsenTab === 'my-qr' ? 'Identitas digital Anda' : 'Scan QR, Manual, atau Izin'}
+            {activeAbsenTab === 'my-qr' ? 'Identitas digital Anda' : `Metode: ${activeAbsenTab}`}
           </p>
         </div>
         <button
@@ -1331,34 +1353,22 @@ const DashboardSiswa = () => {
       {/* Content Modal */}
       <div className="p-5 flex-1 overflow-y-auto" ref={modalContentRef}>
         
-        {/* Waktu & Tanggal */}
-        <div className="text-center mb-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200">
-            <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="font-mono font-bold text-sm text-slate-700">{formatTime(currentTime)}</span>
-            <span className="text-slate-300 text-xs">|</span>
-            <span className="text-xs text-slate-500 font-medium">{formatDate(currentTime)}</span>
-          </div>
-        </div>
-
         {/* Tab Navigation */}
         {activeAbsenTab !== 'my-qr' && (
-          <div className="flex justify-center mb-4">
+          <div className="flex justify-center mb-5">
             <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full">
               <button
                 onClick={() => setActiveAbsenTab('scan')}
                 className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'scan' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:bg-slate-200'
+                  activeAbsenTab === 'scan' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
-                <span>📱</span> Scan QR
+                <span>📷</span> Scan QR
               </button>
               <button
                 onClick={() => setActiveAbsenTab('manual')}
                 className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'manual' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:bg-slate-200'
+                  activeAbsenTab === 'manual' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
                 <span>✍️</span> Manual
@@ -1366,7 +1376,7 @@ const DashboardSiswa = () => {
               <button
                 onClick={() => setActiveAbsenTab('izin')}
                 className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'izin' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:bg-slate-200'
+                  activeAbsenTab === 'izin' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
                 <span>📋</span> Izin
@@ -1408,6 +1418,13 @@ const DashboardSiswa = () => {
                   </button>
                 )}
                 
+                <button 
+                  onClick={toggleCamera}
+                  className="w-full mt-3 py-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-black border-2 border-blue-100 hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
+                >
+                  <span>🔄</span> Putar Kamera ({facingMode === 'environment' ? 'Belakang' : 'Depan'})
+                </button>
+
                 <p className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                   Arahkan Ke QR Absensi
                 </p>
@@ -1418,6 +1435,17 @@ const DashboardSiswa = () => {
             {activeAbsenTab === 'manual' && (
               <div className="animate-fade-in">
                 <form onSubmit={handleManualSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Nama Lengkap *</label>
+                    <input
+                      type="text"
+                      value={manualForm.fullName}
+                      onChange={(e) => setManualForm(prev => ({...prev, fullName: e.target.value}))}
+                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      placeholder="Nama lengkap sesuai data"
+                      required
+                    />
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">NIS Siswa *</label>
                     <input
@@ -1492,12 +1520,25 @@ const DashboardSiswa = () => {
               <div className="animate-fade-in">
                 <form onSubmit={handleIzinSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Tanggal</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Nama Lengkap *</label>
                     <input
-                      type="date"
-                      value={izinForm.tanggal}
-                      onChange={(e) => setIzinForm((p) => ({ ...p, tanggal: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm"
+                      type="text"
+                      value={izinForm.fullName}
+                      onChange={(e) => setIzinForm(prev => ({ ...prev, fullName: e.target.value }))}
+                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      placeholder="Nama lengkap"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">No. Telepon Orang Tua *</label>
+                    <input
+                      type="tel"
+                      value={izinForm.parentPhone}
+                      onChange={(e) => setIzinForm(prev => ({ ...prev, parentPhone: e.target.value }))}
+                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      placeholder="08123456789"
+                      required
                     />
                   </div>
                   <div>
@@ -1530,16 +1571,18 @@ const DashboardSiswa = () => {
           </div>
         </div>
 
-        {/* Help Section */}
-        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
-          <h4 className="font-bold text-slate-800 mb-1.5 text-xs flex items-center gap-1.5">
-            <span>ℹ️</span> Cara Pakai
+        {/* Info Box */}
+        <div className="mt-5 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-medium text-blue-900 mb-2 text-xs flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Info Waktu
           </h4>
-          <ul className="space-y-1 text-[10px] text-slate-500 font-medium">
-            <li>• Pilih tab Scan QR atau Manual</li>
-            <li>• Untuk scan, arahkan kamera ke QR code</li>
-            <li>• Untuk manual, isi nama dan NIS</li>
-            <li>• Data tersimpan otomatis</li>
+          <ul className="space-y-1 text-xs text-blue-800">
+            <li>• Jam masuk: <strong>{attendanceSettings.attendanceStartTime}</strong></li>
+            <li>• Batas terlambat: <strong>{attendanceSettings.lateThreshold}</strong></li>
+            <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
           </ul>
         </div>
 
