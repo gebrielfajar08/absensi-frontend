@@ -49,11 +49,11 @@ const LoginGuru = () => {
     useEffect(() => {
         const verifyConnection = async () => {
             try {
-                const baseURL = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
-                const apiRoot = baseURL.replace(/\/api\/?$/, '');
+                const baseURL = api.defaults.baseURL;
                 const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 3000);
-                const response = await fetch(`${apiRoot}/health`, { 
+                const timeout = setTimeout(() => controller.abort(), 10000);
+                
+                await fetch(baseURL, { 
                     method: 'GET',
                     signal: controller.signal,
                     mode: 'cors',
@@ -62,7 +62,12 @@ const LoginGuru = () => {
                 clearTimeout(timeout);
                 setConnectionStatus('connected');
             } catch (err) {
-                setConnectionStatus('disconnected');
+                // Hanya set disconnected jika benar-benar network error
+                if (err.name === 'TypeError' || err.message.includes('NetworkError')) {
+                    setConnectionStatus('disconnected');
+                } else {
+                    setConnectionStatus('connected');
+                }
             }
         };
         verifyConnection();

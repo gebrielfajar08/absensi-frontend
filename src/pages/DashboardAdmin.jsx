@@ -189,8 +189,10 @@ const DashboardAdmin = () => {
     academicYear: '2025/2026',
     schoolLogo: null,
     attendanceStartTime: '07:00',
+    attendanceOpenTime: '06:00',
+    attendanceCloseTime: '10:00',
     attendanceEndTime: '08:00',
-    lateThreshold: '08:00',
+    lateThreshold: '07:30',
     enableNotifications: true,
     enableEmailReports: true,
     enableQRCode: true,
@@ -204,6 +206,7 @@ const DashboardAdmin = () => {
     dashboardPhoto3: null,
     dashboardVideo: null,
   });
+
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [notifiedAttendanceKeys, setNotifiedAttendanceKeys] = useState([]);
   
@@ -230,6 +233,8 @@ const DashboardAdmin = () => {
           schoolEmail: res.data.email || res.data.schoolEmail || settingsData.schoolEmail,
           academicYear: res.data.tahun_ajaran || res.data.academicYear || settingsData.academicYear,
           schoolLogo: res.data.logo || res.data.schoolLogo || settingsData.schoolLogo,
+          attendanceOpenTime: res.data.jam_buka || res.data.attendanceOpenTime || settingsData.attendanceOpenTime,
+          attendanceCloseTime: res.data.jam_tutup || res.data.attendanceCloseTime || settingsData.attendanceCloseTime,
           attendanceStartTime: res.data.jam_masuk || res.data.attendanceStartTime || settingsData.attendanceStartTime,
           attendanceEndTime: res.data.jam_akhir || res.data.attendanceEndTime || settingsData.attendanceEndTime,
           lateThreshold: res.data.batas_keterlambatan || res.data.lateThreshold || settingsData.lateThreshold,
@@ -400,6 +405,10 @@ const DashboardAdmin = () => {
   };
 
   // ✨ TAMBAHAN: Fetch functions untuk fitur baru
+function DashboardAdmin() {
+
+  const BASE = "https://oasis-labs-artwork-congressional.trycloudflare.com";
+
   const fetchSubjects = async () => {
     try {
       setFeatureDataLoading(true);
@@ -646,6 +655,31 @@ const DashboardAdmin = () => {
       }
       alert(`❌ Gagal menambah user: ${apiMessage}${details ? '\n' + details : ''}`);
     }
+
+return (
+    <div>
+
+      {/* KOMPONEN LAIN */}
+
+      {settings.dashboard_photo_1 && (
+        <img
+          src={`${BASE}/storage/${settings.dashboard_photo_1}`}
+          width="200"
+        />
+      )}
+
+      {settings.dashboard_video && (
+        <video
+          src={`${BASE}/storage/${settings.dashboard_video}`}
+          controls
+          width="300"
+        />
+      )}
+
+    </div>
+  );
+}
+
   };
 
   // ✨ HANDLER: Manajemen Naik Kelas
@@ -867,38 +901,67 @@ const DashboardAdmin = () => {
       };
 
       const data = new FormData();
-      // ✨ PERBAIKAN: Samakan nama field dengan ekspektasi Backend (snake_case) untuk menghindari Error 422
-      data.append('nama_sekolah', settingsData.schoolName || '');
-      data.append('alamat_sekolah', settingsData.schoolAddress || '');
-      data.append('telepon', settingsData.schoolPhone || '');
-      data.append('email', settingsData.schoolEmail || '');
-      data.append('tahun_ajaran', settingsData.academicYear || '');
-      data.append('jam_masuk', settingsData.attendanceStartTime || '07:00');
-      data.append('jam_akhir', settingsData.attendanceEndTime || '08:00');
-      data.append('batas_keterlambatan', settingsData.lateThreshold || '08:00');
-      data.append('jam_pulang', settingsData.schoolEndTime || '15:30');
 
-      data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
-      data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
-      data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
-      data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
-data.append('limit_one_scan_per_day', settingsData.limitOneScanPerDay ? '1' : '0');
-      data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
+// ====================
+// TEXT (IKUT BACKEND)
+// ====================
+data.append('schoolName', settingsData.schoolName || '');
+data.append('schoolAddress', settingsData.schoolAddress || '');
+data.append('schoolPhone', settingsData.schoolPhone || '');
+data.append('schoolEmail', settingsData.schoolEmail || '');
+data.append('academicYear', settingsData.academicYear || '');
 
-      // Lampirkan file jika ada yang baru dipilih
-      if (logoFile instanceof File) {
-        data.append('logo', logoFile);
-      }
+// ====================
+// TIME
+// ====================
+data.append('attendanceStartTime', settingsData.attendanceStartTime?.slice(0,5) || '07:00');
+data.append('attendanceEndTime', settingsData.attendanceEndTime?.slice(0,5) || '08:00');
+data.append('lateThreshold', settingsData.lateThreshold?.slice(0,5) || '08:00');
+data.append('schoolEndTime', settingsData.schoolEndTime?.slice(0,5) || '15:30');
 
-      [1, 2, 3].forEach(i => {
-        if (mediaPhotoFiles[i] instanceof File) {
-          data.append(`dashboard_photo_${i}`, mediaPhotoFiles[i]);
-        }
-      });
+// ====================
+// BOOLEAN
+// ====================
+data.append('enableNotifications', settingsData.enableNotifications ? '1' : '0');
+data.append('enableEmailReports', settingsData.enableEmailReports ? '1' : '0');
+data.append('enableQRCode', settingsData.enableQRCode ? '1' : '0');
+data.append('attendanceSessionOpen', settingsData.attendanceSessionOpen ? '1' : '0');
+data.append('autoMarkAbsentEnabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
 
-      if (mediaVideoFile instanceof File) {
-        data.append('dashboard_video', mediaVideoFile);
-      }
+// ====================
+// FILE (IKUT BACKEND)
+// ====================
+if (logoFile instanceof File) {
+  data.append('logo', logoFile);
+}
+
+// if (mediaPhotoFiles[1] instanceof File) {
+//   data.append('dashboard_photo_1', mediaPhotoFiles[1]);
+// }
+
+// if (mediaPhotoFiles[2] instanceof File) {
+//   data.append('dashboard_photo_2', mediaPhotoFiles[2]);
+// }
+
+// if (mediaPhotoFiles[3] instanceof File) {
+//   data.append('dashboard_photo_3', mediaPhotoFiles[3]);
+// }
+
+// if (mediaVideoFile instanceof File) {
+//   data.append('dashboard_video', mediaVideoFile);
+// }
+
+for (let pair of data.entries()) {
+  console.log(pair[0], pair[1]);
+}
+
+for (let pair of data.entries()) {
+  console.log(pair[0], pair[1]);
+}
+
+console.log("VIDEO:", mediaVideoFile);
+console.log("PHOTO1:", mediaPhotoFiles[1]);
+console.log("LOGO:", logoFile);
 
       // ✨ KEMBALI KE POST: Karena backend menggunakan Route::post dan error 405 muncul jika dipaksa PUT.
       const response = await api.post('/admin/settings', data, { ...config, timeout: 120000 });
@@ -3152,6 +3215,28 @@ data.append('limit_one_scan_per_day', settingsData.limitOneScanPerDay ? '1' : '0
                         <span>⏰</span> Pengaturan Absensi
                       </h3>
                       <form onSubmit={handleSaveSettings} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Absen Dibuka</label>
+                            <input
+                              type="time"
+                              name="attendance_start_time"
+                              value={settingsData.attendance_start_time}
+                              onChange={handleSettingsChange}
+                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Absen Ditutup</label>
+                            <input
+                              type="time"
+                              name="attendanceCloseTime"
+                              value={settingsData.attendanceCloseTime}
+                              onChange={handleSettingsChange}
+                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            />
+                          </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Masuk</label>

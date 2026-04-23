@@ -96,12 +96,12 @@ const LoginUnified = () => {
           setConnectionStatus('disconnected');
           return;
         }
-
-        const apiRoot = baseURL.replace(/\/api\/?$/, '');
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        // Gunakan timeout yang lebih manusiawi untuk tunnel (30 detik)
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-        const response = await fetch(`${apiRoot}/ping`, {
+        // ✨ PERBAIKAN: Cek langsung ke baseURL, jangan ke /ping (yang sering 404)
+        const response = await fetch(baseURL, {
           method: 'GET',
           signal: controller.signal,
           mode: 'cors',
@@ -109,8 +109,7 @@ const LoginUnified = () => {
         });
 
         clearTimeout(timeoutId);
-
-        // Jika mendapat 502, berarti tunnel aktif tapi backend mati
+        
         if (response.status === 502) {
           throw new Error('Bad Gateway');
         }
@@ -118,13 +117,14 @@ const LoginUnified = () => {
         setConnectionStatus('connected');
       } catch (err) {
         if (err.name === 'AbortError' || err.message === 'Bad Gateway') {
-          console.error("❌ Koneksi ke backend timeout (10s). Cloudflare Tunnel mungkin lambat atau backend tidak merespon.");
+          console.warn("⚠️ Koneksi ke backend lambat. Cloudflare Tunnel mungkin sedang cold-start.");
         } else if (err.name === 'TypeError' || err.message.includes('fetch') || err.message.includes('NetworkError')) {
           console.error("❌ DNS Error/Network Error: Tunnel Cloudflare mungkin sudah expired atau ada masalah jaringan.");
+          setConnectionStatus('disconnected');
         } else {
-          console.warn("Backend connectivity check failed:", err.message);
+          // Jika dapat respon apapun (termasuk 404), artinya tunnel masih hidup
+          setConnectionStatus('connected');
         }
-        setConnectionStatus('disconnected');
       }
     };
     verifyConnection();
@@ -163,7 +163,10 @@ const LoginUnified = () => {
         payload.role = selectedRole;
       }
 
-      const res = await api.post('/login', payload);
+      // ✨ Tambahkan timeout spesifik di sini juga
+      const res = await api.post('/login', payload, {
+        timeout: 60000
+      });
 
       // Simpan auth response (token, user info, role, dll)
       persistAuthResponse(res);

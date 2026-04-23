@@ -61,9 +61,11 @@ const Landing = () => {
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     attendanceStartTime: '07:00',
+    attendanceOpenTime: '06:00',
+    attendanceCloseTime: '12:00',
     attendanceEndTime: '08:00',
     lateThreshold: '08:00',
-    schoolName: 'SMPK DON BOSCO',
+    schoolName: 'AbsensiPro',
     schoolLogo: null,
     limitOneScanPerDay: true
   });
@@ -86,6 +88,8 @@ const Landing = () => {
           const settings = JSON.parse(savedSettings);
           setAttendanceSettings({
             attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '07:00',
+            attendanceOpenTime: settings.attendanceOpenTime || settings.jam_buka || '06:00',
+            attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '10:00',
             attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '08:00',
             lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '08:00',
             schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
@@ -198,8 +202,20 @@ const Landing = () => {
 
   const getAttendanceStatus = () => {
     const now = currentTime;
-    const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    if (currentTimeStr <= attendanceSettings.attendanceEndTime) {
+    // Paksa ambil HH:mm dari jam laptop/HP (format Indonesia)
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const currentTimeStr = `${hours}:${minutes}`;
+    
+    // Pastikan kita hanya membandingkan HH:mm (ambil 5 karakter pertama)
+    const openTime = (attendanceSettings.attendanceOpenTime || "06:00").substring(0, 5);
+    const closeTime = (attendanceSettings.attendanceCloseTime || "10:00").substring(0, 5);
+    const endTime = (attendanceSettings.attendanceEndTime || "08:00").substring(0, 5);
+
+    if (currentTimeStr < openTime) return 'belum_buka';
+    if (currentTimeStr > closeTime) return 'sudah_tutup';
+
+    if (currentTimeStr <= endTime) {
       return 'hadir';
     } else {
       return 'terlambat';
@@ -213,6 +229,19 @@ const Landing = () => {
     try {
       const status = getAttendanceStatus();
 
+      if (status === 'belum_buka') {
+        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceOpenTime}`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceCloseTime}`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+
       // ✨ PERBAIKAN: Payload ganda (Redundant) untuk memastikan kecocokan key di backend
       const payload = {
         name: studentForm.fullName.trim(),
@@ -225,7 +254,10 @@ const Landing = () => {
         type: 'manual'
       };
 
-      await api.post('/attendance/student/manual', payload);
+      // ✨ Tambahkan timeout 60 detik karena Cloudflare Tunnel sering lambat
+      await api.post('/attendance/student/manual', payload, { 
+        timeout: 60000 
+      });
 
       const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       const successMsg = `Absensi siswa berhasil! ${statusText}`;
@@ -246,11 +278,15 @@ const Landing = () => {
       const responseData = err.response?.data;
       console.error('Student Attendance Error:', responseData || err);
       
-      let errorMsg = responseData?.message || err.message || 'Gagal menyimpan absensi';
+      let errorMsg = responseData?.message || 'Gagal menyimpan absensi';
+
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('exceeded')) {
+        errorMsg = 'Koneksi Timeout (60 detik). Cloudflare Tunnel lambat atau sudah mati. Mohon perbarui link di file .env dan jalankan ulang tunnel!';
+      }
 
       // ✨ PERBAIKAN: Deteksi Tunnel Mati (ERR_NAME_NOT_RESOLVED)
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
-        errorMsg = 'Server tidak terjangkau. Link Cloudflare Tunnel Anda mungkin sudah expired. Mohon update file .env dan restart terminal.';
+        errorMsg = 'Server tidak terjangkau. Link Cloudflare Tunnel Anda mungkin sudah expired (Mati). Mohon update file .env dengan link baru dan restart terminal.';
       }
       
       // ✨ PERBAIKAN: Tampilkan detail error validasi (422) agar tahu field yang salah
@@ -278,6 +314,19 @@ const Landing = () => {
     try {
       const status = getAttendanceStatus();
 
+      if (status === 'belum_buka') {
+        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceOpenTime}`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceCloseTime}`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+
       const payload = {
         name: teacherForm.fullName.trim(),
         full_name: teacherForm.fullName.trim(),
@@ -289,7 +338,10 @@ const Landing = () => {
         type: 'manual'
       };
 
-      await api.post('/attendance/teacher/manual', payload);
+      // ✨ Tambahkan timeout 60 detik
+      await api.post('/attendance/teacher/manual', payload, { 
+        timeout: 60000 
+      });
 
       const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       const successMsg = `Absensi guru berhasil! ${statusText}`;
@@ -333,6 +385,14 @@ const Landing = () => {
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
+      const status = getAttendanceStatus();
+      if (status === 'belum_buka' || status === 'sudah_tutup') {
+        const msg = `❌ Pengajuan izin hanya bisa dilakukan saat jam operasional absensi (${attendanceSettings.attendanceOpenTime} - ${attendanceSettings.attendanceCloseTime})`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+
         const token = localStorage.getItem('token');
       
       // ✨ PERBAIKAN: Gunakan JSON payload
@@ -344,7 +404,9 @@ const Landing = () => {
         status: 'izin'
       };
 
+      // ✨ Tambahkan timeout 60 detik
       await api.post('/attendance/izin', payload, {
+        timeout: 60000,
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
@@ -1210,8 +1272,8 @@ const Landing = () => {
                   Info Waktu
                 </h4>
                 <ul className="space-y-1 text-xs text-blue-800">
-                  <li>• Jam masuk: <strong>{attendanceSettings.attendanceStartTime}</strong></li>
-                  <li>• Batas terlambat: <strong>{attendanceSettings.lateThreshold}</strong></li>
+            <li>• Absen Dibuka: <strong>{attendanceSettings.attendanceOpenTime}</strong></li>
+            <li>• Absen Ditutup: <strong>{attendanceSettings.attendanceCloseTime}</strong></li>
                   <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
                 </ul>
               </div>

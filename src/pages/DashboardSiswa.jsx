@@ -544,6 +544,16 @@ const DashboardSiswa = () => {
     try {
       const token = localStorage.getItem('token');
       const status = getAttendanceStatus();
+
+      if (status === 'belum_buka') {
+        showQRNotificationMessage(`❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceOpenTime}`, 'error');
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        showQRNotificationMessage(`❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceCloseTime}`, 'error');
+        return;
+      }
+
       const requestData = {
         qr_data: qrData,
         scan_time: currentTime.toISOString(),
@@ -609,6 +619,16 @@ const DashboardSiswa = () => {
       const token = localStorage.getItem('token');
 
       const status = getAttendanceStatus();
+
+      if (status === 'belum_buka') {
+        setSubmitMessage({ type: 'error', text: `❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceOpenTime}` });
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        setSubmitMessage({ type: 'error', text: `❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceCloseTime}` });
+        return;
+      }
+
       // Kirim hanya nama dan NIS
       const requestData = {
         name: manualForm.fullName || user.name || '',
@@ -707,10 +727,15 @@ const DashboardSiswa = () => {
   // Helper to determine status based on time
   const getAttendanceStatus = () => {
     const now = currentTime;
-    const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const currentTimeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
     
-    // Check against attendanceEndTime from settings or default
-    const endTime = attendanceSettings.attendanceEndTime || "08:00";
+    const openTime = (attendanceSettings.attendanceOpenTime || "06:00").substring(0, 5);
+    const closeTime = (attendanceSettings.attendanceCloseTime || "12:00").substring(0, 5);
+    const endTime = (attendanceSettings.attendanceEndTime || "08:00").substring(0, 5);
+
+    if (currentTimeStr < openTime) return 'belum_buka';
+    if (currentTimeStr > closeTime) return 'sudah_tutup';
+
     return currentTimeStr <= endTime ? 'hadir' : 'terlambat';
   };
 
@@ -769,6 +794,13 @@ const DashboardSiswa = () => {
     setIzinMessage({ type: '', text: '' });
     try {
       const token = localStorage.getItem('token');
+      const status = getAttendanceStatus();
+
+      if (status === 'belum_buka' || status === 'sudah_tutup') {
+        setIzinMessage({ type: 'error', text: `❌ Izin hanya bisa dikirim pada jam operasional (${attendanceSettings.attendanceOpenTime} - ${attendanceSettings.attendanceCloseTime})` });
+        return;
+      }
+
       const requestData = {
         full_name: izinForm.fullName || user.name,
         user_id: user.nis || user.user_id,
