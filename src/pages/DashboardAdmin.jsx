@@ -207,6 +207,66 @@ const DashboardAdmin = () => {
     dashboardVideo: null,
   });
 
+  // Fetch Data Guru
+const fetchDataGuru = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+
+    const res = await api.get('/admin/users', config);
+
+    const allUsers = Array.isArray(res.data)
+      ? res.data
+      : (res.data.data || []);
+
+    const gurus = allUsers.filter(u => u.role === 'guru');
+
+    setGuruData(gurus);
+  } catch (err) {
+    console.error('Gagal mengambil data guru:', err);
+    setGuruData([]);
+  }
+};
+
+// Fetch Data Siswa
+const fetchDataSiswa = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+
+    const res = await api.get('/admin/users', config);
+
+    const allUsers = Array.isArray(res.data)
+      ? res.data
+      : (res.data.data || []);
+
+    const siswas = allUsers.filter(u => u.role === 'siswa');
+
+    setSiswaData(siswas);
+  } catch (err) {
+    console.error('Gagal mengambil data siswa:', err);
+    setSiswaData([]);
+  }
+};
+
+const fetchClasses = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+
+    const res = await api.get('/admin/classes', config);
+
+    const data = Array.isArray(res.data)
+      ? res.data
+      : (res.data.data || []);
+
+    setClasses(data);
+  } catch (err) {
+    console.error('Gagal mengambil data kelas:', err);
+    setClasses([]);
+  }
+};
+
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [notifiedAttendanceKeys, setNotifiedAttendanceKeys] = useState([]);
   
@@ -219,6 +279,17 @@ const DashboardAdmin = () => {
   const [featureDataLoading, setFeatureDataLoading] = useState(false);
   const [selectedPromoteStudents, setSelectedPromoteStudents] = useState([]);
   const [isPromoting, setIsPromoting] = useState(false);
+
+  const handleLogout = () => {
+    setIsExiting(true);
+
+    setTimeout(() => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/');
+    }, 600);
+  };
+
 
   const fetchSettings = async () => {
     const token = localStorage.getItem('token');
@@ -480,46 +551,51 @@ function DashboardAdmin() {
 
   // Fetch Data Guru dari database
   const fetchDataGuru = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await apiTryEndpoints('get', userEndpointCandidates.index, config);
-      const allUsers = Array.isArray(res.data) ? res.data : (res.data.data || []);
-      const gurus = allUsers.map(normalizeUser).filter(u => u.role === 'guru');
-      setGuruData(gurus);
-    } catch (err) {
-      console.error('Gagal mengambil data guru:', err);
-      setGuruData([]);
-    }
-  };
+  try {
+    const token = localStorage.getItem('token');
+
+    const res = await api.get('/admin/users?role=guru', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    setGuruData(res.data?.data || res.data || []);
+  } catch (err) {
+    console.error('Gagal mengambil data guru:', err);
+    setGuruData([]);
+  }
+};
 
   // Fetch Data Siswa dari database
   const fetchDataSiswa = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await apiTryEndpoints('get', userEndpointCandidates.index, config);
-      const allUsers = Array.isArray(res.data) ? res.data : (res.data.data || []);
-      const siswas = allUsers.map(normalizeUser).filter(u => u.role === 'siswa');
-      setSiswaData(siswas);
-    } catch (err) {
-      console.error('Gagal mengambil data siswa:', err);
-      setSiswaData([]);
-    }
-  };
+  try {
+    const token = localStorage.getItem('token');
+
+    const res = await api.get('/admin/users?role=siswa', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    setSiswaData(res.data?.data || res.data || []);
+  } catch (err) {
+    console.error('Gagal mengambil data siswa:', err);
+    setSiswaData([]);
+  }
+};
 
   // ✨ FIX: Fetch Classes untuk dropdown
   const fetchClasses = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
-      setClasses(Array.isArray(res.data) ? res.data : (res.data.data || []));
-    } catch (err) {
-      console.error('Gagal mengambil data kelas:', err);
-      setClasses([]);
-    }
-  };
+  try {
+    const token = localStorage.getItem('token');
+
+    const res = await api.get('/admin/classes', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    setClasses(res.data?.data || res.data || []);
+  } catch (err) {
+    console.error('Gagal mengambil data kelas:', err);
+    setClasses([]);
+  }
+};
 
   const handleLogout = () => {
     setIsExiting(true);

@@ -13,17 +13,11 @@ const resolvePhotoUrl = (photo) => {
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
-const checkBackendConnection = async (baseURL) => {
+const checkBackendConnection = async () => {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const response = await api.get('/health', {
-      signal: controller.signal,
-      mode: 'cors'
-    });
-    clearTimeout(timeout);
-    return response.ok || response.status === 401;
-  } catch {
+    const response = await api.get('/health');
+    return response.data?.status === 'ok' || response.status === 200;
+  } catch (error) {
     return false;
   }
 };
