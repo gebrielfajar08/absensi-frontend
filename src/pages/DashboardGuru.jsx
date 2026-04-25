@@ -86,6 +86,16 @@ const DashboardGuru = () => {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [pendingAttendance, setPendingAttendance] = useState(0);
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [scheduleFormData, setScheduleFormData] = useState({
+    day: 'Senin',
+    subject_name: '',
+    start_time: '07:00',
+    end_time: '08:00'
+  });
 
   // ← Cek auth & role
   useEffect(() => {
@@ -164,6 +174,18 @@ const DashboardGuru = () => {
     }, 30000);
     return () => clearInterval(syncInterval);
   }, [user]);
+
+  // ➕ TAMBAHAN: Auto fetch jadwal saat tab aktif
+  useEffect(() => {
+    if (user && activeTab === 'jadwal') {
+      if (selectedClass) {
+        fetchSchedules(selectedClass);
+      } else if (classes && classes.length > 0) {
+        setSelectedClass(classes[0].id);
+        fetchSchedules(classes[0].id);
+      }
+    }
+  }, [activeTab, selectedClass, classes, user]);
 
   // ← Listen untuk broadcast dari tab lain
   useEffect(() => {
@@ -247,6 +269,7 @@ const DashboardGuru = () => {
       setStats(statsRes.data);
       setClasses(classesRes.data);
       setRecentActivity(activityRes.data);
+      if (classesRes.data.length > 0 && !selectedClass) setSelectedClass(classesRes.data[0].id);
       setLastSync(new Date());
       if (connectionStatus !== 'connected') {
         setConnectionStatus('connected');
@@ -292,6 +315,84 @@ const DashboardGuru = () => {
         addNotification('⚠️ Gagal memuat data siswa', 'error');
       }
     }
+  };
+
+  // ➕ TAMBAHAN: Fungsi CRUD Jadwal
+  const fetchSchedules = async (classId) => {
+    if (!classId) return;
+    setScheduleLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await api.get(`/guru/schedules?class_id=${classId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSchedules(res.data || []);
+    } catch (err) {
+      console.error('Gagal memuat jadwal:', err);
+      setSchedules([]);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  const handleScheduleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedClass) return;
+    try {
+      const token = localStorage.getItem('token');
+      
+      if (editId) {
+        // Mode EDIT
+        await api.put(`/guru/schedules/${editId}`, {
+          ...scheduleFormData,
+          class_id: selectedClass
+        }, { headers: { Authorization: `Bearer ${token}` } });
+        addNotification('✅ Jadwal berhasil diperbarui', 'success');
+      } else {
+        // Mode TAMBAH
+        await api.post('/guru/schedules', {
+          ...scheduleFormData,
+          class_id: selectedClass
+        }, { headers: { Authorization: `Bearer ${token}` } });
+        addNotification('✅ Jadwal berhasil disimpan', 'success');
+      }
+      
+      setShowScheduleForm(false);
+      resetScheduleForm();
+      fetchSchedules(selectedClass);
+    } catch (err) {
+      addNotification('❌ Gagal menyimpan jadwal', 'error');
+    }
+  };
+
+  const resetScheduleForm = () => {
+    setEditId(null);
+    setScheduleFormData({ day: 'Senin', subject_name: '', start_time: '07:00', end_time: '08:00' });
+  };
+
+  const handleScheduleDelete = async (id) => {
+    if (!confirm('Hapus jadwal ini?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      await api.delete(`/guru/schedules/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      addNotification('✅ Jadwal berhasil dihapus', 'success');
+      fetchSchedules(selectedClass);
+    } catch (err) {
+      addNotification('❌ Gagal menghapus jadwal', 'error');
+    }
+  };
+
+  const openEditScheduleModal = (item) => {
+    setEditId(item.id);
+    setScheduleFormData({
+      day: item.day,
+      subject_name: item.subject_name,
+      start_time: item.start_time,
+      end_time: item.end_time
+    });
+    setShowScheduleForm(true);
   };
 
   const handleLogout = () => {
@@ -1065,14 +1166,125 @@ const DashboardGuru = () => {
               {activeTab === 'jadwal' && (
                 <div>
                   <div className="bg-white rounded-2xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">📅 Jadwal Mengajar</h2>
-                    <p className="text-blue-600 text-sm">Jadwal kelas Anda minggu ini</p>
+                    <h2 className="text-xl font-bold text-blue-800 mb-1">📅 Manajemen Jadwal Pelajaran</h2>
+                    <p className="text-blue-600 text-sm">Kelola mata pelajaran harian (Senin - Minggu) untuk kelas Anda</p>
                   </div>
-                  <div className="bg-white rounded-2xl border-2 border-blue-200 p-12 text-center shadow-lg">
-                    <p className="text-5xl mb-4">📅</p>
-                    <p className="text-blue-700 font-medium">Fitur jadwal mengajar</p>
-                    <p className="text-blue-500 text-sm mt-2">Segera hadir - Sinkronisasi dengan kalender sekolah</p>
+
+                  <div className="bg-white rounded-2xl border-2 border-blue-200 p-6 shadow-lg mb-6">
+                    <div className="flex flex-col md:flex-row gap-4 items-end justify-between mb-6">
+                      <div className="w-full md:w-64">
+                        <label className="block text-xs font-bold text-blue-800 mb-2 uppercase">Pilih Kelas</label>
+                        <select
+                          value={selectedClass}
+                          onChange={(e) => setSelectedClass(e.target.value)}
+                          className="w-full px-4 py-2.5 border-2 border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 bg-blue-50 text-sm font-medium"
+                        >
+                          {classes.length === 0 ? <option value="">Tidak ada kelas</option> : classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <button
+                        onClick={() => {
+                          resetScheduleForm();
+                          setShowScheduleForm(true);
+                        }}
+                        disabled={!selectedClass}
+                        className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-md disabled:bg-slate-300 disabled:cursor-not-allowed"
+                      >
+                        ➕ Tambah Mata Pelajaran
+                      </button>
+                    </div>
+
+                    {scheduleLoading ? (
+                      <div className="p-10 text-center text-blue-600">Memuat jadwal...</div>
+                    ) : !selectedClass ? (
+                      <div className="p-10 text-center text-slate-400 italic">Pilih kelas untuk mengelola jadwal</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map(day => {
+                          const daySchedules = schedules.filter(s => s.day === day);
+                          return (
+                            <div key={day} className="border-2 border-blue-50 rounded-2xl overflow-hidden shadow-sm">
+                              <div className="px-4 py-2 bg-blue-50 border-b-2 border-blue-100 font-bold text-blue-800 text-sm">{day}</div>
+                              <div className="p-4 space-y-2">
+                                {daySchedules.length === 0 ? (
+                                  <p className="text-xs text-slate-400 italic">Belum ada jadwal</p>
+                                ) : (
+                                  daySchedules.map((s) => (
+                                    <div key={s.id} className="p-3 bg-white border border-blue-100 rounded-xl flex justify-between items-center group hover:border-blue-300 transition-all">
+                                      <div>
+                                        <p className="font-bold text-blue-900 text-sm">{s.subject_name}</p>
+                                        <p className="text-[10px] text-blue-500 font-medium">🕒 {s.start_time} - {s.end_time}</p>
+                                      </div>
+                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                        <button
+                                          onClick={() => openEditScheduleModal(s)}
+                                          className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                                          title="Edit"
+                                        >
+                                          ✏️
+                                        </button>
+                                        <button
+                                          onClick={() => handleScheduleDelete(s.id)}
+                                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                          title="Hapus"
+                                        >
+                                          🗑️
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
+
+                  {showScheduleForm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up border-2 border-blue-100">
+                        <h3 className="text-lg font-bold text-blue-900 mb-4">{editId ? 'Edit Mata Pelajaran' : 'Tambah Mata Pelajaran'}</h3>
+                        <form onSubmit={handleScheduleSubmit} className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hari</label>
+                            <select
+                              value={scheduleFormData.day}
+                              onChange={(e) => setScheduleFormData({...scheduleFormData, day: e.target.value})}
+                              className="w-full px-4 py-2 border-2 border-blue-50 rounded-xl text-sm"
+                            >
+                              {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Mata Pelajaran</label>
+                            <input
+                              type="text" required
+                              value={scheduleFormData.subject_name}
+                              onChange={(e) => setScheduleFormData({...scheduleFormData, subject_name: e.target.value})}
+                              className="w-full px-4 py-2 border-2 border-blue-50 rounded-xl text-sm"
+                              placeholder="Misal: Matematika"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jam Mulai</label>
+                              <input type="time" required value={scheduleFormData.start_time} onChange={(e) => setScheduleFormData({...scheduleFormData, start_time: e.target.value})} className="w-full px-4 py-2 border-2 border-blue-50 rounded-xl text-sm" />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jam Selesai</label>
+                              <input type="time" required value={scheduleFormData.end_time} onChange={(e) => setScheduleFormData({...scheduleFormData, end_time: e.target.value})} className="w-full px-4 py-2 border-2 border-blue-50 rounded-xl text-sm" />
+                            </div>
+                          </div>
+                          <div className="flex gap-3 pt-2">
+                            <button type="button" onClick={() => { setShowScheduleForm(false); resetScheduleForm(); }} className="flex-1 py-2.5 border-2 border-slate-100 rounded-xl text-sm font-bold text-slate-500">Batal</button>
+                            <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg">Simpan</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

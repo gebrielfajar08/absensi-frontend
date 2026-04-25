@@ -93,6 +93,8 @@ const DashboardSiswa = () => {
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [classInfo, setClassInfo] = useState(null);
   const [teacherInfo, setTeacherInfo] = useState(null);
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
   const [lastSync, setLastSync] = useState(null);
 
   const [manualForm, setManualForm] = useState({ fullName: '', nis: '' });
@@ -205,6 +207,13 @@ const DashboardSiswa = () => {
     }
   }, [user?.id]); // Gunakan user.id agar tidak terjadi infinite loop saat merge data profil
 
+  // ➕ TAMBAHAN: Auto fetch jadwal saat tab aktif
+  useEffect(() => {
+    if (user && activeTab === 'jadwal') {
+      fetchSchedules();
+    }
+  }, [activeTab, user]);
+
   // Listen broadcast dari guru dashboard
   useEffect(() => {
     const handleStorageChange = (e) => {
@@ -292,6 +301,23 @@ const DashboardSiswa = () => {
       setLoading(false);
     }
 };
+
+  // ➕ TAMBAHAN: Fetch Jadwal Pelajaran
+  const fetchSchedules = async () => {
+    setScheduleLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await api.get('/siswa/schedules', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSchedules(res.data || []);
+    } catch (err) {
+      console.error('Gagal memuat jadwal:', err);
+      setSchedules([]);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
 
   // Generate QR Code lokal (fallback jika API error)
   const generateLocalQRCode = () => {
@@ -842,6 +868,7 @@ const DashboardSiswa = () => {
   const menuItems = [
     { id: 'ringkasan', label: 'Ringkasan', icon: '📊' },
     { id: 'absensi', label: 'Absensi', icon: '✅' },
+    { id: 'jadwal', label: 'Jadwal', icon: '📚' },
     { id: 'riwayat', label: 'Riwayat', icon: '📅' },
     { id: 'profil', label: 'Profil', icon: '👤' },
   ];
@@ -1225,6 +1252,65 @@ const DashboardSiswa = () => {
                       </li>
                     </ul>
                   </div>
+                </div>
+              )}
+
+              {/* TAB: Jadwal Pelajaran */}
+              {activeTab === 'jadwal' && (
+                <div className="animate-fade-in">
+                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
+                    <h2 className="text-xl font-bold text-blue-800 mb-1">📚 Jadwal Pelajaran</h2>
+                    <p className="text-blue-600 text-sm">Kegiatan belajar mengajar kelas {classInfo?.name || user?.class_name || '-'}</p>
+                  </div>
+                  
+                  {scheduleLoading ? (
+                    <div className="bg-white rounded-2xl border-2 border-blue-100 p-20 text-center shadow-lg">
+                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-blue-600 font-bold">Sinkronisasi jadwal dengan Wali Kelas...</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-10">
+                      {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map(day => {
+                        const daySchedules = schedules.filter(s => s.day === day);
+                        const isToday = new Date().toLocaleDateString('id-ID', { weekday: 'long' }) === day;
+                        
+                        return (
+                          <div key={day} className={`bg-white rounded-2xl border-2 shadow-md overflow-hidden flex flex-col hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${isToday ? 'border-blue-500 ring-2 ring-blue-200' : 'border-blue-100'}`}>
+                            <div className={`px-5 py-3 font-bold flex items-center justify-between ${isToday ? 'bg-blue-600 text-white' : 'bg-slate-50 text-blue-800 border-b-2 border-blue-50'}`}>
+                              <span className="flex items-center gap-2">
+                                {isToday && <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>}
+                                {day}
+                              </span>
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase ${isToday ? 'bg-white/20' : 'bg-blue-100 text-blue-600'}`}>
+                                {daySchedules.length} Mapel
+                              </span>
+                            </div>
+                            <div className="p-4 flex-1 bg-white">
+                              {daySchedules.length === 0 ? (
+                                <div className="h-24 flex flex-col items-center justify-center text-slate-400 text-xs italic">
+                                  <span className="text-xl mb-1 opacity-50">☕</span>
+                                  <span>Libur / Tidak ada mapel</span>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {daySchedules.map((s, idx) => (
+                                    <div key={idx} className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl hover:bg-blue-50 transition-colors group">
+                                      <p className="font-bold text-blue-900 text-sm group-hover:text-blue-600">{s.subject_name}</p>
+                                      <div className="flex items-center justify-between mt-1">
+                                        <p className="text-[10px] text-blue-500 font-semibold flex items-center gap-1">
+                                          <span>🕒</span> {s.start_time} - {s.end_time}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

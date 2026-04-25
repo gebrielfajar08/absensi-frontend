@@ -15,6 +15,7 @@ import GoogleCallback from './pages/GoogleCallback';
 import DashboardGuru from './pages/DashboardGuru';
 import DashboardSiswa from './pages/DashboardSiswa';
 import DashboardAdmin from './pages/DashboardAdmin';
+import CustomCursor from "./components/CustomCursor";
 
 // Komponen untuk proteksi halaman
 const ProtectedRoute = ({ children }) => {
@@ -53,66 +54,62 @@ const ProtectedRouteWithRole = ({ children, allowedRole }) => {
 
 function App() {
     return (
-        <BrowserRouter>
-            <Routes>
-                {/* ← Public Routes */}
-                <Route path="/" element={<Landing />} />
-                
-                {/* ← Unified Login (login.jsx) */}
-                <Route path="/login" element={<LoginUnified />} />
-                
-                {/* ← Login Terpisah per Role */}
-                <Route path="/login/guru" element={<LoginGuru />} />
-                <Route path="/login/siswa" element={<LoginSiswa />} />
-                <Route path="/login/admin" element={<LoginAdmin />} />
-                
-                {/* ← Other Public Routes */}
-                <Route path="/register" element={<Register />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/auth/google/callback" element={<GoogleCallback />} />
-                
-                {/* Protected Routes - Dashboard per Role */}
-                <Route 
-                    path="/dashboard/guru" 
-                    element={
-                        <ProtectedRouteWithRole allowedRole="guru">
-                            <DashboardGuru />
-                        </ProtectedRouteWithRole>
-                    } 
-                />
-                
-                <Route 
-                    path="/dashboard/siswa" 
-                    element={
-                        <ProtectedRouteWithRole allowedRole="siswa">
-                            <DashboardSiswa />
-                        </ProtectedRouteWithRole>
-                    } 
-                />
-                
-                <Route 
-                    path="/dashboard/admin" 
-                    element={
-                        <ProtectedRouteWithRole allowedRole="admin">
-                            <DashboardAdmin />
-                        </ProtectedRouteWithRole>
-                    } 
-                />
-                
-                {/* Fallback: Redirect /dashboard */}
-                <Route 
-                    path="/dashboard" 
-                    element={
-                        <ProtectedRoute>
-                            <DashboardRedirect />
-                        </ProtectedRoute>
-                    } 
-                />
-                
-                {/* Fallback Route */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-        </BrowserRouter>
+        <>
+            <CustomCursor /> {/* ✅ cursor aktif */}
+
+            <BrowserRouter>
+                <Routes>
+                    <Route path="/" element={<Landing />} />
+
+                    <Route path="/login" element={<LoginUnified />} />
+                    <Route path="/login/guru" element={<LoginGuru />} />
+                    <Route path="/login/siswa" element={<LoginSiswa />} />
+                    <Route path="/login/admin" element={<LoginAdmin />} />
+
+                    <Route path="/register" element={<Register />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/auth/google/callback" element={<GoogleCallback />} />
+
+                    <Route 
+                        path="/dashboard/guru" 
+                        element={
+                            <ProtectedRouteWithRole allowedRole="guru">
+                                <DashboardGuru />
+                            </ProtectedRouteWithRole>
+                        } 
+                    />
+
+                    <Route 
+                        path="/dashboard/siswa" 
+                        element={
+                            <ProtectedRouteWithRole allowedRole="siswa">
+                                <DashboardSiswa />
+                            </ProtectedRouteWithRole>
+                        } 
+                    />
+
+                    <Route 
+                        path="/dashboard/admin" 
+                        element={
+                            <ProtectedRouteWithRole allowedRole="admin">
+                                <DashboardAdmin />
+                            </ProtectedRouteWithRole>
+                        } 
+                    />
+
+                    <Route 
+                        path="/dashboard" 
+                        element={
+                            <ProtectedRoute>
+                                <DashboardRedirect />
+                            </ProtectedRoute>
+                        } 
+                    />
+
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+            </BrowserRouter>
+        </>
     );
 }
 

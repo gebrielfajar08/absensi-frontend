@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* sembunyikan cursor asli */
+body {
+  cursor: none;
+}
+
+/* animasi muter */
+.cursor-text {
+  animation: spinText 10s linear infinite;
+}
+
+/* huruf melingkar */
+.cursor-text span {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform-origin: 0 60px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #3b2f2f; /* coklat biar cocok logo */
+}
+
+/* keyframes */
+@keyframes spinText {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
