@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
 const resolvePhotoUrl = (photo, fallbackBase = "http://127.0.0.1:8000") => {
   if (!photo || typeof photo !== "string") return null;
@@ -9,127 +9,130 @@ const resolvePhotoUrl = (photo, fallbackBase = "http://127.0.0.1:8000") => {
 };
 
 export default function CustomCursor() {
-  const [settings, setSettings] = useState({
-    schoolName: "SMPK DON BOSCO",
-    schoolLogo: null,
-  });
-
-  const mouse = useRef({ x: 0, y: 0 });
-  const [renderMouse, setRenderMouse] = useState({ x: 0, y: 0 });
-  const particlesRef = useRef([]);
-
-  // LOAD SETTINGS
   useEffect(() => {
+    let schoolName = "SMAN 1 KENCONG";
+    let schoolLogo = null;
+
     const saved = localStorage.getItem("school_settings");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setSettings({
-          schoolName: parsed.schoolName || parsed.nama_sekolah,
-          schoolLogo: parsed.schoolLogo || parsed.logo,
-        });
+        schoolName =
+          parsed.schoolName || parsed.nama_sekolah || schoolName;
+        schoolLogo = parsed.schoolLogo || parsed.logo;
       } catch {}
     }
-  }, []);
 
-  // PARTICLE SYSTEM
-  useEffect(() => {
-    const canvas = document.createElement("canvas");
-    document.body.appendChild(canvas);
+    const logoSrc =
+      resolvePhotoUrl(schoolLogo) ||
+      "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg";
 
-    canvas.style.position = "fixed";
-    canvas.style.top = 0;
-    canvas.style.left = 0;
-    canvas.style.pointerEvents = "none";
-    canvas.style.zIndex = 9998;
+    const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const trail = [];
+    let lastMove = Date.now();
+    let idle = false;
 
-    const ctx = canvas.getContext("2d");
+    // container
+    const container = document.createElement("div");
+    Object.assign(container.style, {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      pointerEvents: "none",
+      zIndex: 9999,
+    });
+    document.body.appendChild(container);
 
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener("resize", resize);
+    // 🔥 LOGO (CENTER FIX)
+    const head = document.createElement("img");
+    head.src = logoSrc;
+    Object.assign(head.style, {
+      position: "fixed",
+      width: "44px",
+      height: "44px",
+      borderRadius: "50%",
+      objectFit: "cover",
+      transform: "translate(-50%, -50%)", // 🔥 CENTER FIX
+    });
+    container.appendChild(head);
 
-    const createParticle = () => {
-      particlesRef.current.push({
-        x: mouse.current.x,
-        y: mouse.current.y,
-        size: Math.random() * 4 + 2,
-        speedX: (Math.random() - 0.5) * 4,
-        speedY: (Math.random() - 0.5) * 4,
-        life: 60,
+    // 🔥 TEXT
+    const letters = schoolName.split("");
+    const letterEls = letters.map((char) => {
+      const el = document.createElement("span");
+      el.innerText = char;
+      Object.assign(el.style, {
+        position: "fixed",
+        fontSize: "15px",
+        fontWeight: "600",
+        color: "#2563eb",
       });
-    };
+      container.appendChild(el);
+      return el;
+    });
 
+    // init trail
+    for (let i = 0; i < letters.length + 1; i++) {
+      trail.push({ x: mouse.x, y: mouse.y });
+    }
+
+    // mouse
+    const move = (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      lastMove = Date.now();
+      idle = false;
+    };
+    window.addEventListener("mousemove", move);
+
+    // animasi
     const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (Date.now() - lastMove > 300) idle = true;
 
-      createParticle();
+      // kepala
+      trail[0].x += (mouse.x - trail[0].x) * 0.2;
+      trail[0].y += (mouse.y - trail[0].y) * 0.2;
 
-      particlesRef.current.forEach((p, i) => {
-        p.x += p.speedX;
-        p.y += p.speedY;
-        p.life--;
+      // badan
+      for (let i = 1; i < trail.length; i++) {
+        trail[i].x += (trail[i - 1].x - trail[i].x) * 0.2;
+        trail[i].y += (trail[i - 1].y - trail[i].y) * 0.2;
+      }
 
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(59,130,246,0.8)";
-        ctx.fill();
+      // 🔥 CENTER LOGO FIX (DOUBLE CENTER)
+      head.style.transform = `translate(${trail[0].x}px, ${trail[0].y}px) translate(-50%, -50%)`;
 
-        if (p.life <= 0) {
-          particlesRef.current.splice(i, 1);
+      if (idle) {
+        // 🔥 RADIUS LEBIH KECIL (BIAR RAPAT)
+        const radius = 40;
+        const time = Date.now() * 0.002;
+
+        for (let i = 0; i < letterEls.length; i++) {
+          const angle =
+            (i / letterEls.length) * Math.PI * 2 + time;
+
+          const x = trail[0].x + Math.cos(angle) * radius;
+          const y = trail[0].y + Math.sin(angle) * radius;
+
+          letterEls[i].style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
         }
-      });
+      } else {
+        for (let i = 0; i < letterEls.length; i++) {
+          const p = trail[i + 1];
+          letterEls[i].style.transform = `translate(${p.x}px, ${p.y}px)`;
+        }
+      }
 
       requestAnimationFrame(animate);
     };
 
     animate();
-
-    const move = (e) => {
-      mouse.current.x = e.clientX;
-      mouse.current.y = e.clientY;
-    };
-
-    window.addEventListener("mousemove", move);
 
     return () => {
       window.removeEventListener("mousemove", move);
-      window.removeEventListener("resize", resize);
-      document.body.removeChild(canvas);
+      document.body.removeChild(container);
     };
   }, []);
 
-  // smooth follow cursor
-  useEffect(() => {
-    const animate = () => {
-      setRenderMouse({
-        x: mouse.current.x,
-        y: mouse.current.y,
-      });
-      requestAnimationFrame(animate);
-    };
-    animate();
-  }, []);
-
-  const logoSrc =
-    resolvePhotoUrl(settings.schoolLogo) ||
-    "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg";
-
-  return (
-    <div
-      className="fixed pointer-events-none z-[9999]"
-      style={{
-        transform: `translate(${renderMouse.x}px, ${renderMouse.y}px) translate(-50%, -50%)`,
-      }}
-    >
-      <img
-        src={logoSrc}
-        alt="logo"
-        className="w-[40px] h-[40px] drop-shadow-[0_0_15px_rgba(59,130,246,0.9)]"
-      />
-    </div>
-  );
+  return null;
 }

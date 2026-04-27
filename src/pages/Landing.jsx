@@ -36,7 +36,7 @@ const Landing = () => {
   const [logoError, setLogoError] = useState(false);
   const [showQRNotification, setShowQRNotification] = useState(false);
   const [qrNotificationMessage, setQrNotificationMessage] = useState('');
-  const [facingMode, setFacingMode] = useState('environment'); // 'user' atau 'environment'
+  const [facingMode, setFacingMode] = useState('environment');
   const [qrNotificationType, setQrNotificationType] = useState('error');
 
   const [showSubmitNotification, setShowSubmitNotification] = useState(false);
@@ -65,9 +65,14 @@ const Landing = () => {
     attendanceCloseTime: '12:00',
     attendanceEndTime: '08:00',
     lateThreshold: '08:00',
-    schoolName: 'AbsensiPro',
+    schoolName: 'SMAN 1 KENCONG',
     schoolLogo: null,
     limitOneScanPerDay: true
+  });
+
+  const [attendanceStats, setAttendanceStats] = useState({
+    totalHadir: 0,
+    keterlambatan: 0
   });
 
   const audioContextRef = useRef(null);
@@ -81,37 +86,72 @@ const Landing = () => {
 
   useEffect(() => {
     const loadSettings = async () => {
-      // Load settings dari localStorage yang disimpan oleh Admin
-      const savedSettings = localStorage.getItem('school_settings');
-      if (savedSettings) {
-        try {
-          const settings = JSON.parse(savedSettings);
-          setAttendanceSettings({
-            attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '07:00',
-            attendanceOpenTime: settings.attendanceOpenTime || settings.jam_buka || '06:00',
-            attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '10:00',
-            attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '08:00',
-            lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '08:00',
-            schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
-            schoolLogo: settings.schoolLogo || settings.logo || null,
-            limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false
+      try {
+        const res = await api.get('/settings');
+        const settings = res.data;
+
+        const mappedSettings = {
+          attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '07:00',
+          attendanceOpenTime: settings.attendanceOpenTime || settings.jam_buka || '06:00',
+          attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '12:00',
+          attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '08:00',
+          lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '08:00',
+          schoolName: settings.schoolName || settings.nama_sekolah || 'SMAN 1 KENCONG',
+          schoolLogo: settings.schoolLogo || settings.logo || null,
+          limitOneScanPerDay: settings.limitOneScanPerDay || false
+        };
+
+        setAttendanceSettings(mappedSettings);
+        localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
+
+      } catch (err) {
+        console.warn('Gagal ambil dari API, pakai localStorage');
+        const savedSettings = localStorage.getItem('school_settings');
+        if (savedSettings) {
+          try {
+            setAttendanceSettings(JSON.parse(savedSettings));
+          } catch {}
+        }
+      }
+    };
+
+    const fetchStats = async () => {
+      try {
+        // Mengambil data statistik kehadiran hari ini dari database/backend
+        const res = await api.get('/stats');
+        if (res.data) {
+          setAttendanceStats({
+            totalHadir: res.data.total_hadir || res.data.hadir || res.data.kehadiranHariIni || 0,
+            keterlambatan: res.data.total_terlambat || res.data.terlambat || 0
           });
-        } catch (err) {}
+        }
+      } catch (err) {
+        console.warn('Gagal mengambil data statistik landing dari database:', err.message);
       }
     };
 
     loadSettings();
+    fetchStats();
+
+    // Sinkronisasi data setiap 30 detik agar Landing Page selalu up-to-date
+    const syncInterval = setInterval(fetchStats, 30000);
 
     const handleStorageChange = (e) => {
       if (e.key === 'school_settings') {
         loadSettings();
       }
+      if (e.key === 'attendance_updated') {
+        fetchStats();
+      }
     };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(syncInterval);
+    };
   }, []);
 
-  // Manajemen Scanner di dalam modal absensi
   useEffect(() => {
     if (showAbsenModal && activeMethodTab === 'scan') {
       const timer = setTimeout(() => startQRScanner(), 500);
@@ -202,14 +242,12 @@ const Landing = () => {
 
   const getAttendanceStatus = () => {
     const now = currentTime;
-    // Paksa ambil HH:mm dari jam laptop/HP (format Indonesia)
     const hours = now.getHours().toString().padStart(2, '0');
     const minutes = now.getMinutes().toString().padStart(2, '0');
     const currentTimeStr = `${hours}:${minutes}`;
     
-    // Pastikan kita hanya membandingkan HH:mm (ambil 5 karakter pertama)
     const openTime = (attendanceSettings.attendanceOpenTime || "06:00").substring(0, 5);
-    const closeTime = (attendanceSettings.attendanceCloseTime || "10:00").substring(0, 5);
+    const closeTime = (attendanceSettings.attendanceCloseTime || "12:00").substring(0, 5);
     const endTime = (attendanceSettings.attendanceEndTime || "08:00").substring(0, 5);
 
     if (currentTimeStr < openTime) return 'belum_buka';
@@ -242,7 +280,6 @@ const Landing = () => {
         return;
       }
 
-      // ✨ PERBAIKAN: Payload ganda (Redundant) untuk memastikan kecocokan key di backend
       const payload = {
         name: studentForm.fullName.trim(),
         full_name: studentForm.fullName.trim(),
@@ -254,7 +291,6 @@ const Landing = () => {
         type: 'manual'
       };
 
-      // ✨ Tambahkan timeout 60 detik karena Cloudflare Tunnel sering lambat
       await api.post('/attendance/student/manual', payload, { 
         timeout: 60000 
       });
@@ -284,12 +320,10 @@ const Landing = () => {
         errorMsg = 'Koneksi Timeout (60 detik). Cloudflare Tunnel lambat atau sudah mati. Mohon perbarui link di file .env dan jalankan ulang tunnel!';
       }
 
-      // ✨ PERBAIKAN: Deteksi Tunnel Mati (ERR_NAME_NOT_RESOLVED)
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
         errorMsg = 'Server tidak terjangkau. Link Cloudflare Tunnel Anda mungkin sudah expired (Mati). Mohon update file .env dengan link baru dan restart terminal.';
       }
       
-      // ✨ PERBAIKAN: Tampilkan detail error validasi (422) agar tahu field yang salah
       if (responseData?.errors) {
         errorMsg = Object.entries(responseData.errors)
           .map(([key, value]) => {
@@ -338,7 +372,6 @@ const Landing = () => {
         type: 'manual'
       };
 
-      // ✨ Tambahkan timeout 60 detik
       await api.post('/attendance/teacher/manual', payload, { 
         timeout: 60000 
       });
@@ -393,9 +426,8 @@ const Landing = () => {
         return;
       }
 
-        const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
-      // ✨ PERBAIKAN: Gunakan JSON payload
       const payload = {
         full_name: izinForm.fullName.trim(),
         parent_phone: izinForm.parentPhone.trim(),
@@ -404,7 +436,6 @@ const Landing = () => {
         status: 'izin'
       };
 
-      // ✨ Tambahkan timeout 60 detik
       await api.post('/attendance/izin', payload, {
         timeout: 60000,
         headers: token ? { Authorization: `Bearer ${token}` } : {}
@@ -550,14 +581,18 @@ const Landing = () => {
   const startQRScanner = async (mode = facingMode) => {
     try {
       setCameraError('');
-      const readerElement = document.getElementById('qr-reader');
+      const readerElement = document.getElementById(
+        showStandaloneQRScanner ? 'qr-reader-standalone' : 'qr-reader-main'
+      );
       if (!readerElement) {
         console.warn('QR reader element not found yet...');
         return;
       }
       if (qrScanner) return;
       
-      const scanner = new Html5Qrcode('qr-reader');
+      const scanner = new Html5Qrcode(
+        showStandaloneQRScanner ? 'qr-reader-standalone' : 'qr-reader-main'
+      );
       setQrScanner(scanner);
       
       await scanner.start(
@@ -661,45 +696,55 @@ const Landing = () => {
     return new Intl.DateTimeFormat('id-ID', options).format(date);
   };
 
+  const formatTimeShort = (date) => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  };
+
+  const formatDateShort = (date) => {
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 text-slate-900 font-sans">
+    <div className="min-h-screen bg-slate-50 font-sans">
       
       {/* ========== NAVBAR ========== */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled 
-          ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-blue-100' 
-          : 'bg-slate-900/40 backdrop-blur-sm border-b border-white/10'
+          ? 'bg-white shadow-md' 
+          : 'bg-white'
       }`}>
-        <div className="max-w-7xl mx-auto px-6 py-3">
+        <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md flex-shrink-0">
-              {attendanceSettings.schoolLogo && !logoError ? (
+              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm flex-shrink-0 overflow-hidden">
+                {attendanceSettings.schoolLogo && !logoError ? (
                   <img 
                     src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
                     alt="Logo" 
-                    className="w-7 h-7 object-contain bg-white rounded-md p-0.5 shadow-inner"
+                    className="w-full h-full object-contain"
                     onError={() => setLogoError(true)}
                   />
                 ) : (
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
+                  <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                  </div>
                 )}
               </div>
               <div className="flex flex-col">
-                <h1 className={`text-sm font-bold leading-tight transition-colors duration-300 ${isScrolled ? 'text-blue-900' : 'text-white'}`}>
-                  {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
+                <h1 className="text-sm font-bold text-slate-900 leading-tight">
+                  {attendanceSettings.schoolName || 'SMAN 1 KENCONG'}
                 </h1>
-                <div className={`flex items-center gap-1.5 text-[10px] font-medium transition-colors duration-300 ${isScrolled ? 'text-slate-500' : 'text-slate-300'}`}>
-                  <span>{formatDate(currentTime)}</span>
-                  <span className={isScrolled ? 'text-slate-300' : 'text-white/20'}>•</span>
-                  <span className={`font-mono ${isScrolled ? 'text-blue-600' : 'text-cyan-400'}`}>{formatTime(currentTime)}</span>
-                </div>
+                <p className="text-xs text-slate-500">Absensi Digital Sekolah</p>
               </div>
             </div>
             
-            {/* Unified Login Button */}
             <Link 
               to="/login" 
               className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
@@ -713,160 +758,412 @@ const Landing = () => {
         </div>
       </nav>
 
-      {/* ========== HERO SECTION ========== */}
-      <section className="pt-32 pb-20 px-6 relative overflow-hidden"> 
-        {/* Background Slider */}
-        <div className="absolute inset-0">
-          {schoolBackgrounds.map((bg, index) => (
-            <div
-              key={index}
-              className={`absolute inset-0 transition-opacity duration-1000 ${
-                index === currentBgIndex ? 'opacity-100' : 'opacity-0'
-              }`}
-              style={{
-                backgroundImage: `url(${bg})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-              }}
-            />
-          ))}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/85 via-slate-800/80 to-indigo-900/85"></div>
-        </div>
-        
-        {/* Background Dots Pattern */}
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-          backgroundSize: '32px 32px'
-        }}></div>
-        
-        {/* Background Indicators */}
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
-          {schoolBackgrounds.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentBgIndex(index)}
-              className={`w-2 h-2 rounded-full transition-all ${
-                index === currentBgIndex ? 'bg-white w-6' : 'bg-white/40 hover:bg-white/60'
-              }`}
-              aria-label={`Background ${index + 1}`}
-            />
-          ))}
-        </div>
-
-        {/* Hero Content */}
-        <div className="max-w-4xl mx-auto text-center relative z-10">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-sm rounded-full text-white/90 text-xs font-medium mb-8 border border-white/20">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-            Sistem Absensi Digital • Real-time
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight tracking-tight">
-            Absensi Sekolah<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-300 to-indigo-300">
-              Lebih Cerdas & Efisien
-            </span>
-          </h1>
-          
-          <p className="text-lg text-slate-200 mb-10 max-w-2xl mx-auto leading-relaxed font-light">
-            Platform absensi berbasis QR code untuk sekolah modern. 
-            Pantau kehadiran real-time, laporan otomatis, dan akses multi-role dalam satu sistem terintegrasi.
-          </p>
-          
-          {/* Action Buttons - Clean & Minimal */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
-            <button
-              onClick={() => setShowAbsenModal(true)}
-              className="group px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2.5"
-            >
-              <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              Absensi Cepat
-            </button>
+      {/* ========== MAIN CONTENT ========== */}
+      <div className="pt-20 pb-8">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid lg:grid-cols-2 gap-6">
             
-            <Link 
-              to="/login"
-              className="px-8 py-3.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/30 text-white font-medium rounded-xl transition-all flex items-center gap-2.5"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              Login Ke Dashboard
-            </Link>
-          </div>
-
-          <p className="mt-8 text-slate-300/80 text-sm">
-            Belum terdaftar?{' '}
-            <Link to="/register" className="text-cyan-300 font-medium hover:text-cyan-200 transition-colors hover:underline">
-              Buat akun gratis →
-            </Link>
-          </p>
-        </div>
-      </section>
-
-      {/* ========== FEATURES SECTION ========== */}
-      <section className="py-20 px-6 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-3 text-blue-600">Fitur Utama</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">Mengapa Memilih Kami?</h2>
-            <p className="mt-4 text-slate-600 max-w-2xl mx-auto">
-              Solusi absensi digital yang dirancang untuk kebutuhan sekolah modern Indonesia
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Feature 1 */}
-            <div className="group rounded-2xl p-6 border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all bg-white">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                </svg>
+            {/* ========== LEFT COLUMN (MOBILE VIEW) ========== */}
+            <div className="space-y-4">
+              
+              {/* Hero Section dengan Background Sekolah */}
+              <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white shadow-xl">
+                <div className="absolute inset-0">
+                  {schoolBackgrounds.map((bg, index) => (
+                    <div
+                      key={index}
+                      className={`absolute inset-0 transition-opacity duration-1000 ${
+                        index === currentBgIndex ? 'opacity-30' : 'opacity-0'
+                      }`}
+                      style={{
+                        backgroundImage: `url(${bg})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="relative p-6 md:p-8">
+                  <h2 className="text-2xl md:text-3xl font-bold mb-2">
+                    Absensi Sekolah<br />
+                    <span className="text-blue-200">Lebih Cerdas & Efisien</span>
+                  </h2>
+                  <p className="text-sm md:text-base text-blue-100 mb-6 leading-relaxed">
+                    Sistem absensi digital berbasis QR Code untuk mempermudah pencatatan kehadiran secara cepat, akurat, dan real-time.
+                  </p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={() => setShowAbsenModal(true)}
+                      className="flex-1 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                      </svg>
+                      Absen Sekarang
+                    </button>
+                    
+                    <Link 
+                      to="/login"
+                      className="flex-1 px-6 py-3 bg-white hover:bg-blue-50 text-blue-900 font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                      </svg>
+                      Login Dashboard
+                    </Link>
+                  </div>
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">QR Code Absensi</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                Absen dengan memindai QR Code dalam hitungan detik. Cepat, akurat, dan tanpa antrian.
-              </p>
+
+              {/* Status Absensi Hari Ini */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-slate-900">Status Absensi Hari Ini</h3>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                    <span className="text-xs font-medium text-blue-600">Live</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-slate-50 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-slate-500">Waktu Sekarang</span>
+                    </div>
+                    <p className="text-2xl font-bold text-blue-600">{formatTimeShort(currentTime)}</p>
+                    <p className="text-xs text-slate-500 mt-1">{formatDateShort(currentTime)}</p>
+                  </div>
+
+                  <div className="bg-slate-50 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                      <span className="text-xs text-slate-500">Status Absensi</span>
+                    </div>
+                    <p className="text-lg font-bold text-emerald-600">DIBUKA</p>
+                    <p className="text-xs text-slate-500 mt-1">{attendanceSettings.attendanceOpenTime} - {attendanceSettings.attendanceCloseTime}</p>
+                    <span className="inline-flex items-center gap-1 mt-2 text-xs text-emerald-600 font-medium">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                      Berlangsung
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <span className="text-xs text-slate-600">Total Hadir Hari Ini</span>
+                    </div>
+                    <p className="text-3xl font-bold text-slate-900">{attendanceStats.totalHadir}</p>
+                    <p className="text-xs text-slate-500 mt-1">Siswa & Guru</p>
+                  </div>
+
+                  <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-slate-600">Keterlambatan</span>
+                    </div>
+                    <p className="text-3xl font-bold text-slate-900">{attendanceStats.keterlambatan}</p>
+                    <p className="text-xs text-slate-500 mt-1">Orang</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Akses Cepat */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                <h3 className="font-bold text-slate-900 mb-4">Akses Cepat</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    onClick={() => {
+                      setActiveMethodTab('scan');
+                      setShowAbsenModal(true);
+                    }}
+                    className="flex flex-col items-center gap-2 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all border border-blue-100 group"
+                  >
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-medium text-slate-700 text-center">Scan QR Code</span>
+                    <span className="text-[10px] text-slate-500 text-center">Absen dengan QR Code</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveMethodTab('manual');
+                      setShowAbsenModal(true);
+                    }}
+                    className="flex flex-col items-center gap-2 p-4 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-all border border-emerald-100 group"
+                  >
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-medium text-slate-700 text-center">Absen Manual</span>
+                    <span className="text-[10px] text-slate-500 text-center">Input data secara manual</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveMethodTab('izin');
+                      setShowAbsenModal(true);
+                    }}
+                    className="flex flex-col items-center gap-2 p-4 bg-orange-50 hover:bg-orange-100 rounded-xl transition-all border border-orange-100 group"
+                  >
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                      <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-medium text-slate-700 text-center">Pengajuan Izin</span>
+                    <span className="text-[10px] text-slate-500 text-center">Ajukan izin ketidakhadiran</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Informasi */}
+              <div className="bg-blue-50 rounded-2xl border border-blue-100 p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Informasi</h4>
+                    <p className="text-xs text-blue-700">Pastikan kamera berfungsi dengan baik untuk scan QR Code yang optimal.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ilustrasi Siswa */}
+              <div className="bg-gradient-to-br from-blue-100 via-white to-blue-50 rounded-2xl p-6 border border-blue-200">
+                <div className="flex items-center justify-center gap-4">
+                  <div className="relative">
+                    <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center">
+                      <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="w-24 h-16 bg-blue-200 rounded-lg mb-2"></div>
+                    <div className="w-16 h-4 bg-blue-200 rounded mx-auto"></div>
+                  </div>
+
+                  <div className="relative">
+                    <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center">
+                      <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-            {/* Feature 2 */}
-            <div className="group rounded-2xl p-6 border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all bg-white">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m6 0a2 2 0 002-2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Laporan Otomatis</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                Rekap kehadiran real-time yang bisa diunduh dalam format Excel atau PDF kapan saja.
-              </p>
-            </div>
+            {/* ========== RIGHT COLUMN (DESKTOP VIEW) ========== */}
+            <div className="space-y-4">
+              
+              {/* Mengapa Memilih Kami */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-xl font-bold text-slate-900 mb-6">Mengapa Memilih Kami?</h3>
+                
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-900 mb-1">Cepat & Praktis</h4>
+                      <p className="text-sm text-slate-600">Absen hanya dalam hitungan detik dengan scan QR Code.</p>
+                    </div>
+                  </div>
 
-            {/* Feature 3 */}
-            <Link 
-              to="/login"
-              state={{ role: 'siswa' }} // Contoh: default ke portal siswa
-              className="group rounded-2xl p-6 border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all bg-white text-left"
-            >
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
+                  <div className="flex items-start gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-900 mb-1">Aman & Terpercaya</h4>
+                      <p className="text-sm text-slate-600">Data tersimpan aman dan hanya dapat diakses oleh pihak berwenang.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 p-4 bg-purple-50 rounded-xl border border-purple-100">
+                    <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m6 0a2 2 0 002-2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-900 mb-1">Laporan Real-time</h4>
+                      <p className="text-sm text-slate-600">Pantau kehadiran secara real-time dengan laporan otomatis.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
+                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-900 mb-1">Multi-Role Access</h4>
+                      <p className="text-sm text-slate-600">Akses berbeda untuk Siswa, Guru, Admin, dan Orang Tua.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Multi-Role Access</h3>
-              <p className="text-sm text-slate-600 leading-relaxed mb-3">
-                Klik di sini untuk memilih akses: Siswa, Guru, atau Admin.
-              </p>
-              <span className="text-xs font-bold text-blue-600">Pilih Role →</span>
-            </Link>
+
+              {/* Testimonial */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6">
+                <svg className="w-10 h-10 text-blue-300 mb-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
+                </svg>
+                <p className="text-slate-700 mb-4 leading-relaxed">
+                  Sistem absensi ini sangat membantu sekolah kami dalam memantau kehadiran siswa dan guru secara lebih efektif.
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900 text-sm">Kepala Sekolah</p>
+                    <p className="text-xs text-slate-500">{attendanceSettings.schoolName}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4 justify-center">
+                  <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
+                  <span className="w-2 h-2 bg-blue-200 rounded-full"></span>
+                  <span className="w-2 h-2 bg-blue-200 rounded-full"></span>
+                </div>
+              </div>
+
+              {/* Jam Operasional */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="font-bold text-slate-900">Jam Operasional Absensi</h3>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                      <span className="text-sm text-slate-600">Absen Dibuka</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceOpenTime} WIB</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                      <span className="text-sm text-slate-600">Batas Tepat Waktu</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceEndTime} WIB</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                      <span className="text-sm text-slate-600">Absen Ditutup</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceCloseTime} WIB</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+                      <span className="text-sm text-slate-600">Absen Selesai (Pulangan)</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-900">15:00 WIB</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA Section */}
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-xl">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-2">Siap untuk Absen?</h3>
+                    <p className="text-blue-100 text-sm mb-4">Mulai absen sekarang dan jadilah bagian dari sekolah digital.</p>
+                    <button
+                      onClick={() => setShowAbsenModal(true)}
+                      className="px-6 py-3 bg-white text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                      </svg>
+                      Absen Sekarang
+                    </button>
+                  </div>
+                  <div className="w-24 h-24 bg-white rounded-xl p-2 shadow-lg">
+                    <div className="w-full h-full bg-slate-900 rounded-lg flex items-center justify-center">
+                      <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
           </div>
         </div>
-      </section>
+      </div>
 
       {/* ========== FOOTER ========== */}
-      <footer className="py-8 px-6 bg-slate-900 text-slate-400">
-        <div className="max-w-7xl mx-auto text-center text-sm">
-          <p>&copy; {new Date().getFullYear()} {attendanceSettings.schoolName || 'SMPK Don Bosco'}. All rights reserved.</p>
+      <footer className="bg-slate-900 text-slate-400 py-6 mt-8">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
+              {attendanceSettings.schoolLogo && !logoError ? (
+                <img 
+                  src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
+                  alt="Logo" 
+                  className="w-6 h-6 object-contain"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              )}
+            </div>
+            <span className="font-bold text-white">{attendanceSettings.schoolName || 'SMAN 1 KENCONG'}</span>
+          </div>
+          <p className="text-xs">© 2026 {attendanceSettings.schoolName || 'SMAN 1 Kencong'}. All rights reserved.</p>
         </div>
       </footer>
 
@@ -902,8 +1199,7 @@ const Landing = () => {
               }`}>
                 {notif.type === 'success' ? 'Berhasil!' : notif.type === 'warning' ? 'Perhatian' : 'Terjadi Kesalahan'}
               </h3>
-                  {/* ✨ Tambahkan whitespace-pre-line agar poin-poin error 422 muncul berbaris */}
-                  <p className="text-slate-600 mb-5 text-sm whitespace-pre-line">{notif.message}</p>
+              <p className="text-slate-600 mb-5 text-sm whitespace-pre-line">{notif.message}</p>
               <button
                 onClick={notif.onClose}
                 className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
@@ -920,89 +1216,6 @@ const Landing = () => {
           </div>
         </div>
       ))}
-
-      {/* ========== STANDALONE QR SCANNER MODAL ========== */}
-      {showStandaloneQRScanner && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl relative">
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between z-10 rounded-t-2xl">
-              <div>
-                <h3 className="text-base font-semibold text-slate-800">Scan QR Code</h3>
-                <p className="text-xs text-slate-500">Arahkan kamera ke QR code absensi</p>
-              </div>
-              <button
-                onClick={handleCloseStandaloneQRScanner}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-5">
-              {showQRScanner ? (
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <div id="qr-reader" className="mb-4 rounded-lg overflow-hidden bg-white"></div>
-                  {cameraError && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-red-700">{cameraError}</p>
-                    </div>
-                  )}
-                  <button
-                    onClick={toggleCamera}
-                    className="w-full mb-3 py-2 px-4 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
-                  >
-                    <span className="text-lg">🔄</span>
-                    Ganti Kamera ({facingMode === 'environment' ? 'Belakang' : 'Depan'})
-                  </button>
-                  <button
-                    onClick={handleCloseStandaloneQRScanner}
-                    className="w-full py-2.5 text-sm text-slate-600 hover:text-slate-800 font-medium rounded-lg hover:bg-slate-100 transition-colors"
-                  >
-                    Tutup Scanner
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={handleOpenScanner}
-                  className="w-full py-12 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl text-slate-600 font-medium hover:border-blue-400 hover:bg-blue-50 transition-all flex flex-col items-center gap-4"
-                >
-                  <svg className="w-14 h-14 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <div className="text-center">
-                    <span className="text-base font-medium">Klik untuk Mulai Scan</span>
-                    <p className="text-sm text-slate-500 mt-1">Pastikan QR code terlihat jelas di kamera</p>
-                  </div>
-                </button>
-              )}
-              {qrResult && (
-                <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-                  <p className="text-sm text-emerald-700 font-medium mb-2">✅ QR Terdeteksi:</p>
-                  <pre className="text-xs text-emerald-700 bg-white rounded p-3 overflow-x-auto max-h-32">
-                    {JSON.stringify(qrResult, null, 2)}
-                  </pre>
-                </div>
-              )}
-              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2 text-sm flex items-center gap-1.5">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Panduan Scan
-                </h4>
-                <ul className="space-y-1.5 text-sm text-blue-800">
-                  <li>• Klik tombol "Mulai Scan"</li>
-                  <li>• Arahkan kamera ke QR code</li>
-                  <li>• Tunggu hingga terdeteksi otomatis</li>
-                  <li>• Data tersimpan secara real-time</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ========== ABSEN MODAL ========== */}
       {showAbsenModal && (
@@ -1076,7 +1289,7 @@ const Landing = () => {
                   {activeMethodTab === 'scan' && (
                     <div className="animate-fade-in text-center">
                       <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-2xl mb-4 mx-auto max-w-[280px] aspect-square relative border-4 border-blue-50">
-                        <div id="qr-reader" className="w-full h-full"></div>
+                        <div id="qr-reader-main" className="w-full h-full"></div>
                       </div>
                       
                       {cameraError && (
@@ -1272,8 +1485,8 @@ const Landing = () => {
                   Info Waktu
                 </h4>
                 <ul className="space-y-1 text-xs text-blue-800">
-            <li>• Absen Dibuka: <strong>{attendanceSettings.attendanceOpenTime}</strong></li>
-            <li>• Absen Ditutup: <strong>{attendanceSettings.attendanceCloseTime}</strong></li>
+                  <li>• Absen Dibuka: <strong>{attendanceSettings.attendanceOpenTime}</strong></li>
+                  <li>• Absen Ditutup: <strong>{attendanceSettings.attendanceCloseTime}</strong></li>
                   <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
                 </ul>
               </div>
