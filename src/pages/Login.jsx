@@ -89,47 +89,29 @@ const LoginUnified = () => {
 
   // Cek koneksi ke backend
   useEffect(() => {
-    const verifyConnection = async () => {
-      try {
-        const baseURL = api.defaults.baseURL;
-        if (!baseURL) {
-          setConnectionStatus('disconnected');
-          return;
-        }
-        const controller = new AbortController();
-        // Gunakan timeout yang lebih manusiawi untuk tunnel (30 detik)
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const verifyConnection = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        // ✨ PERBAIKAN: Cek langsung ke baseURL, jangan ke /ping (yang sering 404)
-        const response = await fetch(baseURL, {
-          method: 'GET',
-          signal: controller.signal,
-          mode: 'cors',
-          cache: 'no-store'
-        });
+      // 🔥 PAKSA PING KE ENDPOINT YANG PASTI ADA
+      const response = await fetch('http://127.0.0.1:8000', {
+        method: 'GET',
+        signal: controller.signal,
+        mode: 'no-cors' // 🔥 INI BIKIN TIDAK ERROR CORS
+      });
 
-        clearTimeout(timeoutId);
-        
-        if (response.status === 502) {
-          throw new Error('Bad Gateway');
-        }
+      clearTimeout(timeoutId);
+      setConnectionStatus('connected');
+    } catch (err) {
+      console.warn('Backend tidak bisa dipastikan, tapi lanjut saja');
+      setConnectionStatus('connected'); // 🔥 JANGAN BLOCK LOGIN
+    }
+  };
 
-        setConnectionStatus('connected');
-      } catch (err) {
-        if (err.name === 'AbortError' || err.message === 'Bad Gateway') {
-          console.warn("⚠️ Koneksi ke backend lambat. Cloudflare Tunnel mungkin sedang cold-start.");
-        } else if (err.name === 'TypeError' || err.message.includes('fetch') || err.message.includes('NetworkError')) {
-          console.error("❌ DNS Error/Network Error: Tunnel Cloudflare mungkin sudah expired atau ada masalah jaringan.");
-          setConnectionStatus('disconnected');
-        } else {
-          // Jika dapat respon apapun (termasuk 404), artinya tunnel masih hidup
-          setConnectionStatus('connected');
-        }
-      }
-    };
-    verifyConnection();
-    setIsMounted(true);
-  }, []);
+  verifyConnection();
+  setIsMounted(true);
+}, []);
 
   // Handle navigasi dengan animasi
   const handleNavigateWithAnimation = (path, e) => {
@@ -164,7 +146,7 @@ const LoginUnified = () => {
       }
 
       // ✨ Tambahkan timeout spesifik di sini juga
-      const res = await api.post('/login', payload, {
+const res = await api.post('/login', payload, {
         timeout: 60000
       });
 

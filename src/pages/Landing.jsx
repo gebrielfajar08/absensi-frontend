@@ -65,7 +65,7 @@ const Landing = () => {
     attendanceCloseTime: '12:00',
     attendanceEndTime: '08:00',
     lateThreshold: '08:00',
-    schoolName: 'SMAN 1 KENCONG',
+    schoolName: 'AbsensiPro',
     schoolLogo: null,
     limitOneScanPerDay: true
   });
@@ -87,7 +87,7 @@ const Landing = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const res = await api.get('/settings');
+        const res = await api.get('/public/settings');
         const settings = res.data;
 
         const mappedSettings = {
@@ -96,7 +96,7 @@ const Landing = () => {
           attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '12:00',
           attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '08:00',
           lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '08:00',
-          schoolName: settings.schoolName || settings.nama_sekolah || 'SMAN 1 KENCONG',
+          schoolName: settings.schoolName || settings.nama_sekolah || 'AbsensiPro',
           schoolLogo: settings.schoolLogo || settings.logo || null,
           limitOneScanPerDay: settings.limitOneScanPerDay || false
         };
@@ -118,7 +118,7 @@ const Landing = () => {
     const fetchStats = async () => {
       try {
         // Mengambil data statistik kehadiran hari ini dari database/backend
-        const res = await api.get('/stats');
+        const res = await api.get('/public/stats');
         if (res.data) {
           setAttendanceStats({
             totalHadir: res.data.total_hadir || res.data.hadir || res.data.kehadiranHariIni || 0,
