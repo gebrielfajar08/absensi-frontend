@@ -60,12 +60,12 @@ const Landing = () => {
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
 
   const [attendanceSettings, setAttendanceSettings] = useState({
-    attendanceStartTime: '07:00',
-    attendanceOpenTime: '06:00',
-    attendanceCloseTime: '12:00',
-    attendanceEndTime: '08:00',
-    lateThreshold: '08:00',
-    schoolName: 'AbsensiPro',
+    attendanceStartTime: '',
+    attendanceOpenTime: '',
+    attendanceCloseTime: '',
+    attendanceEndTime: '',
+    lateThreshold: '',
+    schoolName: '',
     schoolLogo: null,
     limitOneScanPerDay: true
   });
@@ -91,12 +91,12 @@ const Landing = () => {
         const settings = res.data;
 
         const mappedSettings = {
-          attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '07:00',
-          attendanceOpenTime: settings.attendanceOpenTime || settings.jam_buka || '06:00',
-          attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '12:00',
-          attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '08:00',
-          lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '08:00',
-          schoolName: settings.schoolName || settings.nama_sekolah || 'AbsensiPro',
+          attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '',
+          attendanceOpenTime: settings.attendanceOpenTime || settings.jam_buka || '',
+          attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '',
+          attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '',
+          lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '',
+          schoolName: settings.schoolName || settings.nama_sekolah || '',
           schoolLogo: settings.schoolLogo || settings.logo || null,
           limitOneScanPerDay: settings.limitOneScanPerDay || false
         };
@@ -117,7 +117,6 @@ const Landing = () => {
 
     const fetchStats = async () => {
       try {
-        // Mengambil data statistik kehadiran hari ini dari database/backend
         const res = await api.get('/public/stats');
         if (res.data) {
           setAttendanceStats({
@@ -133,7 +132,6 @@ const Landing = () => {
     loadSettings();
     fetchStats();
 
-    // Sinkronisasi data setiap 30 detik agar Landing Page selalu up-to-date
     const syncInterval = setInterval(fetchStats, 30000);
 
     const handleStorageChange = (e) => {
@@ -739,21 +737,32 @@ const Landing = () => {
               </div>
               <div className="flex flex-col">
                 <h1 className="text-sm font-bold text-slate-900 leading-tight">
-                  {attendanceSettings.schoolName || 'SMAN 1 KENCONG'}
+                  {attendanceSettings.schoolName || 'AbsensiPro'}
                 </h1>
                 <p className="text-xs text-slate-500">Absensi Digital Sekolah</p>
               </div>
             </div>
             
-            <Link 
-              to="/login" 
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-              </svg>
-              Login
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link 
+                to="/register" 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                Register
+              </Link>
+              <Link 
+                to="/login" 
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                </svg>
+                Login
+              </Link>
+            </div>
           </div>
         </div>
       </nav>
@@ -763,10 +772,10 @@ const Landing = () => {
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-6">
             
-            {/* ========== LEFT COLUMN (MOBILE VIEW) ========== */}
+            {/* ========== LEFT COLUMN ========== */}
             <div className="space-y-4">
               
-              {/* Hero Section dengan Background Sekolah */}
+              {/* Hero Section */}
               <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white shadow-xl">
                 <div className="absolute inset-0">
                   {schoolBackgrounds.map((bg, index) => (
@@ -816,7 +825,7 @@ const Landing = () => {
                 </div>
               </div>
 
-              {/* Status Absensi Hari Ini */}
+              {/* Status Absensi Hari Ini - Connected to Database */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-slate-900">Status Absensi Hari Ini</h3>
@@ -984,7 +993,7 @@ const Landing = () => {
 
             </div>
 
-            {/* ========== RIGHT COLUMN (DESKTOP VIEW) ========== */}
+            {/* ========== RIGHT COLUMN ========== */}
             <div className="space-y-4">
               
               {/* Mengapa Memilih Kami */}
@@ -1068,7 +1077,7 @@ const Landing = () => {
                 </div>
               </div>
 
-              {/* Jam Operasional */}
+              {/* Jam Operasional - Connected to Database */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1088,14 +1097,6 @@ const Landing = () => {
                   
                   <div className="flex items-center justify-between py-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                      <span className="text-sm text-slate-600">Batas Tepat Waktu</span>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceEndTime} WIB</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
                       <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                       <span className="text-sm text-slate-600">Absen Ditutup</span>
                     </div>
@@ -1105,9 +1106,9 @@ const Landing = () => {
                   <div className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
-                      <span className="text-sm text-slate-600">Absen Selesai (Pulangan)</span>
+                      <span className="text-sm text-slate-600">Jam Auto Absen (Alfha)</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">15:00 WIB</span>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceEndTime}WIB</span>
                   </div>
                 </div>
               </div>
@@ -1254,7 +1255,7 @@ const Landing = () => {
                           : 'text-slate-600 hover:text-slate-800'
                       }`}
                     >
-                      {role === 'siswa' ? '🧑‍🎓' : '👨‍🏫'} {role === 'siswa' ? 'Siswa' : 'Guru'}
+                      {role === 'siswa' ? '🧑‍🎓' : '👨‍'} {role === 'siswa' ? 'Siswa' : 'Guru'}
                     </button>
                   ))}
                 </div>

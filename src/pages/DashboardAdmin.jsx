@@ -182,23 +182,23 @@ const DashboardAdmin = () => {
   
   // ✨ TAMBAHAN: State untuk Pengaturan
   const [settingsData, setSettingsData] = useState({
-    schoolName: 'SMK Negeri 1',
-    schoolAddress: 'Jl. Pendidikan No. 123',
-    schoolPhone: '021-1234567',
-    schoolEmail: 'info@smkn1.sch.id',
-    academicYear: '2025/2026',
+    schoolName: '',
+    schoolAddress: '',
+    schoolPhone: '',
+    schoolEmail: '',
+    academicYear: '',
     schoolLogo: null,
-    attendanceStartTime: '07:00',
-    attendanceOpenTime: '06:00',
-    attendanceCloseTime: '10:00',
-    attendanceEndTime: '08:00',
-    lateThreshold: '07:30',
+    attendanceStartTime: '',
+    attendanceOpenTime: '',
+    attendanceCloseTime: '',
+    attendanceEndTime: '',
+    lateThreshold: '',
     enableNotifications: true,
     enableEmailReports: true,
     enableQRCode: true,
     themeColor: 'blue',
     attendanceSessionOpen: true,
-    schoolEndTime: '15:30',
+    schoolEndTime: '',
     autoMarkAbsentEnabled: true,
     limitOneScanPerDay: true,
     dashboardPhoto1: null,
@@ -1442,7 +1442,7 @@ console.log("LOGO:", logoFile);
                     onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
                   />
                 </div>
-                {!sidebarCollapsed && <span className="text-lg font-bold text-blue-800 truncate max-w-[150px]">{settingsData.schoolName || 'SMPK Don Bosco'}</span>}
+                {!sidebarCollapsed && <span className="text-lg font-bold text-blue-800 truncate max-w-[150px]">{settingsData.schoolName || ''}</span>}
               </div>
               {/* Tombol close untuk mobile */}
               <button
@@ -1800,15 +1800,21 @@ console.log("LOGO:", logoFile);
 
               {/* Banner Selamat Datang hanya di tab Ringkasan */}
               {activeTab === 'overview' && (
-                <div className="bg-gradient-to-r from-purple-200 to-indigo-100 border border-purple-200 rounded-2xl p-6 mx-4 lg:mx-8 mt-4 shadow-lg mb-8">
-                  <div className="flex flex-col lg:flex-row items-center gap-6">
-                    <div className="flex-1">
-                      <h2 className="text-2xl lg:text-3xl font-bold text-slate-800">Selamat datang, {user?.name ? user.name : 'Admin'}!</h2>
-                      <p className="text-slate-600 mt-1">Siap memantau absensi & perkembangan sekolah hari ini?</p>
-                      <p className="text-sm text-slate-500 mt-2">Gunakan menu di samping untuk navigasi cepat ke data pengguna, pengumuman, jadwal, dan laporan.</p>
-                    </div>
-                    <div className="w-full lg:w-56 h-40 rounded-2xl bg-white shadow-inner flex items-center justify-center border border-purple-200">
-                    </div>
+                <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 mt-2 shadow-sm mb-6 flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
+                  {/* Efek dekorasi subtle di background agar tidak membosankan */}
+                  <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                  
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md flex-shrink-0 relative z-10">
+                    👋
+                  </div>
+                  
+                  <div className="text-center sm:text-left relative z-10">
+                    <h2 className="text-lg lg:text-xl font-bold text-slate-800 leading-tight">
+                      Selamat datang, {user?.name || 'Administrator'}!
+                    </h2>
+                    <p className="text-slate-500 text-xs lg:text-sm mt-0.5">
+                      Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.
+                    </p>
                   </div>
                 </div>
               )}
@@ -3293,29 +3299,7 @@ console.log("LOGO:", logoFile);
                       <form onSubmit={handleSaveSettings} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Absen Dibuka</label>
-                            <input
-                              type="time"
-                              name="attendance_start_time"
-                              value={settingsData.attendance_start_time}
-                              onChange={handleSettingsChange}
-                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Absen Ditutup</label>
-                            <input
-                              type="time"
-                              name="attendanceCloseTime"
-                              value={settingsData.attendanceCloseTime}
-                              onChange={handleSettingsChange}
-                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Masuk</label>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi</label>
                             <input
                               type="time"
                               name="attendanceStartTime"
@@ -3325,7 +3309,7 @@ console.log("LOGO:", logoFile);
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Akhir</label>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi</label>
                             <input
                               type="time"
                               name="attendanceEndTime"
@@ -3346,7 +3330,7 @@ console.log("LOGO:", logoFile);
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah (auto absen)</label>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah (auto absen alfha)</label>
                           <input
                             type="time"
                             name="schoolEndTime"
