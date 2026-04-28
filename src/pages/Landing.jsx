@@ -61,10 +61,9 @@ const Landing = () => {
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     attendanceStartTime: '',
-    attendanceOpenTime: '',
-    attendanceCloseTime: '',
     attendanceEndTime: '',
     lateThreshold: '',
+    schoolEndTime: '',
     schoolName: '',
     schoolLogo: null,
     limitOneScanPerDay: true
@@ -92,10 +91,9 @@ const Landing = () => {
 
         const mappedSettings = {
           attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '',
-          attendanceOpenTime: settings.attendanceOpenTime || settings.jam_buka || '',
-          attendanceCloseTime: settings.attendanceCloseTime || settings.jam_tutup || '',
           attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '',
           lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '',
+          schoolEndTime: settings.schoolEndTime || settings.jam_pulang || '',
           schoolName: settings.schoolName || settings.nama_sekolah || '',
           schoolLogo: settings.schoolLogo || settings.logo || null,
           limitOneScanPerDay: settings.limitOneScanPerDay || false
@@ -118,10 +116,11 @@ const Landing = () => {
     const fetchStats = async () => {
       try {
         const res = await api.get('/public/stats');
-        if (res.data) {
+        if (res && res.data) {
+          const data = res.data;
           setAttendanceStats({
-            totalHadir: res.data.total_hadir || res.data.hadir || res.data.kehadiranHariIni || 0,
-            keterlambatan: res.data.total_terlambat || res.data.terlambat || 0
+            totalHadir: data.total_hadir ?? ((data.hadir || 0) + (data.terlambat || 0)) ?? 0,
+            keterlambatan: data.terlambat ?? data.total_terlambat ?? 0
           });
         }
       } catch (err) {
@@ -244,18 +243,14 @@ const Landing = () => {
     const minutes = now.getMinutes().toString().padStart(2, '0');
     const currentTimeStr = `${hours}:${minutes}`;
     
-    const openTime = (attendanceSettings.attendanceOpenTime || "06:00").substring(0, 5);
-    const closeTime = (attendanceSettings.attendanceCloseTime || "12:00").substring(0, 5);
-    const endTime = (attendanceSettings.attendanceEndTime || "08:00").substring(0, 5);
+    const openTime = (attendanceSettings.attendanceStartTime || "07:00").substring(0, 5);
+    const closeTime = (attendanceSettings.attendanceEndTime || "12:00").substring(0, 5);
+    const lateTime = (attendanceSettings.lateThreshold || "08:00").substring(0, 5);
 
     if (currentTimeStr < openTime) return 'belum_buka';
     if (currentTimeStr > closeTime) return 'sudah_tutup';
 
-    if (currentTimeStr <= endTime) {
-      return 'hadir';
-    } else {
-      return 'terlambat';
-    }
+    return currentTimeStr <= lateTime ? 'hadir' : 'terlambat';
   };
 
   const handleStudentSubmit = async (e) => {
@@ -266,13 +261,13 @@ const Landing = () => {
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka') {
-        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceOpenTime}`;
+        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
         showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
       }
       if (status === 'sudah_tutup') {
-        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceCloseTime}`;
+        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
         showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
@@ -347,13 +342,13 @@ const Landing = () => {
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka') {
-        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceOpenTime}`;
+        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
         showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
       }
       if (status === 'sudah_tutup') {
-        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceCloseTime}`;
+        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
         showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
@@ -418,7 +413,7 @@ const Landing = () => {
     try {
       const status = getAttendanceStatus();
       if (status === 'belum_buka' || status === 'sudah_tutup') {
-        const msg = `❌ Pengajuan izin hanya bisa dilakukan saat jam operasional absensi (${attendanceSettings.attendanceOpenTime} - ${attendanceSettings.attendanceCloseTime})`;
+        const msg = `❌ Pengajuan izin hanya bisa dilakukan saat jam operasional absensi (${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime})`;
         showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
@@ -854,12 +849,24 @@ const Landing = () => {
                       </svg>
                       <span className="text-xs text-slate-500">Status Absensi</span>
                     </div>
-                    <p className="text-lg font-bold text-emerald-600">DIBUKA</p>
-                    <p className="text-xs text-slate-500 mt-1">{attendanceSettings.attendanceOpenTime} - {attendanceSettings.attendanceCloseTime}</p>
-                    <span className="inline-flex items-center gap-1 mt-2 text-xs text-emerald-600 font-medium">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                      Berlangsung
-                    </span>
+                    {(() => {
+                      const status = getAttendanceStatus();
+                      const isUpcoming = status === 'belum_buka';
+                      const isClosed = status === 'sudah_tutup';
+                      
+                      return (
+                        <>
+                          <p className={`text-lg font-bold ${isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {isUpcoming ? 'BELUM DIBUKA' : isClosed ? 'DITUTUP' : 'DIBUKA'}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">{attendanceSettings.attendanceStartTime} - {attendanceSettings.attendanceEndTime}</p>
+                          <span className={`inline-flex items-center gap-1 mt-2 text-xs font-medium ${isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : 'text-emerald-600'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isUpcoming ? 'bg-amber-500' : isClosed ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+                            {isUpcoming ? 'Menunggu' : isClosed ? 'Selesai' : 'Berlangsung'}
+                          </span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1092,7 +1099,7 @@ const Landing = () => {
                       <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
                       <span className="text-sm text-slate-600">Absen Dibuka</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceOpenTime} WIB</span>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceStartTime || '-'} WIB</span>
                   </div>
                   
                   <div className="flex items-center justify-between py-2 border-b border-slate-100">
@@ -1100,15 +1107,23 @@ const Landing = () => {
                       <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                       <span className="text-sm text-slate-600">Absen Ditutup</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceCloseTime} WIB</span>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceEndTime || '-'} WIB</span>
                   </div>
                   
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                      <span className="text-sm text-slate-600">Batas Terlambat Absensi</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.lateThreshold || '-'} WIB</span>
+                  </div>
+
                   <div className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
-                      <span className="text-sm text-slate-600">Jam Auto Absen (Alfha)</span>
+                      <span className="text-sm text-slate-600">Jam Pulang (Auto Alpha)</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceEndTime}WIB</span>
+                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.schoolEndTime || '-'} WIB</span>
                   </div>
                 </div>
               </div>
@@ -1162,9 +1177,9 @@ const Landing = () => {
                 </svg>
               )}
             </div>
-            <span className="font-bold text-white">{attendanceSettings.schoolName || 'SMAN 1 KENCONG'}</span>
+            <span className="font-bold text-white">{attendanceSettings.schoolName || 'AbsensiPro'}</span>
           </div>
-          <p className="text-xs">© 2026 {attendanceSettings.schoolName || 'SMAN 1 Kencong'}. All rights reserved.</p>
+          <p className="text-xs">© 2026 {attendanceSettings.schoolName || 'AbsensiPro'}. All rights reserved.</p>
         </div>
       </footer>
 
@@ -1486,8 +1501,8 @@ const Landing = () => {
                   Info Waktu
                 </h4>
                 <ul className="space-y-1 text-xs text-blue-800">
-                  <li>• Absen Dibuka: <strong>{attendanceSettings.attendanceOpenTime}</strong></li>
-                  <li>• Absen Ditutup: <strong>{attendanceSettings.attendanceCloseTime}</strong></li>
+                  <li>• Absen Dibuka: <strong>{attendanceSettings.attendanceStartTime}</strong></li>
+                  <li>• Absen Ditutup: <strong>{attendanceSettings.attendanceEndTime}</strong></li>
                   <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
                 </ul>
               </div>
