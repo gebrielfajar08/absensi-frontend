@@ -96,7 +96,8 @@ const Landing = () => {
           schoolEndTime: settings.schoolEndTime || settings.jam_pulang || '',
           schoolName: settings.schoolName || settings.nama_sekolah || '',
           schoolLogo: settings.schoolLogo || settings.logo || null,
-          limitOneScanPerDay: settings.limitOneScanPerDay || false
+          limitOneScanPerDay: settings.limitOneScanPerDay || false,
+          disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
         };
 
         setAttendanceSettings(mappedSettings);
@@ -213,6 +214,11 @@ const Landing = () => {
     }
   };
 
+  const checkIsHoliday = () => {
+    if (!attendanceSettings.disableAttendanceOnHolidays) return false;
+    return currentTime.getDay() === 0; // Sunday
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -247,6 +253,7 @@ const Landing = () => {
     const closeTime = (attendanceSettings.attendanceEndTime || "12:00").substring(0, 5);
     const lateTime = (attendanceSettings.lateThreshold || "08:00").substring(0, 5);
 
+    if (checkIsHoliday()) return 'libur';
     if (currentTimeStr < openTime) return 'belum_buka';
     if (currentTimeStr > closeTime) return 'sudah_tutup';
 
@@ -258,6 +265,11 @@ const Landing = () => {
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
+      if (checkIsHoliday()) {
+        setSubmitMessage({ type: 'error', text: '❌ Hari ini libur. Absensi ditiadakan.' });
+        return;
+      }
+
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka') {
@@ -339,6 +351,11 @@ const Landing = () => {
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
+      if (checkIsHoliday()) {
+        setSubmitMessage({ type: 'error', text: '❌ Hari ini libur. Absensi ditiadakan.' });
+        return;
+      }
+
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka') {
@@ -411,6 +428,11 @@ const Landing = () => {
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
+      if (checkIsHoliday()) {
+        setSubmitMessage({ type: 'error', text: '❌ Tidak dapat mengirim izin pada hari libur.' });
+        return;
+      }
+
       const status = getAttendanceStatus();
       if (status === 'belum_buka' || status === 'sudah_tutup') {
         const msg = `❌ Pengajuan izin hanya bisa dilakukan saat jam operasional absensi (${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime})`;
@@ -496,6 +518,11 @@ const Landing = () => {
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     try {
+      if (checkIsHoliday()) {
+        showQRNotificationMessage('❌ Hari ini libur. Absensi ditiadakan.', 'error');
+        return;
+      }
+
       const status = getAttendanceStatus();
       
       const requestData = {
@@ -853,16 +880,18 @@ const Landing = () => {
                       const status = getAttendanceStatus();
                       const isUpcoming = status === 'belum_buka';
                       const isClosed = status === 'sudah_tutup';
+                      const isHoliday = status === 'libur';
+                      const isEmerald = status === 'hadir'; // ✅ FIX: Added missing variable
                       
                       return (
                         <>
-                          <p className={`text-lg font-bold ${isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : 'text-emerald-600'}`}>
-                            {isUpcoming ? 'BELUM DIBUKA' : isClosed ? 'DITUTUP' : 'DIBUKA'}
+                          <p className={`text-lg font-bold ${isHoliday ? 'text-red-700' : isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : isEmerald ? 'text-emerald-600' : 'text-emerald-600'}`}>
+                            {isHoliday ? 'HARI LIBUR' : isUpcoming ? 'BELUM DIBUKA' : isClosed ? 'DITUTUP' : 'DIBUKA'}
                           </p>
-                          <p className="text-xs text-slate-500 mt-1">{attendanceSettings.attendanceStartTime} - {attendanceSettings.attendanceEndTime}</p>
-                          <span className={`inline-flex items-center gap-1 mt-2 text-xs font-medium ${isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : 'text-emerald-600'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isUpcoming ? 'bg-amber-500' : isClosed ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></span>
-                            {isUpcoming ? 'Menunggu' : isClosed ? 'Selesai' : 'Berlangsung'}
+                          <p className="text-xs text-slate-500 mt-1">{isHoliday ? 'Sekolah Libur' : `${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime}`}</p>
+                          <span className={`inline-flex items-center gap-1 mt-2 text-xs font-medium ${isHoliday ? 'text-red-700' : isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : 'text-emerald-600'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isHoliday ? 'bg-red-700' : isUpcoming ? 'bg-amber-500' : isClosed ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+                            {isHoliday ? 'Libur' : isUpcoming ? 'Menunggu' : isClosed ? 'Selesai' : 'Berlangsung'}
                           </span>
                         </>
                       );

@@ -164,7 +164,8 @@ const DashboardSiswa = () => {
             dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || null,
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null,
-            limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false
+            limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
           });
         } catch (err) {
           console.error("Error parsing settings", err);
@@ -568,6 +569,11 @@ const DashboardSiswa = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      if (checkIsHoliday()) {
+        showQRNotificationMessage('❌ Hari ini adalah hari libur. Absensi ditiadakan.', 'error');
+        return;
+      }
+
       const token = localStorage.getItem('token');
       const status = getAttendanceStatus();
 
@@ -642,6 +648,11 @@ const DashboardSiswa = () => {
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
+      if (checkIsHoliday()) {
+        setSubmitMessage({ type: 'error', text: '❌ Hari ini adalah hari libur. Absensi ditiadakan.' });
+        return;
+      }
+
       const token = localStorage.getItem('token');
 
       const status = getAttendanceStatus();
@@ -750,6 +761,12 @@ const DashboardSiswa = () => {
     });
   };
 
+  // Check if today is a holiday (Sunday)
+  const checkIsHoliday = () => {
+    if (!attendanceSettings.disableAttendanceOnHolidays) return false;
+    return currentTime.getDay() === 0; // 0 is Sunday
+  };
+
   // Helper to determine status based on time
   const getAttendanceStatus = () => {
     const now = currentTime;
@@ -759,6 +776,7 @@ const DashboardSiswa = () => {
     const closeTime = (attendanceSettings.attendanceCloseTime || "12:00").substring(0, 5);
     const endTime = (attendanceSettings.attendanceEndTime || "08:00").substring(0, 5);
 
+    if (checkIsHoliday()) return 'libur';
     if (currentTimeStr < openTime) return 'belum_buka';
     if (currentTimeStr > closeTime) return 'sudah_tutup';
 
@@ -819,6 +837,11 @@ const DashboardSiswa = () => {
     setIzinSubmitting(true);
     setIzinMessage({ type: '', text: '' });
     try {
+      if (checkIsHoliday()) {
+        setIzinMessage({ type: 'error', text: '❌ Tidak dapat mengirim izin pada hari libur.' });
+        return;
+      }
+
       const token = localStorage.getItem('token');
       const status = getAttendanceStatus();
 

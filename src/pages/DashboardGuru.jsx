@@ -148,7 +148,8 @@ const DashboardGuru = () => {
             dashboardPhoto1: settings.dashboard_photo_1 || settings.dashboardPhoto1 || null,
             dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || null,
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || null,
-            dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null
+            dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null,
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
           });
         } catch (err) {
           console.error("Error parsing settings", err);
@@ -198,6 +199,13 @@ const DashboardGuru = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // ➕ Check if selected date is Sunday
+  const checkIsHoliday = (dateString) => {
+    if (!attendanceSettings.disableAttendanceOnHolidays) return false;
+    const date = new Date(dateString || selectedDate);
+    return date.getDay() === 0;
+  };
 
   // ➕ TAMBAHAN: Fungsi notifikasi
   const addNotification = (message, type = 'info', icon = '') => {
@@ -428,6 +436,11 @@ const DashboardGuru = () => {
 
   const handleAttendanceSubmit = async (studentId, status) => {
     try {
+      if (checkIsHoliday()) {
+        addNotification('❌ Tidak dapat mengisi absensi pada hari libur (Minggu)', 'error');
+        return;
+      }
+
       const token = localStorage.getItem('token');
       const res = await fetchWithRetry(() => api.post('/guru/attendance', {
         student_id: studentId,
@@ -459,6 +472,11 @@ const DashboardGuru = () => {
   // ➕ TAMBAHAN: Bulk attendance submit
   const handleBulkAttendance = async (attendances) => {
     try {
+      if (checkIsHoliday()) {
+        addNotification('❌ Tidak dapat mengisi absensi pada hari libur (Minggu)', 'error');
+        return;
+      }
+
       const token = localStorage.getItem('token');
       await api.post('/guru/attendance/bulk', {
         attendances: attendances,

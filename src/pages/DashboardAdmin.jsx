@@ -201,6 +201,7 @@ const DashboardAdmin = () => {
     schoolEndTime: '',
     autoMarkAbsentEnabled: true,
     limitOneScanPerDay: true,
+    disableAttendanceOnHolidays: true,
     dashboardPhoto1: null,
     dashboardPhoto2: null,
     dashboardPhoto3: null,
@@ -316,6 +317,7 @@ const fetchClasses = async () => {
           attendanceSessionOpen: res.data.attendance_session_open ?? res.data.attendanceSessionOpen ?? true,
           limitOneScanPerDay: res.data.limit_one_scan_per_day ?? settingsData.limitOneScanPerDay,
           schoolEndTime: res.data.jam_pulang || res.data.schoolEndTime || '15:30',
+          disableAttendanceOnHolidays: res.data.disable_attendance_on_holidays ?? res.data.disableAttendanceOnHolidays ?? true,
           autoMarkAbsentEnabled: res.data.auto_mark_absent_enabled ?? res.data.autoMarkAbsentEnabled ?? true,
           dashboardPhoto1: res.data.dashboard_photo_1 || res.data.dashboardPhoto1 || null,
           dashboardPhoto2: res.data.dashboard_photo_2 || res.data.dashboardPhoto2 || null,
@@ -1003,6 +1005,7 @@ data.append('enableEmailReports', settingsData.enableEmailReports ? '1' : '0');
 data.append('enableQRCode', settingsData.enableQRCode ? '1' : '0');
 data.append('attendanceSessionOpen', settingsData.attendanceSessionOpen ? '1' : '0');
 data.append('autoMarkAbsentEnabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
+data.append('disableAttendanceOnHolidays', settingsData.disableAttendanceOnHolidays ? '1' : '0');
 
 // ====================
 // FILE (IKUT BACKEND)
@@ -3441,6 +3444,22 @@ console.log("LOGO:", logoFile);
                               className="sr-only peer"
                             />
                             <div className="w-11 h-6 bg-blue-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-red-50 rounded-xl border-2 border-red-100">
+                          <div>
+                            <p className="text-sm font-medium text-red-900">Libur Otomatis (Minggu)</p>
+                            <p className="text-xs text-red-600">Matikan absensi otomatis pada hari Minggu</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              name="disableAttendanceOnHolidays"
+                              checked={settingsData.disableAttendanceOnHolidays}
+                              onChange={handleSettingsChange}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-red-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
                           </label>
                         </div>
                       </form>
