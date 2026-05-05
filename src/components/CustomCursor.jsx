@@ -1,137 +1,164 @@
 import { useEffect } from "react";
 
-const resolvePhotoUrl = (photo, fallbackBase = "http://127.0.0.1:8000") => {
-  if (!photo || typeof photo !== "string") return null;
-  const trimmed = photo.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("http") || trimmed.startsWith("data:")) return trimmed;
-  return `${fallbackBase}/${trimmed.replace(/^\//, "")}`;
+const resolvePhotoUrl = (photo, base = "http://127.0.0.1:8000") => {
+  if (!photo) return null;
+  if (photo.startsWith("http") || photo.startsWith("data:")) return photo;
+  return `${base}/${photo.replace(/^\//, "")}`;
 };
 
 export default function CustomCursor() {
   useEffect(() => {
-    let schoolName = "AbsensiPro";
     let schoolLogo = null;
+    let primaryColor = "#6366f1";
 
-    const saved = localStorage.getItem("school_settings");
-    if (saved) {
+    const isMobile = window.matchMedia("(max-width:768px)").matches;
+
+    const load = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        schoolName =
-          parsed.schoolName || parsed.nama_sekolah || schoolName;
-        schoolLogo = parsed.schoolLogo || parsed.logo;
-      } catch {}
-    }
+        const res = await fetch("http://127.0.0.1:8000/api/settings");
+        const data = await res.json();
 
-    const logoSrc =
-      resolvePhotoUrl(schoolLogo) ||
-      "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg";
+        schoolLogo = data.schoolLogo || data.logo;
+        primaryColor = data.primaryColor || primaryColor;
+      } catch {
+        const s = JSON.parse(localStorage.getItem("school_settings") || "{}");
+        schoolLogo = s.schoolLogo || s.logo;
+        primaryColor = s.primaryColor || primaryColor;
+      }
 
-    const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const trail = [];
-    let lastMove = Date.now();
-    let idle = false;
+      init();
+    };
 
-    // container
-    const container = document.createElement("div");
-    Object.assign(container.style, {
-      position: "fixed",
-      top: 0,
-      left: 0,
-      pointerEvents: "none",
-      zIndex: 9999,
-    });
-    document.body.appendChild(container);
+    const init = () => {
+      const logo =
+        resolvePhotoUrl(schoolLogo) ||
+        "https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg";
 
-    // 🔥 LOGO (CENTER FIX)
-    const head = document.createElement("img");
-    head.src = logoSrc;
-    Object.assign(head.style, {
-      position: "fixed",
-      width: "44px",
-      height: "44px",
-      borderRadius: "50%",
-      objectFit: "cover",
-      transform: "translate(-50%, -50%)", // 🔥 CENTER FIX
-    });
-    container.appendChild(head);
-
-    // 🔥 TEXT
-    const letters = schoolName.split("");
-    const letterEls = letters.map((char) => {
-      const el = document.createElement("span");
-      el.innerText = char;
-      Object.assign(el.style, {
+      const root = document.createElement("div");
+      Object.assign(root.style, {
         position: "fixed",
-        fontSize: "15px",
-        fontWeight: "600",
-        color: "#2563eb",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 9999,
       });
-      container.appendChild(el);
-      return el;
-    });
+      document.body.appendChild(root);
 
-    // init trail
-    for (let i = 0; i < letters.length + 1; i++) {
-      trail.push({ x: mouse.x, y: mouse.y });
-    }
+      // 🔥 DOT (MAIN POINTER)
+      const dot = document.createElement("div");
+      Object.assign(dot.style, {
+        position: "fixed",
+        width: "8px",
+        height: "8px",
+        borderRadius: "50%",
+        background: primaryColor,
+        transform: "translate(-50%, -50%)",
+        opacity: isMobile ? 0 : 1,
+      });
+      root.appendChild(dot);
 
-    // mouse
-    const move = (e) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
-      lastMove = Date.now();
-      idle = false;
-    };
-    window.addEventListener("mousemove", move);
+      // 🔥 RING (SMOOTH FOLLOW)
+      const ring = document.createElement("div");
+      Object.assign(ring.style, {
+        position: "fixed",
+        width: "40px",
+        height: "40px",
+        borderRadius: "50%",
+        border: `2px solid ${primaryColor}`,
+        transform: "translate(-50%, -50%)",
+        opacity: isMobile ? 0 : 1,
+      });
+      root.appendChild(ring);
 
-    // animasi
-    const animate = () => {
-      if (Date.now() - lastMove > 300) idle = true;
+      // 🔥 LOGO (HALUS DI DALAM)
+      const head = document.createElement("img");
+      head.src = logo;
+      Object.assign(head.style, {
+        position: "fixed",
+        width: "20px",
+        height: "20px",
+        borderRadius: "50%",
+        transform: "translate(-50%, -50%)",
+        opacity: isMobile ? 0.8 : 0.8,
+      });
+      root.appendChild(head);
 
-      // kepala
-      trail[0].x += (mouse.x - trail[0].x) * 0.2;
-      trail[0].y += (mouse.y - trail[0].y) * 0.2;
+      let hideTimeout;
 
-      // badan
-      for (let i = 1; i < trail.length; i++) {
-        trail[i].x += (trail[i - 1].x - trail[i].x) * 0.2;
-        trail[i].y += (trail[i - 1].y - trail[i].y) * 0.2;
+      // ===================
+      // 📱 MOBILE
+      // ===================
+      if (isMobile) {
+        const tap = (e) => {
+          const t = e.touches[0];
+          if (!t) return;
+
+          const x = t.clientX;
+          const y = t.clientY;
+
+          dot.style.opacity = 1;
+          ring.style.opacity = 1;
+          head.style.opacity = 1;
+
+          dot.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+          ring.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+          head.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+
+          clearTimeout(hideTimeout);
+          hideTimeout = setTimeout(() => {
+            dot.style.opacity = 0;
+            ring.style.opacity = 0;
+            head.style.opacity = 0;
+          }, 1500);
+        };
+
+        window.addEventListener("touchstart", tap);
+
+        return () => {
+          window.removeEventListener("touchstart", tap);
+          document.body.removeChild(root);
+        };
       }
 
-      // 🔥 CENTER LOGO FIX (DOUBLE CENTER)
-      head.style.transform = `translate(${trail[0].x}px, ${trail[0].y}px) translate(-50%, -50%)`;
+      // ===================
+      // 🖥️ DESKTOP
+      // ===================
+      const mouse = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
 
-      if (idle) {
-        // 🔥 RADIUS LEBIH KECIL (BIAR RAPAT)
-        const radius = 40;
-        const time = Date.now() * 0.002;
+      const ringPos = { ...mouse };
 
-        for (let i = 0; i < letterEls.length; i++) {
-          const angle =
-            (i / letterEls.length) * Math.PI * 2 + time;
+      const move = (e) => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+      };
 
-          const x = trail[0].x + Math.cos(angle) * radius;
-          const y = trail[0].y + Math.sin(angle) * radius;
+      window.addEventListener("mousemove", move);
 
-          letterEls[i].style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
-        }
-      } else {
-        for (let i = 0; i < letterEls.length; i++) {
-          const p = trail[i + 1];
-          letterEls[i].style.transform = `translate(${p.x}px, ${p.y}px)`;
-        }
-      }
+      const animate = () => {
+        // dot langsung
+        dot.style.transform = `translate(${mouse.x}px,${mouse.y}px) translate(-50%,-50%)`;
+        head.style.transform = `translate(${mouse.x}px,${mouse.y}px) translate(-50%,-50%)`;
 
-      requestAnimationFrame(animate);
+        // ring smooth (magnetic feel)
+        ringPos.x += (mouse.x - ringPos.x) * 0.15;
+        ringPos.y += (mouse.y - ringPos.y) * 0.15;
+
+        ring.style.transform = `translate(${ringPos.x}px,${ringPos.y}px) translate(-50%,-50%)`;
+
+        requestAnimationFrame(animate);
+      };
+
+      animate();
+
+      return () => {
+        window.removeEventListener("mousemove", move);
+        document.body.removeChild(root);
+      };
     };
 
-    animate();
-
-    return () => {
-      window.removeEventListener("mousemove", move);
-      document.body.removeChild(container);
-    };
+    load();
   }, []);
 
   return null;

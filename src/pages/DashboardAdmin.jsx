@@ -227,6 +227,8 @@ const DashboardAdmin = () => {
     dashboardVideo: null,
   });
 
+  const [settingsSection, setSettingsSection] = useState('school');
+
   // Fetch Data Guru
 const fetchDataGuru = async () => {
   try {
@@ -375,31 +377,32 @@ const fetchSettings = async () => {
 
     if (res?.data) {
       const backendSettings = {
-  schoolName: res.data.schoolName ?? '',
-  schoolAddress: res.data.schoolAddress ?? '',
-  schoolPhone: res.data.schoolPhone ?? '',
-  schoolEmail: res.data.schoolEmail ?? '',
-  academicYear: res.data.academicYear ?? '',
+        schoolName: res.data.schoolName ?? '',
+        schoolAddress: res.data.schoolAddress ?? '',
+        schoolPhone: res.data.schoolPhone ?? '',
+        schoolEmail: res.data.schoolEmail ?? '',
+        academicYear: res.data.academicYear ?? '',
 
-  attendanceStartTime: res.data.attendanceStartTime ?? '',
-  attendanceEndTime: res.data.attendanceEndTime ?? '',
-  lateThreshold: res.data.lateThreshold ?? '',
-  schoolEndTime: res.data.schoolEndTime ?? '',
+        attendanceStartTime: res.data.attendanceStartTime ?? '07:00',
+        attendanceEndTime: res.data.attendanceEndTime ?? '08:00',
+        lateThreshold: res.data.lateThreshold ?? '08:00',
+        schoolEndTime: res.data.schoolEndTime ?? '15:30',
 
-  enableQRCode: res.data.enableQRCode ?? true,
-  attendanceSessionOpen: res.data.attendanceSessionOpen ?? true,
-  enableNotifications: res.data.enableNotifications ?? true,
-  enableEmailReports: res.data.enableEmailReports ?? true,
-  autoMarkAbsentEnabled: res.data.autoMarkAbsentEnabled ?? true,
+        enableQRCode: res.data.enableQRCode ?? true,
+        attendanceSessionOpen: res.data.attendanceSessionOpen ?? true,
+        enableNotifications: res.data.enableNotifications ?? true,
+        enableEmailReports: res.data.enableEmailReports ?? true,
+        autoMarkAbsentEnabled: res.data.autoMarkAbsentEnabled ?? true,
 
-  // 🔥 ini bukan input text → boleh null
-  schoolLogo: res.data.logo_url ?? null,
-  dashboardPhoto1: res.data.photo1_url ?? null,
-  dashboardPhoto2: res.data.photo2_url ?? null,
-  dashboardPhoto3: res.data.photo3_url ?? null,
-  dashboardVideo: res.data.video_url ?? null,
-};
+        // 🔥 ini bukan input text → boleh null
+        schoolLogo: res.data.logo_url ?? null,
+        dashboardPhoto1: res.data.photo1_url ?? null,
+        dashboardPhoto2: res.data.photo2_url ?? null,
+        dashboardPhoto3: res.data.photo3_url ?? null,
+        dashboardVideo: res.data.video_url ?? null,
+      };
 
+      console.log('✅ Settings loaded from database:', backendSettings);
       setSettingsData(backendSettings);
 
       // ✅ Preview fix (WAJIB pakai URL dari backend)
@@ -421,7 +424,32 @@ const fetchSettings = async () => {
     }
 
   } catch (err) {
-    console.error('❌ Server Error (Settings):', err?.response?.data || err.message);
+    console.error('❌ Error fetching settings:', err?.response?.data || err.message);
+    console.log('⚠️ Trying with default values...');
+    
+    // ✅ FALLBACK: Use default values jika ada error
+    const defaultSettings = {
+      schoolName: 'SMK Negeri 1',
+      schoolAddress: 'Jl. Pendidikan No. 123',
+      schoolPhone: '021-1234567',
+      schoolEmail: 'info@smkn1.sch.id',
+      academicYear: '2025/2026',
+      attendanceStartTime: '07:00',
+      attendanceEndTime: '08:00',
+      lateThreshold: '08:00',
+      schoolEndTime: '15:30',
+      enableQRCode: true,
+      attendanceSessionOpen: true,
+      enableNotifications: true,
+      enableEmailReports: true,
+      autoMarkAbsentEnabled: true,
+      schoolLogo: null,
+      dashboardPhoto1: null,
+      dashboardPhoto2: null,
+      dashboardPhoto3: null,
+      dashboardVideo: null,
+    };
+    setSettingsData(defaultSettings);
   }
 };
 
@@ -952,13 +980,20 @@ const fetchSettings = async () => {
       });
   };
 
-// 
-
-const handleSaveSettings = async (e) => {
+const handleSaveSettings = async (section, e) => {
+  if (typeof section !== 'string') {
+    e = section;
+    section = 'school';
+  }
   if (e?.preventDefault) e.preventDefault();
 
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('Sesi habis, silakan login ulang sebelum menyimpan pengaturan.');
+    return;
+  }
+
   try {
-    const token = localStorage.getItem('token');
     setIsPromoting(true);
 
     const config = {
@@ -966,57 +1001,50 @@ const handleSaveSettings = async (e) => {
     };
 
     const data = new FormData();
+    const appendField = (key, value) => {
+      if (value === undefined || value === null) return;
+      data.append(key, value);
+    };
 
-    // ====================
-    // ✅ TEXT (SESUAI BACKEND)
-    // ====================
-data.append('schoolName', settingsData.schoolName);
-data.append('schoolAddress', settingsData.schoolAddress);
-data.append('schoolPhone', settingsData.schoolPhone);
-data.append('schoolEmail', settingsData.schoolEmail);
-data.append('academicYear', settingsData.academicYear);
+    // FORMAT JAM FIX
+    const formatTime = (time) => {
+      if (!time) return null;
+      return time.toString().substring(0, 5);
+    };
 
-// FORMAT JAM FIX
-const formatTime = (time) => {
-  if (!time) return null;
-  return time.toString().substring(0, 5);
-};
+    appendField('schoolName', settingsData.schoolName);
+    appendField('schoolAddress', settingsData.schoolAddress);
+    appendField('schoolPhone', settingsData.schoolPhone);
+    appendField('schoolEmail', settingsData.schoolEmail);
+    appendField('academicYear', settingsData.academicYear);
 
-data.append('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
-data.append('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
-data.append('lateThreshold', formatTime(settingsData.lateThreshold));
-data.append('schoolEndTime', formatTime(settingsData.schoolEndTime));
+    appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
+    appendField('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
+    appendField('lateThreshold', formatTime(settingsData.lateThreshold));
+    appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
 
-    // ====================
-    // ✅ BOOLEAN
-    // ====================
     data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
     data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
     data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
     data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
     data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
 
-    // ====================
-    // ✅ FILE (INI YANG KAMU BUTUH)
-    // ====================
-    if (logoFile instanceof File) {
-      data.append('logo', logoFile);
-    }
-
-    if (mediaPhotoFiles[1] instanceof File) {
-      data.append('photo1', mediaPhotoFiles[1]);
-    }
-
-    if (mediaPhotoFiles[2] instanceof File) {
-      data.append('photo2', mediaPhotoFiles[2]);
-    }
-
-    if (mediaPhotoFiles[3] instanceof File) {
-      data.append('photo3', mediaPhotoFiles[3]);
-    }
-
-    if (mediaVideoFile instanceof File) {
-      data.append('video_profile', mediaVideoFile);
+    if (section === 'school') {
+      if (logoFile instanceof File) {
+        data.append('logo', logoFile);
+      }
+      if (mediaPhotoFiles[1] instanceof File) {
+        data.append('photo1', mediaPhotoFiles[1]);
+      }
+      if (mediaPhotoFiles[2] instanceof File) {
+        data.append('photo2', mediaPhotoFiles[2]);
+      }
+      if (mediaPhotoFiles[3] instanceof File) {
+        data.append('photo3', mediaPhotoFiles[3]);
+      }
+      if (mediaVideoFile instanceof File) {
+        data.append('video_profile', mediaVideoFile);
+      }
     }
 
     console.log("KIRIM DATA:");
@@ -3156,342 +3184,371 @@ data.append('schoolEndTime', formatTime(settingsData.schoolEndTime));
                       <span className="text-sm font-medium">Pengaturan berhasil disimpan!</span>
                     </div>
                   )}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md p-6">
-                      <h3 className="text-lg font-bold text-blue-800 mb-4 flex items-center gap-2">
-                        <span>🏫</span> Informasi Sekolah
-                      </h3>
-                      <form onSubmit={handleSaveSettings} className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Logo Sekolah</label>
-                          <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-xl border-2 border-blue-100">
-                            <div className="w-16 h-16 rounded-lg bg-white flex items-center justify-center overflow-hidden border-2 border-blue-200 shadow-sm">
-                              {logoPreview ? (
-                                <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-                              ) : (
-                                <span className="text-2xl">🏫</span>
-                              )}
+
+                  <div className="space-y-4">
+                    <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-3">
+                      <div className="flex gap-2 overflow-x-auto pb-2">
+                        {[
+                          { id: 'school', title: 'Sekolah', icon: '🏫', description: 'Identitas' },
+                          { id: 'attendance', title: 'Absensi', icon: '⏰', description: 'Jadwal' },
+                          { id: 'notification', title: 'Notifikasi', icon: '🔔', description: 'Email/QR' },
+                        ].map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setSettingsSection(tab.id)}
+                            className={`min-w-[110px] flex-shrink-0 group rounded-3xl border p-2.5 transition-all text-left ${settingsSection === tab.id ? 'bg-blue-500 border-blue-500 text-white shadow-lg' : 'bg-white border-blue-100 text-slate-700 hover:border-blue-200 hover:bg-blue-50'}`}
+                          >
+                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-base ${settingsSection === tab.id ? 'bg-white text-blue-600' : 'bg-blue-50 text-blue-600'}`}>
+                              {tab.icon}
                             </div>
-                            <div className="flex-1">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleLogoChange}
-                                className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all"
-                              />
+                            <div className="mt-2">
+                              <p className="text-xs font-semibold">{tab.title}</p>
+                              <p className="text-[10px] text-slate-500 mt-1">{tab.description}</p>
                             </div>
-                          </div>
-                        </div>
-                        {/* Update Media (3 Photos & Video) */}
-                        <div className="space-y-4">
-                          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">Galeri Foto (Maks 3)</label>
-                          <div className="grid grid-cols-3 gap-2">
-                            {[1, 2, 3].map(i => (
-                              <div key={`setting-photo-slot-${i}`} className="p-2 bg-blue-50 rounded-xl border-2 border-blue-100">
-                                <div className="w-full aspect-square mb-2 rounded-lg bg-white overflow-hidden border">
-                                  {mediaPhotoPreviews[i] ? <img src={mediaPhotoPreviews[i]} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg">📸</div>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                      <div className="xl:col-span-2 space-y-4">
+                        {settingsSection === 'school' && (
+                          <form onSubmit={(e) => handleSaveSettings('school', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
+                            <h3 className="text-base font-bold text-blue-800">🏫 Informasi Sekolah</h3>
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Logo Sekolah</label>
+                                <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                  <div className="w-16 h-16 rounded-lg bg-white flex items-center justify-center overflow-hidden border border-blue-200 shadow-sm">
+                                    {logoPreview ? (
+                                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
+                                    ) : (
+                                      <span className="text-2xl">🏫</span>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleLogoChange}
+                                    className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all"
+                                  />
                                 </div>
-                                <input type="file" accept="image/*" 
-                                  onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if(file) {
-                                      setMediaPhotoFiles(prev => ({ ...prev, [i]: file }));
-                                      const reader = new FileReader();
-                                      reader.onloadend = () => setMediaPhotoPreviews(prev => ({ ...prev, [i]: reader.result }));
-                                      reader.readAsDataURL(file);
-                                    }
-                                  }} 
-                                  className="w-full text-[10px]" />
                               </div>
-                            ))}
-                          </div>
-                          
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase">Video Profil</label>
-                            <div className="p-3 bg-blue-50 rounded-xl border-2 border-blue-100">
-                              <div className="w-full h-32 mb-2 rounded-lg bg-white overflow-hidden border flex items-center justify-center">
-                                {mediaVideoPreview ? <span className="text-green-600 font-bold text-xs">Video Terpilih ✅</span> : <div className="text-2xl">🎥</div>}
+                              <div className="space-y-4">
+                                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">Galeri Foto (Maks 3)</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {[1, 2, 3].map((i) => (
+                                    <div key={`setting-photo-slot-${i}`} className="p-2 bg-blue-50 rounded-xl border border-blue-100">
+                                      <div className="w-full aspect-square mb-2 rounded-lg bg-white overflow-hidden border">
+                                        {mediaPhotoPreviews[i] ? (
+                                          <img src={mediaPhotoPreviews[i]} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-lg">📸</div>
+                                        )}
+                                      </div>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                          const file = e.target.files[0];
+                                          if (file) {
+                                            setMediaPhotoFiles((prev) => ({ ...prev, [i]: file }));
+                                            const reader = new FileReader();
+                                            reader.onloadend = () => setMediaPhotoPreviews((prev) => ({ ...prev, [i]: reader.result }));
+                                            reader.readAsDataURL(file);
+                                          }
+                                        }}
+                                        className="w-full text-[10px]"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                              <input type="file" accept="video/*" 
-                                onChange={(e) => {
-                                  const file = e.target.files[0];
-                                  if(file) {
-                                    setMediaVideoFile(file);
-                                    setMediaVideoPreview(URL.createObjectURL(file));
-                                  }
-                                }} 
-                                className="w-full text-xs" />
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase">Video Profil</label>
+                                <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                  <div className="w-full h-28 mb-2 rounded-lg bg-white overflow-hidden border flex items-center justify-center">
+                                    {mediaVideoPreview ? (
+                                      <span className="text-green-600 font-bold text-xs">Video Terpilih ✅</span>
+                                    ) : (
+                                      <div className="text-2xl">🎥</div>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="file"
+                                    accept="video/*"
+                                    onChange={(e) => {
+                                      const file = e.target.files[0];
+                                      if (file) {
+                                        setMediaVideoFile(file);
+                                        setMediaVideoPreview(URL.createObjectURL(file));
+                                      }
+                                    }}
+                                    className="w-full text-xs"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Nama Sekolah</label>
+                                <input
+                                  type="text"
+                                  name="schoolName"
+                                  value={settingsData.schoolName || ''}
+                                  onChange={handleSettingsChange}
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Alamat Sekolah</label>
+                                <textarea
+                                  name="schoolAddress"
+                                  value={settingsData.schoolAddress}
+                                  onChange={handleSettingsChange}
+                                  rows="2"
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Telepon</label>
+                                  <input
+                                    type="text"
+                                    name="schoolPhone"
+                                    value={settingsData.schoolPhone}
+                                    onChange={handleSettingsChange}
+                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Email</label>
+                                  <input
+                                    type="email"
+                                    name="schoolEmail"
+                                    value={settingsData.schoolEmail}
+                                    onChange={handleSettingsChange}
+                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Tahun Ajaran</label>
+                                <input
+                                  type="text"
+                                  name="academicYear"
+                                  value={settingsData.academicYear}
+                                  onChange={handleSettingsChange}
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                              </div>
                             </div>
-                          </div>
+                            <div className="flex justify-end">
+                              <button
+                                type="submit"
+                                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+                              >
+                                Simpan Sekolah
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {settingsSection === 'attendance' && (
+                          <form onSubmit={(e) => handleSaveSettings('attendance', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
+                            <h3 className="text-base font-bold text-blue-800">⏰ Pengaturan Absensi</h3>
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi</label>
+                                  <input
+                                    type="time"
+                                    name="attendanceStartTime"
+                                    value={settingsData.attendanceStartTime}
+                                    onChange={handleSettingsChange}
+                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi</label>
+                                  <input
+                                    type="time"
+                                    name="attendanceEndTime"
+                                    value={settingsData.attendanceEndTime}
+                                    onChange={handleSettingsChange}
+                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Batas Keterlambatan</label>
+                                <input
+                                  type="time"
+                                  name="lateThreshold"
+                                  value={settingsData.lateThreshold}
+                                  onChange={handleSettingsChange}
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah (auto absen alfha)</label>
+                                <input
+                                  type="time"
+                                  name="schoolEndTime"
+                                  value={settingsData.schoolEndTime}
+                                  onChange={handleSettingsChange}
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Setelah jam ini, scheduler bisa menandai siswa tanpa absen sebagai alpha/absen (jalankan `php artisan schedule:work` atau cron).</p>
+                              </div>
+                              <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-200">
+                                <div>
+                                  <p className="text-sm font-medium text-amber-900">Buka sesi absensi</p>
+                                  <p className="text-xs text-slate-600">Matikan untuk menutup absensi QR/manual siswa</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    name="attendanceSessionOpen"
+                                    checked={settingsData.attendanceSessionOpen}
+                                    onChange={handleSettingsChange}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-11 h-6 bg-amber-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                                </label>
+                              </div>
+                              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-800">Auto alpha/absen jam pulang</p>
+                                  <p className="text-xs text-slate-500">Siswa tanpa rekaman di hari itu ditandai absen otomatis</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    name="autoMarkAbsentEnabled"
+                                    checked={settingsData.autoMarkAbsentEnabled}
+                                    onChange={handleSettingsChange}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-700"></div>
+                                </label>
+                              </div>
+                              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                <div>
+                                  <p className="text-sm font-medium text-blue-800">QR Code Absensi</p>
+                                  <p className="text-xs text-slate-500">Aktifkan absensi menggunakan QR code</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    name="enableQRCode"
+                                    checked={settingsData.enableQRCode}
+                                    onChange={handleSettingsChange}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-11 h-6 bg-blue-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                type="submit"
+                                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+                              >
+                                Simpan Absensi
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {settingsSection === 'notification' && (
+                          <form onSubmit={(e) => handleSaveSettings('notification', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
+                            <h3 className="text-base font-bold text-blue-800">🔔 Pengaturan Notifikasi</h3>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                <div>
+                                  <p className="text-sm font-medium text-blue-800">Notifikasi Sistem</p>
+                                  <p className="text-xs text-slate-500">Aktifkan notifikasi untuk aktivitas sistem</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    name="enableNotifications"
+                                    checked={settingsData.enableNotifications}
+                                    onChange={handleSettingsChange}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-11 h-6 bg-blue-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                              </div>
+                              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                <div>
+                                  <p className="text-sm font-medium text-blue-800">Laporan Email</p>
+                                  <p className="text-xs text-slate-500">Kirim laporan absensi via email</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    name="enableEmailReports"
+                                    checked={settingsData.enableEmailReports}
+                                    onChange={handleSettingsChange}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-11 h-6 bg-blue-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                type="submit"
+                                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+                              >
+                                Simpan Notifikasi
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                      <div className="space-y-4">
+                        <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4">
+                          <h3 className="text-lg font-bold text-blue-800 mb-2">💾 Aksi</h3>
+                          <p className="text-sm text-slate-500 mb-3">Setiap kategori disimpan terpisah agar perubahan lebih mudah dikontrol.</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm('Yakin ingin mengembalikan pengaturan ke default?')) {
+                                const defaultSettings = {
+                                  schoolName: 'SMK Negeri 1',
+                                  schoolAddress: 'Jl. Pendidikan No. 123',
+                                  schoolPhone: '021-1234567',
+                                  schoolEmail: 'info@smkn1.sch.id',
+                                  academicYear: '2025/2026',
+                                  attendanceStartTime: '07:00',
+                                  attendanceEndTime: '08:00',
+                                  lateThreshold: '08:00',
+                                  enableNotifications: true,
+                                  enableEmailReports: true,
+                                  enableQRCode: true,
+                                  themeColor: 'blue',
+                                  attendanceSessionOpen: true,
+                                  schoolEndTime: '15:30',
+                                  autoMarkAbsentEnabled: true,
+                                  limitOneScanPerDay: true,
+                                  disableAttendanceOnHolidays: true,
+                                  dashboardPhoto1: null,
+                                  dashboardPhoto2: null,
+                                  dashboardPhoto3: null,
+                                  dashboardVideo: null,
+                                };
+                                setSettingsData(defaultSettings);
+                                localStorage.setItem('school_settings', JSON.stringify(defaultSettings));
+                                alert('✅ Pengaturan berhasil direset!');
+                              }
+                            }}
+                            className="w-full px-6 py-3 border border-blue-200 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all"
+                          >
+                            🔄 Reset ke Default
+                          </button>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Nama Sekolah</label>
-                          <input
-  type="text"
-  name="schoolName"
-  value={settingsData.schoolName || ''}
-  onChange={handleSettingsChange}
-  className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-/>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Alamat Sekolah</label>
-                          <textarea
-                            name="schoolAddress"
-                            value={settingsData.schoolAddress}
-                            onChange={handleSettingsChange}
-                            rows="2"
-                            className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Telepon</label>
-                            <input
-                              type="text"
-                              name="schoolPhone"
-                              value={settingsData.schoolPhone}
-                              onChange={handleSettingsChange}
-                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Email</label>
-                            <input
-                              type="email"
-                              name="schoolEmail"
-                              value={settingsData.schoolEmail}
-                              onChange={handleSettingsChange}
-                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Tahun Ajaran</label>
-                          <input
-                            type="text"
-                            name="academicYear"
-                            value={settingsData.academicYear}
-                            onChange={handleSettingsChange}
-                            className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                          />
-                        </div>
-                      </form>
-                    </div>
-                    <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md p-6">
-                      <h3 className="text-lg font-bold text-blue-800 mb-4 flex items-center gap-2">
-                        <span>⏰</span> Pengaturan Absensi
-                      </h3>
-                      <form onSubmit={handleSaveSettings} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi</label>
-                            <input
-                              type="time"
-                              name="attendanceStartTime"
-                              value={settingsData.attendanceStartTime}
-                              onChange={handleSettingsChange}
-                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi</label>
-                            <input
-                              type="time"
-                              name="attendanceEndTime"
-                              value={settingsData.attendanceEndTime}
-                              onChange={handleSettingsChange}
-                              className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Batas Keterlambatan</label>
-                          <input
-                            type="time"
-                            name="lateThreshold"
-                            value={settingsData.lateThreshold}
-                            onChange={handleSettingsChange}
-                            className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah (auto absen alfha)</label>
-                          <input
-                            type="time"
-                            name="schoolEndTime"
-                            value={settingsData.schoolEndTime}
-                            onChange={handleSettingsChange}
-                            className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                          />
-                          <p className="text-xs text-slate-500 mt-1">Setelah jam ini, scheduler bisa menandai siswa tanpa absen sebagai alpha/absen (jalankan `php artisan schedule:work` atau cron).</p>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border-2 border-amber-200">
-                          <div>
-                            <p className="text-sm font-medium text-amber-900">Buka sesi absensi</p>
-                            <p className="text-xs text-slate-600">Matikan untuk menutup absensi QR/manual siswa</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="attendanceSessionOpen"
-                              checked={settingsData.attendanceSessionOpen}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-amber-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border-2 border-slate-200">
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">Auto alpha/absen jam pulang</p>
-                            <p className="text-xs text-slate-500">Siswa tanpa rekaman di hari itu ditandai absen otomatis</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="autoMarkAbsentEnabled"
-                              checked={settingsData.autoMarkAbsentEnabled}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-700"></div>
-                          </label>
-                        </div>
-                      </form>
-                    </div>
-                    <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md p-6">
-                      <h3 className="text-lg font-bold text-blue-800 mb-4 flex items-center gap-2">
-                        <span>🔔</span> Pengaturan Notifikasi
-                      </h3>
-                      <form onSubmit={handleSaveSettings} className="space-y-4">
-                        <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border-2 border-blue-200">
-                          <div>
-                            <p className="text-sm font-medium text-blue-800">Notifikasi Sistem</p>
-                            <p className="text-xs text-slate-500">Aktifkan notifikasi untuk aktivitas sistem</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="enableNotifications"
-                              checked={settingsData.enableNotifications}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-blue-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-blue-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border-2 border-blue-200">
-                          <div>
-                            <p className="text-sm font-medium text-blue-800">Laporan Email</p>
-                            <p className="text-xs text-slate-500">Kirim laporan absensi via email</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="enableEmailReports"
-                              checked={settingsData.enableEmailReports}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-blue-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-blue-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border-2 border-blue-200">
-                          <div>
-                            <p className="text-sm font-medium text-blue-800">QR Code Absensi</p>
-                            <p className="text-xs text-slate-500">Aktifkan absensi menggunakan QR code</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="enableQRCode"
-                              checked={settingsData.enableQRCode}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-blue-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-blue-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border-2 border-blue-200">
-                          <div>
-                            <p className="text-sm font-medium text-blue-900">Batasi 1x Absen Sehari</p>
-                            <p className="text-xs text-slate-500">Mencegah dobel absensi (Siswa & Guru)</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="limitOneScanPerDay"
-                              checked={settingsData.limitOneScanPerDay}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-blue-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-red-50 rounded-xl border-2 border-red-100">
-                          <div>
-                            <p className="text-sm font-medium text-red-900">Libur Otomatis (Minggu)</p>
-                            <p className="text-xs text-red-600">Matikan absensi otomatis pada hari Minggu</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              name="disableAttendanceOnHolidays"
-                              checked={settingsData.disableAttendanceOnHolidays}
-                              onChange={handleSettingsChange}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-red-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                          </label>
-                        </div>
-                      </form>
-                    </div>
-                    <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md p-6 flex flex-col justify-center">
-                      <h3 className="text-lg font-bold text-blue-800 mb-4 flex items-center gap-2">
-                        <span>💾</span> Aksi
-                      </h3>
-                      <div className="space-y-3">
-                        <button
-                          onClick={handleSaveSettings}
-                          className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-medium hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 border-2 border-blue-300"
-                        >
-                          <span>💾</span>
-                          <span>Simpan Pengaturan</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm('Yakin ingin mengembalikan pengaturan ke default?')) {
-                              const defaultSettings = {
-                                schoolName: 'SMK Negeri 1',
-                                schoolAddress: 'Jl. Pendidikan No. 123',
-                                schoolPhone: '021-1234567',
-                                schoolEmail: 'info@smkn1.sch.id',
-                                academicYear: '2025/2026',
-                                attendanceStartTime: '07:00',
-                                attendanceEndTime: '08:00',
-                                lateThreshold: '08:00',
-                                enableNotifications: true,
-                                enableEmailReports: true,
-                                enableQRCode: true,
-                                themeColor: 'blue',
-                                attendanceSessionOpen: true,
-                                schoolEndTime: '15:30',
-                                autoMarkAbsentEnabled: true,
-                                dashboardPhoto1: null,
-                                dashboardPhoto2: null,
-                                dashboardPhoto3: null,
-                              };
-                              setSettingsData(defaultSettings);
-                              localStorage.setItem('school_settings', JSON.stringify(defaultSettings));
-                              alert('✅ Pengaturan berhasil direset!');
-                            }
-                          }}
-                          className="w-full px-6 py-3 border-2 border-blue-200 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
-                        >
-                          <span>🔄</span>
-                          <span>Reset ke Default</span>
-                        </button>
                       </div>
                     </div>
                   </div>
