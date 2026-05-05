@@ -116,6 +116,16 @@ const apiTryEndpoints = async (method, endpoints, ...args) => {
 };
 
 const DashboardAdmin = () => {
+
+  const handleSettingsChange = (e) => {
+  const { name, value, type, checked } = e.target;
+
+  setSettingsData(prev => ({
+    ...prev,
+    [name]: type === 'checkbox' ? checked : value
+  }));
+};
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -134,14 +144,23 @@ const DashboardAdmin = () => {
   const [users, setUsers] = useState([]);
   const [classes, setClasses] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [attendanceReports, setAttendanceReports] = useState([]);
+  const [currentActivityPage, setCurrentActivityPage] = useState(1);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
+  const activityPageSize = 10;
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(attendanceReports.length / activityPageSize));
+    if (currentActivityPage > totalPages) {
+      setCurrentActivityPage(totalPages);
+    }
+  }, [attendanceReports, currentActivityPage, activityPageSize]);
   
   // ✨ TAMBAHAN: State untuk fitur baru
   const [subjects, setSubjects] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-  const [attendanceReports, setAttendanceReports] = useState([]);
   
   // State untuk Data Guru dan Data Siswa
   const [guruData, setGuruData] = useState([]);
@@ -212,17 +231,10 @@ const DashboardAdmin = () => {
 const fetchDataGuru = async () => {
   try {
     const token = localStorage.getItem('token');
-    const config = { headers: { Authorization: `Bearer ${token}` } };
-
-    const res = await api.get('/admin/users', config);
-
-    const allUsers = Array.isArray(res.data)
-      ? res.data
-      : (res.data.data || []);
-
-    const gurus = allUsers.filter(u => u.role === 'guru');
-
-    setGuruData(gurus);
+    const res = await api.get('/admin/users?role=guru', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    setGuruData(res.data?.data || res.data || []);
   } catch (err) {
     console.error('Gagal mengambil data guru:', err);
     setGuruData([]);
@@ -233,17 +245,10 @@ const fetchDataGuru = async () => {
 const fetchDataSiswa = async () => {
   try {
     const token = localStorage.getItem('token');
-    const config = { headers: { Authorization: `Bearer ${token}` } };
-
-    const res = await api.get('/admin/users', config);
-
-    const allUsers = Array.isArray(res.data)
-      ? res.data
-      : (res.data.data || []);
-
-    const siswas = allUsers.filter(u => u.role === 'siswa');
-
-    setSiswaData(siswas);
+    const res = await api.get('/admin/users?role=siswa', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    setSiswaData(res.data?.data || res.data || []);
   } catch (err) {
     console.error('Gagal mengambil data siswa:', err);
     setSiswaData([]);
@@ -254,240 +259,22 @@ const fetchClasses = async () => {
   try {
     const token = localStorage.getItem('token');
     const config = { headers: { Authorization: `Bearer ${token}` } };
-
-    const res = await api.get('/admin/classes', config);
-
-    const data = Array.isArray(res.data)
-      ? res.data
-      : (res.data.data || []);
-
-    setClasses(data);
+    const res = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
+    setClasses(res.data?.data || res.data || []);
   } catch (err) {
     console.error('Gagal mengambil data kelas:', err);
     setClasses([]);
   }
 };
 
-  const [settingsSaved, setSettingsSaved] = useState(false);
-  const [notifiedAttendanceKeys, setNotifiedAttendanceKeys] = useState([]);
-  
-  // ✨ TAMBAHAN: State untuk Modal Features Baru
-
-  const [showSubjectModal, setShowSubjectModal] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [featureDataLoading, setFeatureDataLoading] = useState(false);
-  const [selectedPromoteStudents, setSelectedPromoteStudents] = useState([]);
-  const [isPromoting, setIsPromoting] = useState(false);
-
-  const handleLogout = () => {
-    setIsExiting(true);
-
-    setTimeout(() => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      navigate('/');
-    }, 600);
-  };
-
-
-  const fetchSettings = async () => {
-    const token = localStorage.getItem('token');
-    const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
-    try {
-      const res = await api.get('/admin/settings', config);
-      if (res?.data) {
-        const backendSettings = {
-          schoolName: res.data.nama_sekolah || res.data.schoolName || settingsData.schoolName,
-          schoolAddress: res.data.alamat_sekolah || res.data.schoolAddress || settingsData.schoolAddress,
-          schoolPhone: res.data.telepon || res.data.schoolPhone || settingsData.schoolPhone,
-          schoolEmail: res.data.email || res.data.schoolEmail || settingsData.schoolEmail,
-          academicYear: res.data.tahun_ajaran || res.data.academicYear || settingsData.academicYear,
-          schoolLogo: res.data.logo || res.data.schoolLogo || settingsData.schoolLogo,
-          attendanceOpenTime: res.data.jam_buka || res.data.attendanceOpenTime || settingsData.attendanceOpenTime,
-          attendanceCloseTime: res.data.jam_tutup || res.data.attendanceCloseTime || settingsData.attendanceCloseTime,
-          attendanceStartTime: res.data.jam_masuk || res.data.attendanceStartTime || settingsData.attendanceStartTime,
-          attendanceEndTime: res.data.jam_akhir || res.data.attendanceEndTime || settingsData.attendanceEndTime,
-          lateThreshold: res.data.batas_keterlambatan || res.data.lateThreshold || settingsData.lateThreshold,
-          enableNotifications: res.data.enable_notifications ?? res.data.enableNotifications ?? settingsData.enableNotifications,
-          enableEmailReports: res.data.enable_email_reports ?? res.data.enableEmailReports ?? settingsData.enableEmailReports,
-          enableQRCode: res.data.enable_qr_code ?? res.data.enableQRCode ?? settingsData.enableQRCode,
-          themeColor: res.data.themeColor || settingsData.themeColor,
-          attendanceSessionOpen: res.data.attendance_session_open ?? res.data.attendanceSessionOpen ?? true,
-          limitOneScanPerDay: res.data.limit_one_scan_per_day ?? settingsData.limitOneScanPerDay,
-          schoolEndTime: res.data.jam_pulang || res.data.schoolEndTime || '15:30',
-          disableAttendanceOnHolidays: res.data.disable_attendance_on_holidays ?? res.data.disableAttendanceOnHolidays ?? true,
-          autoMarkAbsentEnabled: res.data.auto_mark_absent_enabled ?? res.data.autoMarkAbsentEnabled ?? true,
-          dashboardPhoto1: res.data.dashboard_photo_1 || res.data.dashboardPhoto1 || null,
-          dashboardPhoto2: res.data.dashboard_photo_2 || res.data.dashboardPhoto2 || null,
-          dashboardPhoto3: res.data.dashboard_photo_3 || res.data.dashboardPhoto3 || null,
-          dashboardVideo: res.data.dashboard_video || res.data.dashboardVideo || settingsData.dashboardVideo,
-        };
-        setSettingsData(backendSettings);
-        if (backendSettings.schoolLogo) setLogoPreview(resolvePhotoUrl(backendSettings.schoolLogo));
-        setMediaPhotoPreviews({
-          1: resolvePhotoUrl(backendSettings.dashboardPhoto1),
-          2: resolvePhotoUrl(backendSettings.dashboardPhoto2),
-          3: resolvePhotoUrl(backendSettings.dashboardPhoto3),
-        });
-        if (backendSettings.dashboardVideo) setMediaVideoPreview(resolvePhotoUrl(backendSettings.dashboardVideo));
-        localStorage.setItem('school_settings', JSON.stringify(backendSettings));
-        return;
-      }
-    } catch (err) {
-      console.error('❌ Server Error (Settings):', err?.message);
-    }
-    const savedSettings = localStorage.getItem('school_settings');
-    if (savedSettings) {
-      try {
-        setSettingsData(JSON.parse(savedSettings));
-      } catch (err) {
-        console.error('Failed to load settings from localStorage:', err);
-      }
-    }
-  };
-
-  // Cek auth & role
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    if (!token || !userStr) { navigate('/'); return; }
-    try {
-      const userData = JSON.parse(userStr);
-      if (userData.role !== 'admin') {
-        alert('⛔ Akses ditolak! Hanya admin yang bisa mengakses halaman ini.');
-        navigate(`/dashboard/${userData.role}`);
-        return;
-      }
-      setUser(userData);
-    } catch { localStorage.clear(); navigate('/'); }
-    setLoading(false);
-  }, [navigate]);
-
-  // Fetch data dari backend
-  useEffect(() => { if (user) fetchAllData(); }, [user]);
-
-  // ✨ Refresh data saat tab overview dibuka untuk memastikan statistik akurat
-  useEffect(() => {
-    if (activeTab === 'overview' && !dataLoading) {
-      fetchAllData();
-    }
-  }, [activeTab]);
-
-  // Fetch Data Guru dan Siswa saat tab aktif
-  useEffect(() => {
-    if (activeTab === 'dataGuru') fetchDataGuru();
-    if (activeTab === 'dataSiswa') fetchDataSiswa();
-    if (activeTab === 'pesanWA') fetchDataSiswa();
-    if (activeTab === 'promotion') {
-      fetchDataSiswa();
-      fetchClasses();
-    }
-    if (activeTab === 'classes') {
-      fetchClasses();
-      fetchDataSiswa();
-    }
-    if (activeTab === 'subjects') fetchSubjects();
-    if (activeTab === 'schedules') fetchSchedules();
-  }, [activeTab]);
-
-  // Sync data when attendance updates occur in other tabs
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === 'attendance_updated') {
-        console.debug('🌀 attendance_updated event received, reloading dashboard data');
-        fetchAllData();
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [user]);
-
-  // Poll in background every 30 detik saat tab aktif
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && user) {
-        fetchAllData();
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
-
-  const extractRecordsFromResponse = (res) => {
-    if (!res || !res.data) return [];
-    if (Array.isArray(res.data)) return res.data;
-    if (Array.isArray(res.data.data)) return res.data.data;
-    if (Array.isArray(res.data.results)) return res.data.results;
-    return [];
-  };
-
-  const fetchAllData = async () => {
-    setDataLoading(true);
-    try {
-      setError('');
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
-      const [statsRes, usersRes, classesRes] = await Promise.allSettled([
-        apiTryEndpoints('get', ['/admin/stats', '/stats'], config),
-        apiTryEndpoints('get', userEndpointCandidates.index, config),
-        apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config)
-      ]);
-      let activityRes;
-      try {
-        activityRes = await api.get('/admin/attendances', config);
-      } catch (err) {
-        activityRes = await api.get('/admin/activity', config);
-      }
-      // ✨ Perbaikan: Ambil data dari properti .value karena menggunakan Promise.allSettled
-      if (statsRes.status === 'fulfilled' && statsRes.value) {
-        setStats(statsRes.value.data);
-      }
-      
-      if (usersRes.status === 'fulfilled' && usersRes.value) {
-        const uData = usersRes.value?.data;
-        const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-        setUsers(rawUsers.map(normalizeUser));
-      }
-
-      if (classesRes.status === 'fulfilled' && classesRes.value) {
-        const cData = classesRes.value?.data;
-        setClasses(Array.isArray(cData) ? cData : (cData?.data || []));
-      }
-
-      const rawActivity = extractRecordsFromResponse(activityRes);
-      const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
-      setRecentActivity(normalizedActivity);
-      setAttendanceReports(normalizedActivity);
-      console.debug('🟢 DashboardAdmin attendanceReports loaded', normalizedActivity.length, normalizedActivity[0]);
-    } catch (err) {
-      console.error('Gagal mengambil data', err);
-      setError('Gagal memuat data dari server.');
-      setStats({ totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 });
-      setUsers([]);
-      setClasses([]);
-      setRecentActivity([]);
-      setAttendanceReports([]);
-    } finally {
-      setDataLoading(false);
-    }
-  };
-
-  // ✨ TAMBAHAN: Fetch functions untuk fitur baru
-function DashboardAdmin() {
-
-  const BASE = "https://oasis-labs-artwork-congressional.trycloudflare.com";
-
+  // ✨ TAMBAHAN: Fetch functions untuk fitur baru (DIPINDAHKAN KE SCOPE UTAMA)
   const fetchSubjects = async () => {
     try {
       setFeatureDataLoading(true);
       const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await api.get('/admin/subjects', config);
+      const res = await api.get('/admin/subjects', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setSubjects(Array.isArray(res.data) ? res.data : (res.data.data || []));
     } catch (err) {
       console.error('Gagal mengambil data mata pelajaran:', err);
@@ -501,8 +288,9 @@ function DashboardAdmin() {
     try {
       setFeatureDataLoading(true);
       const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await api.get('/admin/schedules', config);
+      const res = await api.get('/admin/schedules', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setSchedules(Array.isArray(res.data) ? res.data : (res.data.data || []));
     } catch (err) {
       console.error('Gagal mengambil data jadwal:', err);
@@ -551,61 +339,294 @@ function DashboardAdmin() {
     }
   };
 
-  // Fetch Data Guru dari database
-  const fetchDataGuru = async () => {
-  try {
-    const token = localStorage.getItem('token');
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [notifiedAttendanceKeys, setNotifiedAttendanceKeys] = useState([]);
+  
+  // ✨ TAMBAHAN: State untuk Modal Features Baru
 
-    const res = await api.get('/admin/users?role=guru', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    setGuruData(res.data?.data || res.data || []);
-  } catch (err) {
-    console.error('Gagal mengambil data guru:', err);
-    setGuruData([]);
-  }
-};
-
-  // Fetch Data Siswa dari database
-  const fetchDataSiswa = async () => {
-  try {
-    const token = localStorage.getItem('token');
-
-    const res = await api.get('/admin/users?role=siswa', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    setSiswaData(res.data?.data || res.data || []);
-  } catch (err) {
-    console.error('Gagal mengambil data siswa:', err);
-    setSiswaData([]);
-  }
-};
-
-  // ✨ FIX: Fetch Classes untuk dropdown
-  const fetchClasses = async () => {
-  try {
-    const token = localStorage.getItem('token');
-
-    const res = await api.get('/admin/classes', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    setClasses(res.data?.data || res.data || []);
-  } catch (err) {
-    console.error('Gagal mengambil data kelas:', err);
-    setClasses([]);
-  }
-};
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [featureDataLoading, setFeatureDataLoading] = useState(false);
+  const [selectedPromoteStudents, setSelectedPromoteStudents] = useState([]);
+  const [isPromoting, setIsPromoting] = useState(false);
 
   const handleLogout = () => {
     setIsExiting(true);
+
     setTimeout(() => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       navigate('/');
     }, 600);
+  };
+
+
+const fetchSettings = async () => {
+  const token = localStorage.getItem('token');
+  const config = {
+    headers: { Authorization: `Bearer ${token}` },
+    timeout: 120000
+  };
+
+  try {
+    const res = await api.get('/admin/settings', config);
+
+    if (res?.data) {
+      const backendSettings = {
+  schoolName: res.data.schoolName ?? '',
+  schoolAddress: res.data.schoolAddress ?? '',
+  schoolPhone: res.data.schoolPhone ?? '',
+  schoolEmail: res.data.schoolEmail ?? '',
+  academicYear: res.data.academicYear ?? '',
+
+  attendanceStartTime: res.data.attendanceStartTime ?? '',
+  attendanceEndTime: res.data.attendanceEndTime ?? '',
+  lateThreshold: res.data.lateThreshold ?? '',
+  schoolEndTime: res.data.schoolEndTime ?? '',
+
+  enableQRCode: res.data.enableQRCode ?? true,
+  attendanceSessionOpen: res.data.attendanceSessionOpen ?? true,
+  enableNotifications: res.data.enableNotifications ?? true,
+  enableEmailReports: res.data.enableEmailReports ?? true,
+  autoMarkAbsentEnabled: res.data.autoMarkAbsentEnabled ?? true,
+
+  // 🔥 ini bukan input text → boleh null
+  schoolLogo: res.data.logo_url ?? null,
+  dashboardPhoto1: res.data.photo1_url ?? null,
+  dashboardPhoto2: res.data.photo2_url ?? null,
+  dashboardPhoto3: res.data.photo3_url ?? null,
+  dashboardVideo: res.data.video_url ?? null,
+};
+
+      setSettingsData(backendSettings);
+
+      // ✅ Preview fix (WAJIB pakai URL dari backend)
+      if (backendSettings.schoolLogo) {
+        setLogoPreview(backendSettings.schoolLogo);
+      }
+
+      setMediaPhotoPreviews({
+        1: backendSettings.dashboardPhoto1,
+        2: backendSettings.dashboardPhoto2,
+        3: backendSettings.dashboardPhoto3,
+      });
+
+      if (backendSettings.dashboardVideo) {
+        setMediaVideoPreview(backendSettings.dashboardVideo);
+      }
+
+      localStorage.setItem('school_settings', JSON.stringify(backendSettings));
+    }
+
+  } catch (err) {
+    console.error('❌ Server Error (Settings):', err?.response?.data || err.message);
+  }
+};
+
+  // Cek auth & role
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    if (!token || !userStr) { navigate('/'); return; }
+    try {
+      const userData = JSON.parse(userStr);
+      if (userData.role !== 'admin') {
+        alert('⛔ Akses ditolak! Hanya admin yang bisa mengakses halaman ini.');
+        navigate(`/dashboard/${userData.role}`);
+        return;
+      }
+      setUser(userData);
+    } catch { localStorage.clear(); navigate('/'); }
+    setLoading(false);
+  }, [navigate]);
+
+  // Fetch data dari backend
+  useEffect(() => { if (user) fetchAllData(); }, [user]);
+
+  // ✨ Refresh data saat tab overview dibuka untuk memastikan statistik akurat
+  useEffect(() => {
+    if (activeTab === 'overview' && !dataLoading) {
+      fetchAllData();
+    }
+  }, [activeTab]);
+
+  // Fetch Data Guru dan Siswa saat tab aktif
+  useEffect(() => {
+    if (activeTab === 'dataGuru') fetchDataGuru();
+    if (activeTab === 'dataSiswa') fetchDataSiswa();
+    if (activeTab === 'pesanWA') fetchDataSiswa();
+    if (activeTab === 'promotion') {
+      fetchDataSiswa();
+      fetchClasses();
+    }
+    if (activeTab === 'classes') {
+      fetchClasses();
+      fetchDataSiswa();
+      fetchSchedules(); // ✨ Pastikan jadwal diambil untuk relasi mapel di kelas
+    }
+    if (activeTab === 'subjects') fetchSubjects();
+    if (activeTab === 'schedules') fetchSchedules();
+  }, [activeTab]);
+
+  // Sync data when attendance updates occur in other tabs
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'attendance_updated') {
+        console.debug('🌀 attendance_updated event received, reloading dashboard data');
+        fetchAllData();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [user]);
+
+  // Poll in background every 30 detik saat tab aktif
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && user) {
+        fetchAllData();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const extractRecordsFromResponse = (res) => {
+    if (!res || !res.data) return [];
+    if (Array.isArray(res.data)) return res.data;
+    if (Array.isArray(res.data.data)) return res.data.data;
+    if (Array.isArray(res.data.results)) return res.data.results;
+    return [];
+  };
+
+  const normalizeRecordsResponse = (res) => {
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    if (res.data) {
+      if (Array.isArray(res.data)) return res.data;
+      if (Array.isArray(res.data.data)) return res.data.data;
+      if (Array.isArray(res.data.results)) return res.data.results;
+      if (typeof res.data === 'object' && res.data !== null) return Object.values(res.data);
+    }
+    if (typeof res === 'object' && res !== null) return Object.values(res);
+    return [];
+  };
+
+  const fetchAllData = async () => {
+    setDataLoading(true);
+    try {
+      setError('');
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
+      
+      // Ambil semua data secara paralel
+      const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
+        apiTryEndpoints('get', ['/admin/stats', '/stats'], config),
+        apiTryEndpoints('get', userEndpointCandidates.index, config),
+        apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config),
+        api.get('/admin/attendances', config).catch(() => api.get('/admin/activity', config))
+      ]);
+      
+      // Process Stats - hitung dari data users jika stats endpoint tidak tersedia
+      let calculatedStats = {
+        totalUsers: 0,
+        totalGuru: 0,
+        totalSiswa: 0,
+        totalKelas: 0,
+        kehadiranHariIni: 0
+      };
+      
+      if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
+        const statsData = statsRes.value.data;
+        // Handle berbagai format response stats
+        calculatedStats = {
+          totalUsers: statsData.total_users ?? statsData.totalUsers ?? statsData.total ?? 0,
+          totalGuru: statsData.total_guru ?? statsData.totalGuru ?? statsData.guru ?? 0,
+          totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? statsData.siswa ?? 0,
+          totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? statsData.kelas ?? 0,
+          kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? statsData.hari_ini ?? statsData.today ?? 0
+        };
+      }
+      
+      // Jika stats endpoint tidak memberikan data, hitung dari users
+      if (calculatedStats.totalUsers === 0 && usersRes.status === 'fulfilled' && usersRes.value?.data) {
+        const uData = usersRes.value?.data;
+        const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
+        const gurus = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'guru');
+        const siswas = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'siswa');
+        calculatedStats.totalUsers = rawUsers.length;
+        calculatedStats.totalGuru = gurus.length;
+        calculatedStats.totalSiswa = siswas.length;
+      }
+      
+      setStats(calculatedStats);
+      
+      // Process Users
+      if (usersRes.status === 'fulfilled' && usersRes.value) {
+        const uData = usersRes.value?.data;
+        const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
+        setUsers(rawUsers.map(normalizeUser));
+      }
+
+      // Process Classes
+      if (classesRes.status === 'fulfilled' && classesRes.value) {
+        const classData = normalizeRecordsResponse(classesRes.value);
+        setClasses(classData.length > 0 ? classData : staticClassOptions);
+        // Update stats dengan jumlah kelas jika belum ada dari stats endpoint
+        if (calculatedStats.totalKelas === 0) {
+          const finalClassCount = classData.length > 0 ? classData.length : staticClassOptions.length;
+          setStats(prev => ({ ...prev, totalKelas: finalClassCount }));
+        }
+      } else {
+        // Jika endpoint classes gagal, gunakan static options sebagai fallback
+        setClasses(staticClassOptions);
+        if (calculatedStats.totalKelas === 0) {
+          setStats(prev => ({ ...prev, totalKelas: staticClassOptions.length }));
+        }
+      }
+
+      // Process Attendance Reports
+      if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
+        const rawActivity = extractRecordsFromResponse(attendanceRes.value);
+        const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
+        setRecentActivity(normalizedActivity);
+        setAttendanceReports(normalizedActivity);
+        
+        // Update kehadiran hari ini dari attendance jika belum ada
+        const today = getJakartaDateKey(new Date());
+        const todayAttendance = normalizedActivity.filter(item => {
+          const itemKey = normalizeDateKey(item.date || item.created_at || item.attendance_time);
+          return itemKey === today;
+        });
+        
+        if (calculatedStats.kehadiranHariIni === 0 && todayAttendance.length > 0) {
+          setStats(prev => ({ ...prev, kehadiranHariIni: todayAttendance.length }));
+        }
+        
+        console.debug('🟢 DashboardAdmin data loaded:', {
+          users: calculatedStats.totalUsers,
+          guru: calculatedStats.totalGuru,
+          siswa: calculatedStats.totalSiswa,
+          kelas: calculatedStats.totalKelas,
+          attendance: normalizedActivity.length
+        });
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data', err);
+      setError('Gagal memuat data dari server.');
+      setStats({ totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 });
+      setUsers([]);
+      setClasses([]);
+      setRecentActivity([]);
+      setAttendanceReports([]);
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   // Handle photo upload
@@ -733,31 +754,6 @@ function DashboardAdmin() {
       }
       alert(`❌ Gagal menambah user: ${apiMessage}${details ? '\n' + details : ''}`);
     }
-
-return (
-    <div>
-
-      {/* KOMPONEN LAIN */}
-
-      {settings.dashboard_photo_1 && (
-        <img
-          src={`${BASE}/storage/${settings.dashboard_photo_1}`}
-          width="200"
-        />
-      )}
-
-      {settings.dashboard_video && (
-        <video
-          src={`${BASE}/storage/${settings.dashboard_video}`}
-          controls
-          width="300"
-        />
-      )}
-
-    </div>
-  );
-}
-
   };
 
   // ✨ HANDLER: Manajemen Naik Kelas
@@ -956,127 +952,119 @@ return (
       });
   };
 
-  // ✨ TAMBAHAN: Handle Settings Change
-  const handleSettingsChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setSettingsData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
+// 
 
-  // ✨ TAMBAHAN: Handle Save Settings
-  const handleSaveSettings = async (e) => {
-    if (e?.preventDefault) e.preventDefault();
-    try {
-      const token = localStorage.getItem('token');
-      setIsPromoting(true); // Gunakan state loading agar user tidak klik berkali-kali
+const handleSaveSettings = async (e) => {
+  if (e?.preventDefault) e.preventDefault();
 
-      // ✨ PENTING: Jangan set Content-Type secara manual. 
-      // Axios akan otomatis mendeteksi FormData dan menyetel boundary yang benar.
-      const config = { 
-        headers: { Authorization: `Bearer ${token}` } 
-      };
+  try {
+    const token = localStorage.getItem('token');
+    setIsPromoting(true);
 
-      const data = new FormData();
+    const config = {
+      headers: { Authorization: `Bearer ${token}` }
+    };
 
-// ====================
-// TEXT (IKUT BACKEND)
-// ====================
-data.append('schoolName', settingsData.schoolName || '');
-data.append('schoolAddress', settingsData.schoolAddress || '');
-data.append('schoolPhone', settingsData.schoolPhone || '');
-data.append('schoolEmail', settingsData.schoolEmail || '');
-data.append('academicYear', settingsData.academicYear || '');
+    const data = new FormData();
 
-// ====================
-// TIME
-// ====================
-data.append('attendanceStartTime', settingsData.attendanceStartTime?.slice(0,5) || '07:00');
-data.append('attendanceEndTime', settingsData.attendanceEndTime?.slice(0,5) || '08:00');
-data.append('lateThreshold', settingsData.lateThreshold?.slice(0,5) || '08:00');
-data.append('schoolEndTime', settingsData.schoolEndTime?.slice(0,5) || '15:30');
+    // ====================
+    // ✅ TEXT (SESUAI BACKEND)
+    // ====================
+data.append('schoolName', settingsData.schoolName);
+data.append('schoolAddress', settingsData.schoolAddress);
+data.append('schoolPhone', settingsData.schoolPhone);
+data.append('schoolEmail', settingsData.schoolEmail);
+data.append('academicYear', settingsData.academicYear);
 
-// ====================
-// BOOLEAN
-// ====================
-data.append('enableNotifications', settingsData.enableNotifications ? '1' : '0');
-data.append('enableEmailReports', settingsData.enableEmailReports ? '1' : '0');
-data.append('enableQRCode', settingsData.enableQRCode ? '1' : '0');
-data.append('attendanceSessionOpen', settingsData.attendanceSessionOpen ? '1' : '0');
-data.append('autoMarkAbsentEnabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
-data.append('disableAttendanceOnHolidays', settingsData.disableAttendanceOnHolidays ? '1' : '0');
+// FORMAT JAM FIX
+const formatTime = (time) => {
+  if (!time) return null;
+  return time.toString().substring(0, 5);
+};
 
-// ====================
-// FILE (IKUT BACKEND)
-// ====================
-if (logoFile instanceof File) {
-  data.append('logo', logoFile);
-}
+data.append('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
+data.append('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
+data.append('lateThreshold', formatTime(settingsData.lateThreshold));
+data.append('schoolEndTime', formatTime(settingsData.schoolEndTime));
 
-// if (mediaPhotoFiles[1] instanceof File) {
-//   data.append('dashboard_photo_1', mediaPhotoFiles[1]);
-// }
+    // ====================
+    // ✅ BOOLEAN
+    // ====================
+    data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
+    data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
+    data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
+    data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
+    data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
 
-// if (mediaPhotoFiles[2] instanceof File) {
-//   data.append('dashboard_photo_2', mediaPhotoFiles[2]);
-// }
-
-// if (mediaPhotoFiles[3] instanceof File) {
-//   data.append('dashboard_photo_3', mediaPhotoFiles[3]);
-// }
-
-// if (mediaVideoFile instanceof File) {
-//   data.append('dashboard_video', mediaVideoFile);
-// }
-
-for (let pair of data.entries()) {
-  console.log(pair[0], pair[1]);
-}
-
-for (let pair of data.entries()) {
-  console.log(pair[0], pair[1]);
-}
-
-console.log("VIDEO:", mediaVideoFile);
-console.log("PHOTO1:", mediaPhotoFiles[1]);
-console.log("LOGO:", logoFile);
-
-      // ✨ KEMBALI KE POST: Karena backend menggunakan Route::post dan error 405 muncul jika dipaksa PUT.
-      const response = await api.post('/admin/settings', data, { ...config, timeout: 120000 });
-      
-      if (response.status === 200 || response.status === 201) {
-        // ✨ AGAR LANGSUNG MUNCUL: Refresh settings dari server
-        await fetchSettings(); 
-        
-        setSettingsSaved(true);
-        setShowSuccessNotification(true);
-        
-        // Reset form file agar tidak dikirim ulang jika klik simpan lagi
-        setLogoFile(null);
-        setMediaPhotoFiles({ 1: null, 2: null, 3: null });
-        setMediaVideoFile(null);
-
-        setTimeout(() => {
-          setShowSuccessNotification(false);
-          setSettingsSaved(false);
-        }, 3000);
-      }
-    } catch (err) {
-      console.error('Error saving settings:', err);
-      const apiErr = err.response?.data;
-      let detailMsg = apiErr?.message || "Gagal menyimpan pengaturan";
-      
-      if (apiErr?.errors) {
-        detailMsg += "\n" + Object.entries(apiErr.errors)
-          .map(([key, val]) => `• ${key}: ${val}`)
-          .join("\n");
-      }
-      alert(`❌ Kesalahan Validasi:\n${detailMsg}`);
-    } finally {
-      setIsPromoting(false);
+    // ====================
+    // ✅ FILE (INI YANG KAMU BUTUH)
+    // ====================
+    if (logoFile instanceof File) {
+      data.append('logo', logoFile);
     }
-  };
+
+    if (mediaPhotoFiles[1] instanceof File) {
+      data.append('photo1', mediaPhotoFiles[1]);
+    }
+
+    if (mediaPhotoFiles[2] instanceof File) {
+      data.append('photo2', mediaPhotoFiles[2]);
+    }
+
+    if (mediaPhotoFiles[3] instanceof File) {
+      data.append('photo3', mediaPhotoFiles[3]);
+    }
+
+    if (mediaVideoFile instanceof File) {
+      data.append('video_profile', mediaVideoFile);
+    }
+
+    console.log("KIRIM DATA:");
+    for (let pair of data.entries()) {
+      console.log(pair[0], pair[1]);
+    }
+
+    const response = await api.post('/admin/settings', data, {
+      ...config,
+      timeout: 120000
+    });
+
+    if (response.status === 200 || response.status === 201) {
+      await fetchSettings();
+
+      setSettingsSaved(true);
+      setShowSuccessNotification(true);
+
+      setLogoFile(null);
+      setMediaPhotoFiles({ 1: null, 2: null, 3: null });
+      setMediaVideoFile(null);
+
+      setTimeout(() => {
+        setShowSuccessNotification(false);
+        setSettingsSaved(false);
+      }, 3000);
+    }
+
+  }catch (err) {
+  console.log("🔥 INI ERROR ASLI DARI BACKEND:");
+  console.log(err.response?.data);
+
+  console.error('Error saving settings:', err);
+
+  const apiErr = err.response?.data;
+    let detailMsg = apiErr?.message || "Gagal menyimpan pengaturan";
+
+    if (apiErr?.errors) {
+      detailMsg += "\n" + Object.entries(apiErr.errors)
+        .map(([key, val]) => `• ${key}: ${val}`)
+        .join("\n");
+    }
+
+    alert(`❌ Kesalahan Validasi:\n${detailMsg}`);
+  } finally {
+    setIsPromoting(false);
+  }
+};
 
   const handleLogoChange = (e) => {
     const file = e.target.files[0];
@@ -1138,7 +1126,6 @@ console.log("LOGO:", logoFile);
     { id: 'pesanWA', label: 'Pesan WA', icon: '💬' },
     { id: 'promotion', label: 'Naik Kelas', icon: '🚀' },
     { id: 'classes', label: 'Data Kelas', icon: '🏫' },
-    { id: 'activity', label: 'Aktivitas', icon: '⏰' },
     { id: 'settings', label: 'Pengaturan', icon: '⚙️' },
   ];
 
@@ -1294,28 +1281,50 @@ console.log("LOGO:", logoFile);
       rawAction.includes('tepat_waktu');
   };
 
+  const getJakartaDateKey = (date) => {
+    if (!date) return '';
+    try {
+      const dt = date instanceof Date ? date : new Date(date);
+      if (isNaN(dt.getTime())) return '';
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(dt);
+    } catch (err) {
+      console.warn('Gagal membuat Jakarta date key:', err, date);
+      return '';
+    }
+  };
+
   const normalizeDateKey = (rawDate) => {
     if (!rawDate) return '';
-  
-  if (rawDate instanceof Date) {
-    return rawDate.toLocaleDateString('en-CA');
+
+    if (rawDate instanceof Date) {
+      return getJakartaDateKey(rawDate);
     }
 
-  const str = String(rawDate).trim();
-  
-  // Handle format ISO (2026-03-31T...)
-  const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (isoMatch) return isoMatch[1];
+    const str = String(rawDate).trim();
+    if (!str) return '';
 
-  // Handle format DD-MM-YYYY atau DD/MM/YYYY
-  const dmyMatch = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-  if (dmyMatch) {
-    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
-  }
+    // Handle timestamp values
+    if (/^\d{10}$/.test(str)) {
+      return getJakartaDateKey(new Date(Number(str) * 1000));
+    }
+    if (/^\d{13}$/.test(str)) {
+      return getJakartaDateKey(new Date(Number(str)));
+    }
 
-    const d = new Date(str);
-    if (!isNaN(d.getTime())) {
-    return d.toLocaleDateString('en-CA');
+    // Handle format ISO-like or datetime with space separator
+    const isoTimestamp = str.replace(' ', 'T');
+    const parsedIso = new Date(isoTimestamp);
+    if (!isNaN(parsedIso.getTime())) {
+      return getJakartaDateKey(parsedIso);
+    }
+
+    // Handle format DD-MM-YYYY atau DD/MM/YYYY
+    const dmyMatch = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
+    if (dmyMatch) {
+      const [, day, month, year, timePart] = dmyMatch;
+      const [hour = '00', minute = '00', second = '00'] = (timePart || '00:00:00').split(':');
+      const dateObj = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+      return getJakartaDateKey(dateObj);
     }
 
     const parts = str.split(' ');
@@ -1323,7 +1332,7 @@ console.log("LOGO:", logoFile);
   };
 
   const getTodayAttendance = () => {
-    const todayKey = new Date().toLocaleDateString('en-CA');
+    const todayKey = getJakartaDateKey(new Date());
     return attendanceReports.filter(item => {
       const key = normalizeDateKey(item.date || item.created_at || item.attendance_time || item.time || item.scan_time);
       return key === todayKey;
@@ -1343,10 +1352,30 @@ console.log("LOGO:", logoFile);
   const getAttendanceStats = () => {
     const today = getTodayAttendance();
     const total = today.length;
-    const hadir = today.filter(item => ['hadir', 'tepat_waktu', 'present', 'on_time'].includes((item.status || '').toString().toLowerCase())).length;
-    const terlambat = today.filter(item => ['terlambat', 'late', 'tardy'].includes((item.status || '').toString().toLowerCase()) || item.is_late === true).length;
-    const absen = today.filter(item => ['absen', 'absent', 'tidak hadir', 'missing'].includes((item.status || '').toString().toLowerCase())).length;
-    const hadirPercent = total ? Math.round((hadir / total) * 100) : 0;
+    
+    // Hitung hadir - termasuk semua status kehadiran (hadir, tepat_waktu, present, on_time)
+    const hadir = today.filter(item => {
+      const status = (item.status || '').toString().toLowerCase();
+      return ['hadir', 'tepat_waktu', 'present', 'on_time'].includes(status);
+    }).length;
+    
+    // Hitung terlambat - termasuk is_late = true atau status terlambat/late/tardy
+    const terlambat = today.filter(item => {
+      const status = (item.status || '').toString().toLowerCase();
+      return item.is_late === true || 
+             ['terlambat', 'late', 'tardy'].includes(status);
+    }).length;
+    
+    // Hitung absen - status yang menunjukkan tidak hadir
+    const absen = today.filter(item => {
+      const status = (item.status || '').toString().toLowerCase();
+      return ['absen', 'absent', 'tidak hadir', 'missing', 'alpha'].includes(status);
+    }).length;
+    
+    // Hitung persentase kehadiran (hadir + terlambat dianggap hadir)
+    const totalHadir = hadir + terlambat;
+    const hadirPercent = total > 0 ? Math.round((totalHadir / total) * 100) : 0;
+    
     return { total, hadir, terlambat, absen, hadirPercent };
   };
 
@@ -1362,14 +1391,18 @@ console.log("LOGO:", logoFile);
       const targetDate = new Date(sunday);
       targetDate.setDate(sunday.getDate() + i);
       
-      const dateKey = targetDate.toLocaleDateString('en-CA');
+      const dateKey = getJakartaDateKey(targetDate);
       
+      // Hitung siswa yang hadir hari itu (termasuk terlambat)
       const studentsPresentCount = attendanceReports.filter((item) => {
-        // Filter siswa & tanggal
+        // Filter hanya siswa
         if (item.role && item.role !== 'siswa') return false;
+        
+        // Filter tanggal
         const itemKey = normalizeDateKey(item.date || item.created_at || item.attendance_time);
         if (itemKey !== dateKey) return false;
         
+        // Hitung jika hadir atau terlambat
         const status = (item.status || '').toString().toLowerCase();
         return ['hadir', 'tepat_waktu', 'present', 'on_time', 'terlambat', 'late', 'tardy'].includes(status) || item.is_late === true;
       }).length;
@@ -1381,29 +1414,40 @@ console.log("LOGO:", logoFile);
   const getMonthlyAttendanceTrend = () => {
     const now = new Date();
     const monthsRef = [];
+    
+    // Generate 12 bulan terakhir
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const label = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' });
       monthsRef.push({ year: d.getFullYear(), month: d.getMonth(), label });
     }
+    
     const trend = monthsRef.map((m) => {
+      // Hitung attendance per bulan dari attendanceReports
       const count = attendanceReports.reduce((acc, item) => {
         const rawDate = item.attendance_time || item.created_at || item.time || item.date;
         if (!rawDate) return acc;
+        
         let d = new Date(rawDate);
         if (isNaN(d.getTime())) {
+          // Coba parse dengan normalizeDateKey
           const normalized = normalizeDateKey(rawDate);
           if (!normalized) return acc;
           const parts = normalized.split('-').map(Number);
           if (parts.length < 3) return acc;
-          if (parts[0] === m.year && parts[1] - 1 === m.month) return acc + 1;
+          // parts[0] = year, parts[1] = month (0-based), parts[2] = day
+          if (parts[0] === m.year && (parts[1] - 1) === m.month) return acc + 1;
           return acc;
         }
+        
+        // Jika tanggal valid, cek bulan dan tahun
         if (d.getFullYear() === m.year && d.getMonth() === m.month) return acc + 1;
         return acc;
       }, 0);
+      
       return { ...m, count };
     });
+    
     return trend;
   };
 
@@ -1439,10 +1483,10 @@ console.log("LOGO:", logoFile);
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg overflow-hidden shadow-md border-2 border-blue-200">
                   <img
-                    src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : "/logo sekolah.jpeg"}
+                    src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : `https://ui-avatars.com/api/?name=${encodeURIComponent(settingsData.schoolName || 'S')}&background=2563eb&color=ffffff`}
                     alt="Logo Sekolah"
                     className="w-full h-full object-contain bg-white"
-                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
+                    onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=S&background=2563eb&color=ffffff`; }}
                   />
                 </div>
                 {!sidebarCollapsed && <span className="text-lg font-bold text-blue-800 truncate max-w-[150px]">{settingsData.schoolName || ''}</span>}
@@ -1489,7 +1533,7 @@ console.log("LOGO:", logoFile);
                       src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`}
                       alt="User Avatar"
                       className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`; }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=A&background=2563eb&color=ffffff`; }}
                     />
                   </div>
                   <div className="min-w-0">
@@ -1570,7 +1614,7 @@ console.log("LOGO:", logoFile);
                       src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`}
                       alt="User Avatar"
                       className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`; }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=A&background=2563eb&color=ffffff`; }}
                     />
                   </div>
                   <div className="hidden sm:block text-xs text-blue-700 leading-tight">
@@ -1866,75 +1910,51 @@ console.log("LOGO:", logoFile);
               {/* TAB: Overview */}
               {activeTab === 'overview' && (
                 <div className="space-y-6 animate-fade-in">
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                    {[
-                      { label: 'Total Absensi', value: total, color: 'blue', icon: '📋' },
-                      { label: 'Tepat Waktu', value: hadir, color: 'emerald', icon: '✅' },
-                      { label: 'Terlambat', value: terlambat, color: 'yellow', icon: '⚠️' },
-                      { label: 'Absen', value: absen, color: 'red', icon: '✗' },
-                    ].map((stat, i) => (
-                      <div key={i} className="bg-white rounded-2xl p-5 border-2 border-blue-100 shadow-md hover:shadow-lg transition-all group">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-2xl group-hover:scale-110 transition-transform">{stat.icon}</span>
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stat.color === 'blue' ? 'bg-blue-50 text-blue-600 border-blue-200' : stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : stat.color === 'yellow' ? 'bg-yellow-50 text-yellow-600 border-yellow-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                            Hari Ini
-                          </span>
-                        </div>
-                        <p className="text-3xl font-bold text-blue-800">{stat.value}</p>
-                        <p className="text-slate-500 text-sm mt-1">{stat.label}</p>
-                      </div>
-                    ))}
-                  </div>
                   
-                  {/* Laporan Kehadiran Hari Ini */}
-                  <div className="grid gap-6 mt-4 lg:grid-cols-3">
-                    <div className="lg:col-span-2 bg-white rounded-2xl border-2 border-blue-100 shadow-md p-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="font-bold text-blue-800 text-lg">Kehadiran Siswa Mingguan</h3>
-                          <p className="text-slate-500 text-xs">Jumlah siswa hadir (Minggu - Sabtu)</p>
+                  {/* Ringkasan Kehadiran Bulat (Circular Progress) */}
+                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl p-8 ">
+                    <div className="flex flex-col md:flex-row items-center gap-12">
+                      {/* Bagian Bulat (Circular Progress) */}
+                      <div className="relative w-48 h-48 group flex-shrink-0">
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                          <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
+                          <circle
+                            cx="18"
+                            cy="18"
+                            r="15.9155"
+                            fill="none"
+                            className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-red-500'} transition-all duration-1000 ease-in-out`}
+                            stroke="currentColor"
+                            strokeWidth="3.5"
+                            strokeDasharray={`${hadirPercent}, 100`}
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-4xl font-black text-blue-900 leading-none">{hadirPercent}%</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Hadir</span>
                         </div>
-                        <div className="text-xs text-blue-500 px-2 py-1 rounded-full border border-blue-200">Weekly</div>
                       </div>
-                      <div className="h-64 w-full rounded-xl overflow-hidden border border-blue-100 p-4 bg-gradient-to-b from-white to-blue-50">
-                        {(() => {
-                          const weeklyData = getAttendanceChartData();
-                          const maxVal = Math.max(1, ...weeklyData.map(d => d.count));
-                          return (
-                            <div className="h-full flex flex-col justify-end">
-                              <div className="flex-1 flex items-end gap-3 px-2">
-                                {weeklyData.map((day, i) => {
-                                  const height = (day.count / maxVal) * 100 || 5;
-                                  const isToday = day.date === new Date().toISOString().slice(0, 10);
-                                  return (
-                                    <div key={i} className="flex-1 flex flex-col justify-end items-center group">
-                                      <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-blue-800 text-white text-[10px] px-1.5 py-0.5 rounded mb-1 whitespace-nowrap">
-                                        {day.count} Siswa
-                                      </div>
-                                      <div
-                                        className={`w-full rounded-t-lg transition-all duration-500 ${isToday ? 'bg-gradient-to-t from-blue-600 to-blue-400 shadow-lg' : 'bg-gradient-to-t from-blue-400 to-blue-200 hover:from-blue-500 hover:to-blue-300'}`}
-                                        style={{ height: `${height}%` }}
-                                        title={`${day.label}: ${day.count} Siswa`}
-                                      ></div>
-                                      <span className={`text-[10px] mt-2 font-semibold ${isToday ? 'text-blue-700' : 'text-slate-500'}`}>{day.label}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })()}
+
+                      {/* Bagian Grid Statistik Kanan */}
+                      <div className="flex-1 w-full grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 shadow-sm">
+                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Total Absensi</p>
+                          <p className="text-3xl font-black text-blue-900">{total}</p>
+                        </div>
+                        <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-100 shadow-sm">
+                          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Hadir</p>
+                          <p className="text-3xl font-black text-emerald-900">{hadir}</p>
+                        </div>
+                        <div className="p-4 bg-amber-50 rounded-2xl border-2 border-amber-100 shadow-sm">
+                          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Terlambat</p>
+                          <p className="text-3xl font-black text-amber-900">{terlambat}</p>
+                        </div>
+                        <div className="p-4 bg-red-50 rounded-2xl border-2 border-red-100 shadow-sm">
+                          <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Tidak Hadir</p>
+                          <p className="text-3xl font-black text-red-900">{absen}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md p-5">
-                      <h3 className="font-bold text-blue-800 mb-3">Statistik Kehadiran</h3>
-                      <ul className="space-y-2 text-sm">
-                        <li className="flex justify-between"><span>Total Absen</span><span>{total}</span></li>
-                        <li className="flex justify-between"><span>Hadir</span><span>{hadir} ({hadirPercent}%)</span></li>
-                        <li className="flex justify-between"><span>Terlambat</span><span>{terlambat}</span></li>
-                        <li className="flex justify-between"><span>Tidak hadir</span><span>{absen}</span></li>
-                      </ul>
                     </div>
                   </div>
                   
@@ -1949,39 +1969,63 @@ console.log("LOGO:", logoFile);
                           <tr>
                             <th className="px-4 py-3 text-left">Waktu</th>
                             <th className="px-4 py-3 text-left">Siswa</th>
-                            <th className="px-4 py-3 text-left">Kelas</th>
                             <th className="px-4 py-3 text-left">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-blue-50">
-                          {attendanceReports.slice(-8).reverse().map((item, idx) => {
-                            const dateStr = formatToIndonesiaTime(item.attendance_time || item.created_at || item.time || item.date);
-                            const className = getClassName(item.class_id || item.kelas_id || item.kelas || item.class?.id || item.class?.name);
-                            const status = (item.status || '').toString().toLowerCase();
-                            const statusLabel = status === 'terlambat' || status === 'late' ? '⏰ Terlambat' : status === 'hadir' || status === 'tepat_waktu' ? '✅ Hadir' : '✗ Absen';
-                            const userDisplay = item.user_name ||
-                              (item.user && typeof item.user === 'object' ? (item.user.name || item.user.full_name || item.user.nama || item.user.user_id || '-') : item.user) ||
-                              item.name || '-';
-                            return (
-                              <tr key={`${item.id || idx}-${item.user_id || item.user?.user_id || idx}-${item.attendance_time || idx}`}>
-                                <td className="px-4 py-3 text-slate-600">{dateStr}</td>
-                                <td className="px-4 py-3 text-blue-800 font-medium">{userDisplay}</td>
-                                <td className="px-4 py-3 text-slate-600">{className}</td>
-                                <td className="px-4 py-3 text-sm font-semibold text-slate-700">{statusLabel}</td>
+                          {(() => {
+                            const latestReports = [...attendanceReports].reverse();
+                            const pageStart = (currentActivityPage - 1) * activityPageSize;
+                            const pageEnd = pageStart + activityPageSize;
+                            const paginatedReports = latestReports.slice(pageStart, pageEnd);
+
+                            return paginatedReports.length > 0 ? paginatedReports.map((item, idx) => {
+                              const dateStr = formatToIndonesiaTime(item.attendance_time || item.created_at || item.time || item.date);
+                              const className = getClassName(item.class_id || item.kelas_id || item.kelas || item.class?.id || item.class?.name);
+                              const status = (item.status || '').toString().toLowerCase();
+                              const statusLabel = status === 'terlambat' || status === 'late' ? '⏰ Terlambat' : status === 'hadir' || status === 'tepat_waktu' ? '✅ Hadir' : '✗ Absen';
+                              const userDisplay = item.user_name ||
+                                (item.user && typeof item.user === 'object' ? (item.user.name || item.user.full_name || item.user.nama || item.user.user_id || '-') : item.user) ||
+                                item.name || '-';
+                              return (
+                                <tr key={`${item.id || idx}-${item.user_id || item.user?.user_id || idx}-${item.attendance_time || idx}`}>
+                                  <td className="px-4 py-3 text-slate-600">{dateStr}</td>
+                                  <td className="px-4 py-3 text-blue-800 font-medium">{userDisplay}</td>
+                                  <td className="px-4 py-3 text-sm font-semibold text-slate-700">{statusLabel}</td>
+                                </tr>
+                              );
+                            }) : (
+                              <tr>
+                                <td colSpan="4" className="px-4 py-8 text-center text-slate-400">Belum ada data absensi</td>
                               </tr>
                             );
-                          })}
-                          {attendanceReports.length === 0 && (
-                            <tr>
-                              <td colSpan="4" className="px-4 py-8 text-center text-slate-400">Belum ada data absensi</td>
-                            </tr>
-                          )}
+                          })()}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-6">
+                  <div className="px-5 py-4 border-t border-blue-100 bg-blue-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">Halaman {currentActivityPage} dari {Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))} · Total {attendanceReports.length} aktivitas</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={currentActivityPage <= 1}
+                        onClick={() => setCurrentActivityPage((prev) => Math.max(prev - 1, 1))}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage <= 1 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+                      >
+                        Sebelumnya
+                      </button>
+                      <button
+                        type="button"
+                        disabled={currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))}
+                        onClick={() => setCurrentActivityPage((prev) => Math.min(prev + 1, Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))))}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize)) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+                      >
+                        Selanjutnya
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-6">
                     <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md p-4">
                       <h4 className="font-semibold text-blue-800 mb-2">Data Siswa Aktif</h4>
                       <p className="text-slate-500 text-xs">{stats.totalSiswa} siswa terdaftar</p>
@@ -1990,97 +2034,12 @@ console.log("LOGO:", logoFile);
                       <h4 className="font-semibold text-blue-800 mb-2">Data Guru Aktif</h4>
                       <p className="text-slate-500 text-xs">{stats.totalGuru} guru terdaftar</p>
                     </div>
-                  </div>
-                  
-                  {/* Tabel Aktivitas Terbaru - Terpisah Terlambat dan Tepat Waktu */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Tabel Siswa Terlambat */}
-                    <div className="bg-white rounded-2xl border-2 border-red-200 shadow-md overflow-hidden">
-                      <div className="px-6 py-4 border-b-2 border-red-100 bg-red-50 flex items-center justify-between">
-                        <h3 className="font-semibold text-red-800 flex items-center gap-2">
-                          <span>⚠️</span> Siswa Terlambat
-                        </h3>
-                        <span className="text-xs text-red-600 bg-red-100 px-2.5 py-1 rounded-full border border-red-200">
-                          {getLateActivities().length} Siswa
-                        </span>
-                      </div>
-                      <div className="divide-y divide-red-50">
-                        {getLateActivities().length === 0 ? (
-                          <div className="p-10 text-center text-slate-500">
-                            <p className="text-4xl mb-3">✅</p>
-                            <p className="font-medium">Tidak ada siswa terlambat</p>
-                          </div>
-                        ) : (
-                          getLateActivities().map((act, i) => {
-                            const indoTime = formatToIndonesiaTime(act.created_at || act.time);
-                            const indoDate = indoTime.split(' ')[0];
-                            const indoClock = indoTime.split(' ')[1];
-                            return (
-                              <div key={i} className="p-4 flex items-center justify-between hover:bg-red-50 transition-colors">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm border-2 bg-red-100 text-red-600 border-red-200">
-                                    {act.user?.charAt(0) || '?'}
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-red-800 text-sm">{act.user}</p>
-                                    <p className="text-slate-500 text-xs">{act.action}</p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-medium text-red-800">{indoClock}</p>
-                                  <p className="text-xs text-slate-400">{indoDate}</p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Tabel Siswa Tepat Waktu */}
-                    <div className="bg-white rounded-2xl border-2 border-green-200 shadow-md overflow-hidden">
-                      <div className="px-6 py-4 border-b-2 border-green-100 bg-green-50 flex items-center justify-between">
-                        <h3 className="font-semibold text-green-800 flex items-center gap-2">
-                          <span>✅</span> Siswa Tepat Waktu
-                        </h3>
-                        <span className="text-xs text-green-600 bg-green-100 px-2.5 py-1 rounded-full border border-green-200">
-                          {getOnTimeActivities().length} Siswa
-                        </span>
-                      </div>
-                      <div className="divide-y divide-green-50">
-                        {getOnTimeActivities().length === 0 ? (
-                          <div className="p-10 text-center text-slate-500">
-                            <p className="text-4xl mb-3">📭</p>
-                            <p className="font-medium">Belum ada aktivitas</p>
-                          </div>
-                        ) : (
-                          getOnTimeActivities().map((act, i) => {
-                            const indoTime = formatToIndonesiaTime(act.created_at || act.time);
-                            const indoDate = indoTime.split(' ')[0];
-                            const indoClock = indoTime.split(' ')[1];
-                            return (
-                              <div key={i} className="p-4 flex items-center justify-between hover:bg-green-50 transition-colors">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm border-2 bg-green-100 text-green-600 border-green-200">
-                                    {act.user?.charAt(0) || '?'}
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-green-800 text-sm">{act.user}</p>
-                                    <p className="text-slate-500 text-xs">{act.action}</p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-medium text-green-800">{indoClock}</p>
-                                  <p className="text-xs text-slate-400">{indoDate}</p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
+                    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md p-4">
+                      <h4 className="font-semibold text-blue-800 mb-2">Data Kelas Aktif</h4>
+                      <p className="text-slate-500 text-xs">{stats.totalKelas} kelas tersedia</p>
                     </div>
                   </div>
-                </div>
+                      </div>
               )}
 
               {/* TAB: Users */}
@@ -2700,6 +2659,12 @@ console.log("LOGO:", logoFile);
                           getClassGroup(s) === cls.name?.replace(/[^0-9]/g, '')
                         );
                         
+                        // ✨ Hubungkan Mata Pelajaran: Ambil jadwal yang nyambung ke kelas ini
+                        const classSubjects = schedules.filter(s => 
+                          s.class_id?.toString() === cls.id?.toString() || 
+                          s.class_name === cls.name
+                        );
+                        
                         return (
                           <div key={cls.id} className="group bg-white rounded-3xl border-2 border-blue-200 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col">
                             {/* Header Card: Design ala Landing Page (Gradient & Icon) */}
@@ -2744,6 +2709,24 @@ console.log("LOGO:", logoFile);
                                     </div>
                                   ))
                                 )}
+                              </div>
+
+                              {/* ✨ TAMBAHAN: Daftar Mata Pelajaran Terkoneksi */}
+                              <div className="mt-4 pt-4 border-t border-blue-50">
+                                <span className="text-[10px] font-black text-indigo-900 uppercase tracking-widest block mb-2">📚 Daftar Mata Pelajaran</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {classSubjects.length === 0 ? (
+                                    <span className="text-[10px] text-slate-400 italic font-medium">Belum ada jadwal mapel</span>
+                                  ) : (
+                                    // Mengambil subject unik agar tidak duplikat jika ada jadwal di hari berbeda
+                                    Array.from(new Set(classSubjects.map(s => s.subject_name))).slice(0, 4).map((sub, idx) => (
+                                      <span key={idx} className="text-[9px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md border border-indigo-100 shadow-sm">
+                                        {sub}
+                                      </span>
+                                    ))
+                                  )}
+                                  {classSubjects.length > 4 && <span className="text-[9px] text-slate-400 font-bold">+{classSubjects.length - 4} lagi</span>}
+                                </div>
                               </div>
 
                               <button 
@@ -3244,12 +3227,12 @@ console.log("LOGO:", logoFile);
                         <div>
                           <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Nama Sekolah</label>
                           <input
-                            type="text"
-                            name="schoolName"
-                            value={settingsData.schoolName}
-                            onChange={handleSettingsChange}
-                            className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                          />
+  type="text"
+  name="schoolName"
+  value={settingsData.schoolName || ''}
+  onChange={handleSettingsChange}
+  className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+/>
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Alamat Sekolah</label>
@@ -3532,6 +3515,14 @@ console.log("LOGO:", logoFile);
                     
                     <div className="p-8 max-h-[80vh] overflow-y-auto">
                       <div className="flex flex-col items-center mb-8">
+                        {/* ✨ Logic Pemetaan Mapel Siswa */}
+                        {(() => {
+                          const studentSubjects = schedules.filter(s => 
+                            s.class_id?.toString() === selectedProfileUser.class_id?.toString() ||
+                            s.class_name === selectedProfileUser.class_name
+                          );
+                          return (
+                            <>
                         <div className="w-32 h-32 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border-4 border-blue-200 shadow-md mb-4">
                           {selectedProfileUser.photo ? (
                             <img src={selectedProfileUser.photo} alt={selectedProfileUser.name} className="w-full h-full object-cover" />
@@ -3541,6 +3532,34 @@ console.log("LOGO:", logoFile);
                         </div>
                         <h3 className="text-2xl font-bold text-blue-900">{selectedProfileUser.name}</h3>
                         <p className="text-blue-600 font-medium">{getClassName(selectedProfileUser.class_id, selectedProfileUser.class_name)}</p>
+
+                        {/* ✨ Info Wali Kelas & Mata Pelajaran Terkoneksi */}
+                        <div className="mt-4 flex flex-col items-center gap-2">
+                          <div className="flex items-center gap-2 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100 shadow-sm">
+                            <span className="text-[11px] font-bold text-blue-700">👨‍🏫 Wali Kelas:</span>
+                            <span className="text-[11px] font-black text-blue-900">
+                              {classes.find(c => c.id?.toString() === selectedProfileUser.class_id?.toString())?.teacher_name || 'Tidak Diketahui'}
+                            </span>
+                          </div>
+                          
+                          <div className="mt-3 text-center">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Mata Pelajaran Diikuti</p>
+                            <div className="flex flex-wrap justify-center gap-1.5 max-w-sm">
+                              {studentSubjects.length === 0 ? (
+                                <p className="text-xs text-slate-400 italic">Jadwal belum tersedia untuk kelas ini</p>
+                              ) : (
+                                Array.from(new Set(studentSubjects.map(s => s.subject_name))).map((sub, idx) => (
+                                  <span key={idx} className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg border border-indigo-200 shadow-sm">
+                                    {sub}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       <div>

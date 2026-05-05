@@ -10,7 +10,7 @@ const resolvePhotoUrl = (photo, fallbackBase = "http://127.0.0.1:8000") => {
 
 export default function CustomCursor() {
   useEffect(() => {
-    let schoolName = "SMAN 1 KENCONG";
+    let schoolName = "AbsensiPro";
     let schoolLogo = null;
 
     const saved = localStorage.getItem("school_settings");

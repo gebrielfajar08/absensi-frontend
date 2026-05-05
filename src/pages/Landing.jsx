@@ -74,6 +74,127 @@ const Landing = () => {
     keterlambatan: 0
   });
 
+  const getJakartaDateKey = (date) => {
+    if (!date) return '';
+    try {
+      const dt = date instanceof Date ? date : new Date(date);
+      if (isNaN(dt.getTime())) return '';
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(dt);
+    } catch (err) {
+      console.warn('Gagal normalisasi tanggal:', err, date);
+      return '';
+    }
+  };
+
+  const normalizeDateKey = (rawDate) => {
+    if (!rawDate) return '';
+    if (rawDate instanceof Date) return getJakartaDateKey(rawDate);
+    const str = String(rawDate).trim();
+    if (!str) return '';
+
+    const iso = new Date(str.replace(' ', 'T'));
+    if (!isNaN(iso.getTime())) return getJakartaDateKey(iso);
+
+    const dmy = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
+    if (dmy) {
+      const [, day, month, year, timePart] = dmy;
+      const [hour = '00', minute = '00', second = '00'] = (timePart || '00:00:00').split(':');
+      const dateObj = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+      return getJakartaDateKey(dateObj);
+    }
+
+    return '';
+  };
+
+  const countTodayAttendance = (records = []) => {
+    const todayKey = getJakartaDateKey(new Date());
+    const counter = { total: 0, hadir: 0, terlambat: 0, absen: 0 };
+    if (!Array.isArray(records)) return counter;
+
+    records.forEach((item) => {
+      const dateKey = normalizeDateKey(item.date || item.attendance_time || item.created_at || item.time || item.scan_time);
+      if (!dateKey || dateKey !== todayKey) return;
+      const status = String(item.status || item.action || item.description || item.notes || '').toLowerCase();
+      const isLate = item.is_late === true || ['terlambat', 'late', 'tardy'].some((flag) => status.includes(flag));
+      const isPresent = ['hadir', 'tepat_waktu', 'present', 'on_time', 'on time'].some((flag) => status.includes(flag));
+      const isAbsent = ['absen', 'absent', 'tidak hadir', 'missing', 'alpha'].some((flag) => status.includes(flag));
+
+      if (isLate) {
+        counter.terlambat += 1;
+        counter.total += 1;
+      } else if (isPresent) {
+        counter.hadir += 1;
+        counter.total += 1;
+      } else if (isAbsent) {
+        counter.absen += 1;
+        counter.total += 1;
+      } else {
+        counter.total += 1;
+      }
+    });
+
+    return counter;
+  };
+
+  const lakeBackgrounds = [
+    'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1280&q=80',
+    'https://images.unsplash.com/photo-1476610182048-b716b8518aae?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1280&q=80'
+  ];
+
+  const holidayBackgrounds = {
+    '01-01': {
+      name: 'Tahun Baru Masehi',
+      image: 'https://images.unsplash.com/photo-1483721310020-03333e577078?w=1280&q=80'
+    },
+    '05-01': {
+      name: 'Hari Buruh Internasional',
+      image: 'https://images.unsplash.com/photo-1514474959185-08fb602660ef?w=1280&q=80'
+    },
+    '06-01': {
+      name: 'Hari Lahir Pancasila',
+      image: 'https://images.unsplash.com/photo-1520923302269-6990cb8d0a23?w=1280&q=80'
+    },
+    '08-17': {
+      name: 'Hari Kemerdekaan RI',
+      image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=1280&q=80'
+    },
+    '11-10': {
+      name: 'Hari Pahlawan',
+      image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1280&q=80'
+    },
+    '12-25': {
+      name: 'Hari Raya Natal',
+      image: 'https://images.unsplash.com/photo-1511993226959-0f2ecb18f6a5?w=1280&q=80'
+    }
+  };
+
+  const getHolidayInfo = (date) => {
+    if (!date) return null;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return holidayBackgrounds[`${month}-${day}`] || null;
+  };
+
+  const getSectionBackground = (date) => {
+    const holiday = getHolidayInfo(date);
+    if (holiday) {
+      return {
+        image: holiday.image,
+        label: holiday.name,
+        isHoliday: true
+      };
+    }
+
+    const selectedLake = lakeBackgrounds[date.getDate() % lakeBackgrounds.length];
+    return {
+      image: selectedLake,
+      label: 'Hari Biasa',
+      isHoliday: false
+    };
+  };
+
   const audioContextRef = useRef(null);
 
   useEffect(() => {
@@ -117,12 +238,40 @@ const Landing = () => {
     const fetchStats = async () => {
       try {
         const res = await api.get('/public/stats');
-        if (res && res.data) {
+        if (res && res.data != null) {
           const data = res.data;
-          setAttendanceStats({
-            totalHadir: data.total_hadir ?? ((data.hadir || 0) + (data.terlambat || 0)) ?? 0,
-            keterlambatan: data.terlambat ?? data.total_terlambat ?? 0
-          });
+          let stats = {
+            totalAbsensi: 0,
+            hadir: 0,
+            terlambat: 0,
+            tidakHadir: 0,
+            hadirPercent: 0
+          };
+
+          if (Array.isArray(data)) {
+            const counts = countTodayAttendance(data);
+            stats = {
+              totalHadir: counts.hadir + counts.terlambat,
+              keterlambatan: counts.terlambat
+            };
+          } else if (Array.isArray(data.data)) {
+            const counts = countTodayAttendance(data.data);
+            stats = {
+              totalHadir: counts.hadir + counts.terlambat,
+              keterlambatan: counts.terlambat
+            };
+          } else {
+            const hadirCount = data.total_hadir ?? data.hadir ?? 0;
+            const terlambatCount = data.terlambat ?? data.total_terlambat ?? 0;
+            const totalHadirCount = data.total_hadir ?? data.hadir ?? hadirCount + terlambatCount;
+
+            stats = {
+              totalHadir: totalHadirCount,
+              keterlambatan: terlambatCount
+            };
+          }
+
+          setAttendanceStats(stats);
         }
       } catch (err) {
         console.warn('Gagal mengambil data statistik landing dari database:', err.message);
@@ -910,7 +1059,6 @@ const Landing = () => {
                     <p className="text-3xl font-bold text-slate-900">{attendanceStats.totalHadir}</p>
                     <p className="text-xs text-slate-500 mt-1">Siswa & Guru</p>
                   </div>
-
                   <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
                     <div className="flex items-center gap-2 mb-2">
                       <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1087,31 +1235,36 @@ const Landing = () => {
                 </div>
               </div>
 
-              {/* Testimonial */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6">
-                <svg className="w-10 h-10 text-blue-300 mb-3" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
-                </svg>
-                <p className="text-slate-700 mb-4 leading-relaxed">
-                  Sistem absensi ini sangat membantu sekolah kami dalam memantau kehadiran siswa dan guru secara lebih efektif.
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
-                    <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+              {/* Hari / Tanggal Dinamis */}
+              {(() => {
+                const sectionBg = getSectionBackground(currentTime);
+                return (
+                  <div
+                    className="relative overflow-hidden rounded-2xl border border-blue-100 p-6 text-white"
+                    style={{
+                      backgroundImage: `linear-gradient(rgba(15,23,42,0.7), rgba(15,23,42,0.7)), url(${sectionBg.image})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center'
+                    }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900/60 to-slate-900/30"></div>
+                    <div className="relative">
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-200/80 mb-3">
+                        {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
+                      </p>
+                      <h3 className="text-2xl md:text-3xl font-bold mb-2">{formatDate(currentTime)}</h3>
+                      <p className="text-sm text-slate-200/80 mb-6">
+                        Tanggal hari ini ditampilkan otomatis sesuai zona waktu Jakarta.
+                      </p>
+                      <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg shadow-slate-900/20">
+                        <span>{currentTime.getFullYear()}</span>
+                        <span className="inline-block h-1 w-1 rounded-full bg-slate-200/70" />
+                        <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-slate-900 text-sm">Kepala Sekolah</p>
-                    <p className="text-xs text-slate-500">{attendanceSettings.schoolName}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4 justify-center">
-                  <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-                  <span className="w-2 h-2 bg-blue-200 rounded-full"></span>
-                  <span className="w-2 h-2 bg-blue-200 rounded-full"></span>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Jam Operasional - Connected to Database */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
