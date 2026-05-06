@@ -491,6 +491,7 @@ const fetchSettings = async () => {
     if (activeTab === 'pesanWA') fetchDataSiswa();
     if (activeTab === 'promotion') {
       fetchDataSiswa();
+      fetchClasses(); // Memastikan data kelas tersedia untuk promosi
       fetchClasses();
     }
     if (activeTab === 'classes') {
@@ -1154,6 +1155,7 @@ const handleSaveSettings = async (section, e) => {
     { id: 'pesanWA', label: 'Pesan WA', icon: '💬' },
     { id: 'promotion', label: 'Naik Kelas', icon: '🚀' },
     { id: 'classes', label: 'Data Kelas', icon: '🏫' },
+    { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' }, // ✨ TAMBAHAN: Menu Alumni
     { id: 'settings', label: 'Pengaturan', icon: '⚙️' },
   ];
 
@@ -1616,6 +1618,7 @@ const handleSaveSettings = async (section, e) => {
                     {activeTab === 'pesanWA' && '💬 Pesan WhatsApp'}
                     {activeTab === 'classes' && '🏫 Data Kelas'}
                     {activeTab === 'activity' && '⏰ Aktivitas Sistem'}
+                    {activeTab === 'alumni' && '🧑‍🎓 Data Alumni'} {/* ✨ TAMBAHAN: Judul untuk tab Alumni */}
                     {activeTab === 'settings' && '⚙️ Pengaturan Sistem'}
                   </h1>
                   <p className="text-slate-500 text-xs lg:text-sm mt-0.5">
@@ -2489,52 +2492,6 @@ const handleSaveSettings = async (section, e) => {
                         </div>
                       );
                     })}
-
-                    {/* ✨ TAMBAHAN: Daftar Alumni (Setelah Lulus) di Tab Promotion */}
-                    <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-md overflow-hidden">
-                      <div className="px-6 py-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-                        <div>
-                          <h3 className="font-bold text-slate-700 text-lg">🎓 Daftar Alumni (Lulus)</h3>
-                          <p className="text-xs text-slate-500">Siswa yang sudah menyelesaikan pendidikan (Tingkat Akhir)</p>
-                        </div>
-                        <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200">
-                          Total Alumni: {siswaData.filter(s => !['1', '2', '3'].includes(getClassGroup(s))).length}
-                        </span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                              <th className="px-6 py-3 text-left w-10 text-xs font-bold text-slate-400">#</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Siswa</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">NIS / ID</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Kelas Terakhir</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(() => {
-                              const alumni = siswaData.filter(s => !['1', '2', '3'].includes(getClassGroup(s)));
-                              return alumni.length === 0 ? (
-                                <tr>
-                                  <td colSpan="5" className="px-6 py-8 text-center text-slate-400 text-sm italic">Belum ada data alumni di sistem.</td>
-                                </tr>
-                              ) : (
-                                alumni.map((siswa, idx) => (
-                                  <tr key={`alumni-promote-${siswa.id}`} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4 text-xs text-slate-400">{idx + 1}</td>
-                                    <td className="px-6 py-4 text-sm font-medium text-slate-800">{siswa.name}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-mono">{siswa.user_id}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500">{siswa.class_name || '-'}</td>
-                                    <td className="px-6 py-4"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">ALUMNI / LULUS</span></td>
-                                  </tr>
-                                ))
-                              );
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -3672,6 +3629,72 @@ const handleSaveSettings = async (section, e) => {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ✨ TAMBAHAN: TAB: Alumni */}
+              {activeTab === 'alumni' && (
+                <div className="animate-fade-in">
+                  <div className="mb-6">
+                    <h2 className="text-lg font-bold text-blue-800">🧑‍🎓 Data Alumni</h2>
+                    <p className="text-slate-500 text-sm">Daftar siswa yang sudah lulus atau tidak lagi terdaftar di kelas aktif.</p>
+                  </div>
+                  {dataLoading ? (
+                    <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md p-12 text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                      <p className="text-blue-600 font-medium">Memuat data alumni...</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-blue-50 border-b-2 border-blue-200">
+                            <tr>
+                              {['No', 'Nama Siswa', 'NIS / ID', 'Kelas Terakhir', 'Status', 'Aksi'].map((h) => (
+                                <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wide">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-blue-50">
+                            {(() => {
+                              const alumniData = filterData(siswaData, searchQuery).filter(s => !['1', '2', '3'].includes(getClassGroup(s)));
+                              return alumniData.length === 0 ? (
+                                <tr>
+                                  <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                                    <p className="text-4xl mb-3">📭</p>
+                                    <p className="font-medium">Belum ada data alumni di sistem.</p>
+                                  </td>
+                                </tr>
+                              ) : (
+                                alumniData.map((siswa, index) => (
+                                  <tr key={siswa.id} className="hover:bg-blue-50 transition-colors">
+                                    <td className="px-6 py-4 text-sm text-slate-600">{index + 1}</td>
+                                    <td className="px-6 py-4">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shadow-sm overflow-hidden border-2 border-blue-200">
+                                          {siswa.photo ? <img src={siswa.photo} alt={siswa.name} className="w-full h-full object-cover" /> : siswa.name?.charAt(0)}
+                                        </div>
+                                        <span className="font-medium text-blue-800 text-sm">{siswa.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-slate-600 font-mono">{siswa.user_id || siswa.nis || siswa.nisn || '-'}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-600">{getClassName(siswa.class_id, siswa.class_name)}</td>
+                                    <td className="px-6 py-4">
+                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">ALUMNI / LULUS</span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <button onClick={() => openEditModal(siswa)} className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all border border-blue-200">Edit</button>
+                                      <button onClick={() => handleDeleteUser(siswa.id)} className="text-red-600 hover:text-red-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all border border-red-200">Hapus</button>
+                                    </td>
+                                  </tr>
+                                ))
+                              );
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
