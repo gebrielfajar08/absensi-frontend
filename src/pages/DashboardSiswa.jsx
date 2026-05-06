@@ -83,13 +83,15 @@ const DashboardSiswa = () => {
     percentage: 0,
   });
   const [sessionInfo, setSessionInfo] = useState(null);
-  const [izinForm, setIzinForm] = useState({ 
-    fullName: '', 
-    parentPhone: user?.parent_phone || '', 
-    reason: ''
+  const [izinForm, setIzinForm] = useState({
+    fullName: '',
+    type: 'izin',
+    reason: '',
+    attachment: null
   });
   const [izinSubmitting, setIzinSubmitting] = useState(false);
   const [izinMessage, setIzinMessage] = useState({ type: '', text: '' });
+  const [fingerprintForm, setFingerprintForm] = useState({ fullName: '', nis: '' });
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [classInfo, setClassInfo] = useState(null);
   const [teacherInfo, setTeacherInfo] = useState(null);
@@ -105,11 +107,16 @@ const DashboardSiswa = () => {
   const [attendanceSettings, setAttendanceSettings] = useState({
     schoolName: 'SMPK DON BOSCO',
     schoolLogo: null,
+    attendanceStartTime: '07:00',
+    attendanceEndTime: '08:00',
+    lateThreshold: '08:00',
+    schoolEndTime: '15:30',
     dashboardPhoto1: null,
     dashboardPhoto2: null,
     dashboardPhoto3: null,
     dashboardVideo: null,
-    limitOneScanPerDay: true
+    limitOneScanPerDay: true,
+    disableAttendanceOnHolidays: true
   });
 
   // State untuk QR Code
@@ -578,11 +585,11 @@ const DashboardSiswa = () => {
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka') {
-        showQRNotificationMessage(`❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceOpenTime}`, 'error');
+        showQRNotificationMessage(`❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceStartTime}`, 'error');
         return;
       }
       if (status === 'sudah_tutup') {
-        showQRNotificationMessage(`❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceCloseTime}`, 'error');
+        showQRNotificationMessage(`❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceEndTime}`, 'error');
         return;
       }
 
@@ -658,11 +665,11 @@ const DashboardSiswa = () => {
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka') {
-        setSubmitMessage({ type: 'error', text: `❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceOpenTime}` });
+        setSubmitMessage({ type: 'error', text: `❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceStartTime}` });
         return;
       }
       if (status === 'sudah_tutup') {
-        setSubmitMessage({ type: 'error', text: `❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceCloseTime}` });
+        setSubmitMessage({ type: 'error', text: `❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceEndTime}` });
         return;
       }
 
@@ -772,15 +779,15 @@ const DashboardSiswa = () => {
     const now = currentTime;
     const currentTimeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
     
-    const openTime = (attendanceSettings.attendanceOpenTime || "06:00").substring(0, 5);
-    const closeTime = (attendanceSettings.attendanceCloseTime || "12:00").substring(0, 5);
-    const endTime = (attendanceSettings.attendanceEndTime || "08:00").substring(0, 5);
+    const openTime = (attendanceSettings.attendanceStartTime || "07:00").substring(0, 5);
+    const closeTime = (attendanceSettings.attendanceEndTime || "12:00").substring(0, 5);
+    const lateTime = (attendanceSettings.lateThreshold || "08:00").substring(0, 5);
 
     if (checkIsHoliday()) return 'libur';
     if (currentTimeStr < openTime) return 'belum_buka';
     if (currentTimeStr > closeTime) return 'sudah_tutup';
 
-    return currentTimeStr <= endTime ? 'hadir' : 'terlambat';
+    return currentTimeStr <= lateTime ? 'hadir' : 'terlambat';
   };
 
   // Helper matching Admin for categorized activity
@@ -846,29 +853,36 @@ const DashboardSiswa = () => {
       const status = getAttendanceStatus();
 
       if (status === 'belum_buka' || status === 'sudah_tutup') {
-        setIzinMessage({ type: 'error', text: `❌ Izin hanya bisa dikirim pada jam operasional (${attendanceSettings.attendanceOpenTime} - ${attendanceSettings.attendanceCloseTime})` });
+        setIzinMessage({ type: 'error', text: `❌ Izin hanya bisa dikirim pada jam operasional (${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime})` });
         return;
       }
 
-      const requestData = {
-        full_name: izinForm.fullName || user.name,
-        user_id: user.nis || user.user_id,
-        parent_phone: izinForm.parentPhone || user.parent_phone,
-        reason: izinForm.reason,
-        status: 'izin',
-        attendance_time: currentTime.toISOString()
-      };
+      const formData = new FormData();
+      formData.append('full_name', izinForm.fullName || user.name);
+      formData.append('user_id', user.nis || user.user_id);
+      formData.append('type', izinForm.type);
+      formData.append('reason', izinForm.reason);
+      formData.append('status', 'izin');
+      formData.append('attendance_time', currentTime.toISOString());
+
+      if (izinForm.attachment) {
+        formData.append('attachment', izinForm.attachment);
+      }
 
       // Mengirim ke endpoint absensi izin
-      await api.post('/attendance/izin', requestData, {
-        headers: { Authorization: `Bearer ${token}` }
+      await api.post('/attendance/izin', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 60000
       });
 
       setIzinMessage({ type: 'success', text: '✅ Pengajuan izin berhasil terkirim ke database.' });
       playSound('success');
       
       // Reset Form
-      setIzinForm({ fullName: user.name || '', parentPhone: user.parent_phone || '', reason: '' });
+      setIzinForm({ fullName: user.name || '', type: 'izin', reason: '', attachment: null });
       
       // Broadcast & Refresh data
       localStorage.setItem('attendance_updated', Date.now().toString());
@@ -885,6 +899,71 @@ const DashboardSiswa = () => {
       });
     } finally {
       setIzinSubmitting(false);
+    }
+  };
+
+  const handleFingerprintSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitMessage({ type: '', text: '' });
+    try {
+      if (checkIsHoliday()) {
+        setSubmitMessage({ type: 'error', text: '❌ Hari ini adalah hari libur. Absensi ditiadakan.' });
+        return;
+      }
+
+      const status = getAttendanceStatus();
+      if (status === 'belum_buka') {
+        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+
+      // Simulate fingerprint verification
+      setSubmitMessage({ type: 'info', text: '🔍 Memverifikasi sidik jari...' });
+      
+      // Simulate fingerprint scanning delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const token = localStorage.getItem('token');
+      const endpoint = '/attendance/student/fingerprint';
+      
+      const payload = {
+        full_name: fingerprintForm.fullName.trim(),
+        user_id: fingerprintForm.nis.trim(),
+        attendance_time: currentTime.toISOString(),
+        type: 'fingerprint'
+      };
+
+      await api.post(endpoint, payload, {
+        timeout: 60000,
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      setSubmitMessage({ type: 'success', text: '✅ Absen sidik jari berhasil!' });
+      playSound('success');
+
+      setFingerprintForm({ fullName: '', nis: '' });
+      localStorage.setItem('attendance_updated', Date.now().toString());
+      
+      setTimeout(() => {
+        setShowAbsenModal(false);
+        setSubmitMessage({ type: '', text: '' });
+      }, 2000);
+    } catch (err) {
+      if (err.response?.status !== 401 && err.code !== 'ERR_NETWORK') {
+        console.error('Error submitting fingerprint:', err);
+      }
+      const errorMsg = err.response?.data?.message || err.message || 'Gagal memverifikasi sidik jari';
+      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
+      playSound('failed');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1522,6 +1601,14 @@ const DashboardSiswa = () => {
               >
                 <span>📋</span> Izin
               </button>
+              <button
+                onClick={() => setActiveAbsenTab('fingerprint')}
+                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeAbsenTab === 'fingerprint' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <span>👆</span> Sidik Jari
+              </button>
             </div>
           </div>
         )}
@@ -1672,15 +1759,16 @@ const DashboardSiswa = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">No. Telepon Orang Tua *</label>
-                    <input
-                      type="tel"
-                      value={izinForm.parentPhone}
-                      onChange={(e) => setIzinForm(prev => ({ ...prev, parentPhone: e.target.value }))}
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Jenis Pengajuan *</label>
+                    <select
+                      value={izinForm.type}
+                      onChange={(e) => setIzinForm(prev => ({ ...prev, type: e.target.value }))}
                       className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      placeholder="08123456789"
                       required
-                    />
+                    >
+                      <option value="izin">Izin</option>
+                      <option value="sakit">Sakit</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Keterangan *</label>
@@ -1693,6 +1781,16 @@ const DashboardSiswa = () => {
                       placeholder="Alasan izin..."
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Lampiran (Opsional)</label>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.doc,.docx"
+                      onChange={(e) => setIzinForm(prev => ({ ...prev, attachment: e.target.files[0] }))}
+                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Format: JPG, PNG, PDF, DOC, DOCX (Max 5MB)</p>
+                  </div>
                   {izinMessage.text && (
                     <div className={`p-3 rounded-lg text-xs font-medium border ${izinMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                       {izinMessage.text}
@@ -1704,6 +1802,55 @@ const DashboardSiswa = () => {
                     className="w-full py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-lg hover:bg-emerald-700 transition-all disabled:opacity-50"
                   >
                     {izinSubmitting ? 'Mengirim...' : 'Kirim Pengajuan Izin'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {activeAbsenTab === 'fingerprint' && (
+              <div className="space-y-4">
+                <div className="text-center mb-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+                    <span className="text-2xl">👆</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">Absen Sidik Jari</h3>
+                  <p className="text-xs text-slate-600">Tempatkan jari Anda pada sensor untuk verifikasi</p>
+                </div>
+
+                <form onSubmit={handleFingerprintSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Nama Lengkap *</label>
+                    <input
+                      type="text"
+                      required
+                      value={fingerprintForm.fullName}
+                      onChange={(e) => setFingerprintForm((p) => ({ ...p, fullName: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm"
+                      placeholder="Masukkan nama lengkap..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">NIS *</label>
+                    <input
+                      type="text"
+                      required
+                      value={fingerprintForm.nis}
+                      onChange={(e) => setFingerprintForm((p) => ({ ...p, nis: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm"
+                      placeholder="Masukkan NIS..."
+                    />
+                  </div>
+                  {submitMessage.text && (
+                    <div className={`p-3 rounded-lg text-xs font-medium border ${submitMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : submitMessage.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                      {submitMessage.text}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-3 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'Memverifikasi...' : 'Verifikasi Sidik Jari'}
                   </button>
                 </form>
               </div>

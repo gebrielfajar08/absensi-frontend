@@ -49,8 +49,15 @@ const Landing = () => {
   const [teacherForm, setTeacherForm] = useState({ nip: '', fullName: '' });
   const [izinForm, setIzinForm] = useState({
     fullName: '',
-    parentPhone: '',
-    reason: ''
+    user_id: '',
+    type: 'izin', // 'izin' or 'sakit'
+    reason: '',
+    attachment: null
+  });
+
+  const [fingerprintForm, setFingerprintForm] = useState({
+    fullName: '',
+    user_id: ''
   });
 
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -593,24 +600,47 @@ const Landing = () => {
 
       const token = localStorage.getItem('token');
       
+      if (!izinForm.user_id.trim()) {
+        setSubmitMessage({ type: 'error', text: '❌ NIS/NIP harus diisi!' });
+        return;
+      }
+      
       const payload = {
         full_name: izinForm.fullName.trim(),
-        parent_phone: izinForm.parentPhone.trim(),
+        user_id: izinForm.user_id.trim(),
+        nis: izinForm.user_id.trim(),
+        type: izinForm.type,
         reason: izinForm.reason,
         attendance_time: currentTime.toISOString(),
-        status: 'izin'
+        status: izinForm.type,
+        role: activeUserRole === 'guru' ? 'guru' : 'siswa'
       };
 
-      await api.post('/attendance/izin', payload, {
-        timeout: 60000,
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      // Handle file upload if attachment exists
+      if (izinForm.attachment) {
+        const formData = new FormData();
+        Object.keys(payload).forEach(key => formData.append(key, payload[key]));
+        formData.append('attachment', izinForm.attachment);
+        
+        await api.post('/attendance/izin', formData, {
+          timeout: 60000,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+      } else {
+        await api.post('/attendance/izin', payload, {
+          timeout: 60000,
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+      }
 
-      showSubmitNotificationMessage('✅ Pengajuan izin berhasil dikirim!', 'success');
-      setSubmitMessage({ type: 'success', text: '✅ Pengajuan izin berhasil dikirim!' });
+      showSubmitNotificationMessage(`✅ Pengajuan ${izinForm.type} berhasil dikirim!`, 'success');
+      setSubmitMessage({ type: 'success', text: `✅ Pengajuan ${izinForm.type} berhasil dikirim!` });
       playSound('success');
 
-      setIzinForm({ fullName: '', parentPhone: '', reason: '' });
+      setIzinForm({ fullName: '', user_id: '', type: 'izin', reason: '', attachment: null });
       localStorage.setItem('attendance_updated', Date.now().toString());
       
       setTimeout(() => {
@@ -622,6 +652,75 @@ const Landing = () => {
         console.error('Error submitting izin:', err);
       }
       const errorMsg = err.response?.data?.message || err.message || 'Gagal mengirim pengajuan izin';
+      showSubmitNotificationMessage(`❌ Gagal: ${errorMsg}`, 'error');
+      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
+      playSound('failed');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFingerprintSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitMessage({ type: '', text: '' });
+    try {
+      if (checkIsHoliday()) {
+        setSubmitMessage({ type: 'error', text: '❌ Hari ini adalah hari libur. Absensi ditiadakan.' });
+        return;
+      }
+
+      const status = getAttendanceStatus();
+      if (status === 'belum_buka') {
+        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
+        showSubmitNotificationMessage(msg, 'error');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+
+      // Simulate fingerprint verification
+      showSubmitNotificationMessage('🔍 Memverifikasi sidik jari...', 'info');
+      
+      // Simulate fingerprint scanning delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const token = localStorage.getItem('token');
+      const endpoint = activeUserRole === 'siswa' ? '/attendance/student/fingerprint' : '/attendance/teacher/fingerprint';
+      
+      const payload = {
+        full_name: fingerprintForm.fullName.trim(),
+        user_id: fingerprintForm.user_id.trim(),
+        attendance_time: currentTime.toISOString(),
+        type: 'fingerprint'
+      };
+
+      await api.post(endpoint, payload, {
+        timeout: 60000,
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      showSubmitNotificationMessage('✅ Absen sidik jari berhasil!', 'success');
+      setSubmitMessage({ type: 'success', text: '✅ Absen sidik jari berhasil!' });
+      playSound('success');
+
+      setFingerprintForm({ fullName: '', user_id: '' });
+      localStorage.setItem('attendance_updated', Date.now().toString());
+      
+      setTimeout(() => {
+        setShowAbsenModal(false);
+        setSubmitMessage({ type: '', text: '' });
+      }, 2000);
+    } catch (err) {
+      if (err.response?.status !== 401 && err.code !== 'ERR_NETWORK') {
+        console.error('Error submitting fingerprint:', err);
+      }
+      const errorMsg = err.response?.data?.message || err.message || 'Gagal memverifikasi sidik jari';
       showSubmitNotificationMessage(`❌ Gagal: ${errorMsg}`, 'error');
       setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
       playSound('failed');
@@ -1340,11 +1439,17 @@ const Landing = () => {
               {/* Method Tabs */}
               <div className="flex justify-center mb-5">
                 <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full">
-                  {[
+                  {(activeUserRole === 'guru' ? [
                     { id: 'scan', label: 'Scan QR', icon: '📷' },
                     { id: 'manual', label: 'Manual', icon: '✍️' },
+                    { id: 'fingerprint', label: 'Sidik Jari', icon: '👆' },
                     { id: 'izin', label: 'Izin', icon: '📝' }
-                  ].map((tab) => (
+                  ] : [
+                    { id: 'scan', label: 'Scan QR', icon: '📷' },
+                    { id: 'manual', label: 'Manual', icon: '✍️' },
+                    { id: 'fingerprint', label: 'Sidik Jari', icon: '👆' },
+                    { id: 'izin', label: 'Izin', icon: '📝' }
+                  ]).map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveMethodTab(tab.id)}
@@ -1489,8 +1594,96 @@ const Landing = () => {
                     </form>
                   )}
 
+                  {activeMethodTab === 'fingerprint' && (
+                    <form onSubmit={handleFingerprintSubmit} className="space-y-4">
+                      <div className="text-center mb-4">
+                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <span className="text-2xl">👆</span>
+                        </div>
+                        <h3 className="text-sm font-medium text-slate-800 mb-1">Absen Sidik Jari</h3>
+                        <p className="text-xs text-slate-500">Tempelkan jari Anda pada sensor</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Nama Lengkap *</label>
+                        <input
+                          type="text"
+                          value={fingerprintForm.fullName}
+                          onChange={(e) => setFingerprintForm(prev => ({ ...prev, fullName: e.target.value }))}
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          placeholder={activeUserRole === 'siswa' ? 'Nama lengkap siswa' : 'Nama lengkap guru'}
+                          required
+                        />
+                      </div>
+                      {activeUserRole === 'siswa' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-1.5">NIS *</label>
+                          <input
+                            type="text"
+                            value={fingerprintForm.user_id}
+                            onChange={(e) => setFingerprintForm(prev => ({ ...prev, user_id: e.target.value }))}
+                            className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                            placeholder="Masukkan NIS siswa"
+                            required
+                          />
+                        </div>
+                      )}
+                      {activeUserRole === 'guru' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-1.5">NIP *</label>
+                          <input
+                            type="text"
+                            value={fingerprintForm.user_id}
+                            onChange={(e) => setFingerprintForm(prev => ({ ...prev, user_id: e.target.value }))}
+                            className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                            placeholder="Masukkan NIP guru"
+                            required
+                          />
+                        </div>
+                      )}
+                      {submitMessage.text && (
+                        <div className={`p-3 rounded-lg text-xs ${
+                          submitMessage.type === 'success'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}>
+                          {submitMessage.text}
+                        </div>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Memverifikasi...
+                          </>
+                        ) : (
+                          <>
+                            <span>👆</span> Verifikasi Sidik Jari
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  )}
+
                   {activeMethodTab === 'izin' && (
                     <form onSubmit={handleIzinSubmit} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">{activeUserRole === 'guru' ? 'NIP' : 'NIS'} *</label>
+                        <input
+                          type="text"
+                          value={izinForm.user_id}
+                          onChange={(e) => setIzinForm(prev => ({ ...prev, user_id: e.target.value }))}
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          placeholder={activeUserRole === 'guru' ? 'Masukkan NIP' : 'Masukkan NIS'}
+                          required
+                        />
+                      </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1.5">Nama Lengkap *</label>
                         <input
@@ -1503,15 +1696,16 @@ const Landing = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1.5">No. Telepon Orang Tua *</label>
-                        <input
-                          type="tel"
-                          value={izinForm.parentPhone}
-                          onChange={(e) => setIzinForm(prev => ({ ...prev, parentPhone: e.target.value }))}
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Jenis *</label>
+                        <select
+                          value={izinForm.type}
+                          onChange={(e) => setIzinForm(prev => ({ ...prev, type: e.target.value }))}
                           className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                          placeholder="08123456789"
                           required
-                        />
+                        >
+                          <option value="izin">Izin</option>
+                          <option value="sakit">Sakit</option>
+                        </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1.5">Keterangan *</label>
@@ -1520,9 +1714,19 @@ const Landing = () => {
                           onChange={(e) => setIzinForm(prev => ({ ...prev, reason: e.target.value }))}
                           className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
                           rows="3"
-                          placeholder="Alasan izin..."
+                          placeholder="Alasan izin/sakit..."
                           required
                         />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">Lampiran (Opsional)</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setIzinForm(prev => ({ ...prev, attachment: e.target.files[0] }))}
+                          className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">Upload gambar bukti (surat dokter, dll)</p>
                       </div>
                       {submitMessage.text && (
                         <div className={`p-3 rounded-lg text-xs ${
