@@ -272,8 +272,11 @@ const DashboardGuru = () => {
       const [statsRes, classesRes, activityRes] = await Promise.all([
         fetchWithRetry(() => api.get('/guru/stats', config)),
         fetchWithRetry(() => api.get('/guru/classes', config)),
-        fetchWithRetry(() => api.get('/guru/activity', config))
+        fetchWithRetry(() => api.get('/guru/activity', config)),
+        api.get('/public/events', config).catch(() => ({ data: [] }))
       ]);
+      
+      if(arguments[0]?.data) setEvents(arguments[0].data); // simplified for brevity
       setStats(statsRes.data);
       setClasses(classesRes.data);
       setRecentActivity(activityRes.data);
@@ -564,29 +567,31 @@ const DashboardGuru = () => {
         )}
 
         {/* Sidebar */}
-        <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-white border-r-2 border-blue-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out ${
-          sidebarOpen ? 'translate-x-0 w-72' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20 lg:w-20' : '-translate-x-full lg:translate-x-0 lg:w-72'
+        <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col shadow-sm transition-all duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0 w-72' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20' : '-translate-x-full lg:translate-x-0 w-72'
         }`}>
-          <div className="p-6 border-b-2 border-blue-100">
+          <div className="p-6 border-b border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg overflow-hidden shadow-md border-2 border-blue-200">
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
                   <img
                     src={attendanceSettings.schoolLogo ? resolvePhotoUrl(attendanceSettings.schoolLogo) : "/logo sekolah.jpeg"}
                     alt="Logo Sekolah"
-                    className="w-full h-full object-contain bg-white"
+                    className="w-8 h-8 object-contain"
                     onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
                   />
                 </div>
                 {!sidebarCollapsed && (
-                  <span className="text-lg font-bold text-blue-800 truncate max-w-[150px]">
-                    {attendanceSettings.schoolName || 'AbsensiPro'}
-                  </span>
+                  <div>
+                    <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                      {attendanceSettings.schoolName || 'AbsensiPro'}
+                    </h1>
+                  </div>
                 )}
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100"
+                className="lg:hidden p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -595,33 +600,34 @@ const DashboardGuru = () => {
             </div>
           </div>
 
-          <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setSidebarOpen(false);
-                  if (item.id === 'siswa' && students.length === 0) fetchStudents();
-                }}
-                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2' : 'gap-3 px-4 py-3'} rounded-xl text-left transition-all duration-200 group border-2 ${
-                  activeTab === item.id
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium border-blue-300 shadow-md'
-                    : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700 border-transparent hover:border-blue-200'
-                }`}
-                title={sidebarCollapsed ? item.label : ""}
-              >
-                <span className="text-lg transition-transform group-hover:scale-110">{item.icon}</span>
-                {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-              </button>
-            ))}
+          <nav className="flex-1 p-4 overflow-y-auto">
+            {!sidebarCollapsed && <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-2">MENU</div>}
+            <div className="space-y-1">
+              {menuItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setSidebarOpen(false);
+                    if (item.id === 'siswa' && students.length === 0) fetchStudents();
+                  }}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2.5'} rounded-lg text-left transition-all duration-200 ${
+                    activeTab === item.id ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                  title={sidebarCollapsed ? item.label : ""}
+                >
+                  <span className="text-xl flex-shrink-0">{item.icon}</span>
+                  {!sidebarCollapsed && <span className="text-sm font-medium flex-1">{item.label}</span>}
+                </button>
+              ))}
+            </div>
           </nav>
 
-          <div className="p-4 border-t-2 border-blue-100">
+          <div className="p-4 border-t border-gray-100">
             {!sidebarCollapsed && (
-              <div className="mb-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border-2 border-blue-200">
+              <div className="mb-3 bg-gray-50 rounded-xl p-3 border border-gray-200">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border-2 border-blue-300 overflow-hidden">
+                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border border-gray-200 overflow-hidden">
                     <img
                       src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Guru')}&background=2563eb&color=ffffff`}
                       alt="User Avatar"
@@ -629,9 +635,9 @@ const DashboardGuru = () => {
                       onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Guru')}&background=2563eb&color=ffffff`; }}
                     />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-blue-800 font-semibold text-sm truncate max-w-[140px]" title={user.name}>{user.name || 'Guru'}</p>
-                    <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 truncate" title={user.name}>{user.name || 'Guru'}</p>
+                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                       🎓 Guru
                     </span>
                   </div>
@@ -640,11 +646,13 @@ const DashboardGuru = () => {
             )}
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-medium border-2 border-transparent hover:border-red-200"
+              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2.5'} text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all text-sm font-medium border border-transparent hover:border-red-200`}
               title="Keluar"
             >
-              <span className="flex-shrink-0">🚪</span>
-              {!sidebarCollapsed && <span>Keluar</span>}
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              {!sidebarCollapsed && <span className="flex-1 text-left">Keluar</span>}
             </button>
           </div>
         </aside>
@@ -652,13 +660,13 @@ const DashboardGuru = () => {
         {/* Main Column */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* Header */}
-          <header className="bg-white border-b-2 border-blue-100 sticky top-0 z-40 shadow-sm h-[70px] flex items-center w-full transition-all duration-300 flex-shrink-0">
+          <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm h-[70px] flex items-center w-full transition-all duration-300 flex-shrink-0">
             <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between w-full">
               <div className="flex items-center gap-3">
                 {/* ✨ TOMBOL HAMBURGER UNTUK MEMBUKA SIDEBAR */}
                 <button
                   onClick={() => window.innerWidth >= 1024 ? setSidebarCollapsed(prev => !prev) : setSidebarOpen(true)}
-                  className="p-2 text-gray-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all"
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                   title="Toggle Sidebar"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -666,14 +674,14 @@ const DashboardGuru = () => {
                   </svg>
                 </button>
 
-                {/* ✨ Judul dinamis mengikuti fitur yang diklik (SAMADENGAN DASHBOARD SISWA) */}
+                {/* ✨ Judul dinamis mengikuti fitur yang diklik */}
                 <h1 className="text-lg md:text-xl font-bold text-blue-900 tracking-tight ml-2">
                   {menuItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
                 </h1>
               </div>
 
               <div className="flex items-center gap-2 md:gap-6">
-                <div className="hidden md:flex flex-col items-end border-l-2 border-blue-50 pl-6">
+                <div className="hidden md:flex flex-col items-end border-l border-gray-200 pl-6">
                   <p className="text-[11px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">
                     {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                   </p>
@@ -726,6 +734,34 @@ const DashboardGuru = () => {
               {/* TAB: Ringkasan */}
               {activeTab === 'ringkasan' && (
                 <div>
+                  {/* ✨ TAMBAHAN: Kartu Event Countdown untuk Guru */}
+                  {events.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                      {events.map((event) => {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const target = new Date(event.date);
+                        const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+                        if (days < 0) return null;
+                        return (
+                          <div key={event.id} className="bg-white rounded-2xl border-2 border-amber-200 overflow-hidden shadow-md flex items-center p-2 gap-3 group">
+                            <img src={resolvePhotoUrl(event.image)} className="w-16 h-16 rounded-xl object-cover border border-amber-100" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-amber-900 uppercase tracking-tighter truncate">{event.title}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-0.5 rounded-md border border-amber-200">
+                                  {days === 0 ? 'HARI INI' : `${days} Hari Lagi`}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-amber-300 group-hover:text-amber-500 transition-colors mr-2">
+                              📅
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className="bg-white rounded-2xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
                     <h2 className="text-xl font-bold text-blue-800 mb-1">Halo, {user.name}! 👋</h2>
                     <p className="text-blue-600 text-sm">Ringkasan aktivitas mengajar hari ini</p>

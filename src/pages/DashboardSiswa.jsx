@@ -137,6 +137,9 @@ const DashboardSiswa = () => {
   const [qrNotificationMessage, setQrNotificationMessage] = useState('');
   const [qrNotificationType, setQrNotificationType] = useState('error');
 
+  // ✨ TAMBAHAN: State Event
+  const [events, setEvents] = useState([]);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
@@ -273,6 +276,9 @@ const DashboardSiswa = () => {
         api.get('/siswa/attendance', config).catch(e => { console.warn("History API fail", e); throw e; }),
         api.get('/siswa/class', config).catch(e => { console.warn("Class API fail", e); throw e; })
       ]);
+
+      const eventRes = await api.get('/public/events', config).catch(() => ({ data: [] }));
+      setEvents(Array.isArray(eventRes.data) ? eventRes.data : []);
 
     const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
     setStats({
@@ -997,30 +1003,43 @@ const DashboardSiswa = () => {
           />
         )}
 
-        {/* Sidebar */}
-        <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-white border-r-2 border-blue-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out ${
-          sidebarOpen ? 'translate-x-0 w-72' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20 lg:w-20' : '-translate-x-full lg:translate-x-0 lg:w-72'
+        {/* Sidebar - Redesigned to match hugeicons style */}
+        <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col shadow-sm transition-all duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0 w-72' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20' : '-translate-x-full lg:translate-x-0 w-72'
         }`}>
-          <div className="p-6 border-b-2 border-blue-100">
+          {/* Logo Section */}
+          <div className="p-6 border-b border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg overflow-hidden shadow-md border-2 border-blue-200">
-                  <img
-                    src={attendanceSettings.schoolLogo ? resolvePhotoUrl(attendanceSettings.schoolLogo) : "/logo sekolah.jpeg"}
-                    alt="Logo Sekolah"
-                    className="w-full h-full object-contain bg-white"
-                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
-                  />
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
+                  {attendanceSettings.schoolLogo ? (
+                    <img
+                      src={resolvePhotoUrl(attendanceSettings.schoolLogo)}
+                      alt="Logo Sekolah"
+                      className="w-8 h-8 object-contain"
+                      onError={(e) => { 
+                        e.target.onerror = null; 
+                        e.target.src = 'https://via.placeholder.com/40/3b82f6/ffffff?text=S'; 
+                      }}
+                    />
+                  ) : (
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  )}
                 </div>
                 {!sidebarCollapsed && (
-                  <span className="text-lg font-bold text-blue-800 truncate max-w-[150px]">
-                    {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
-                  </span>
+                  <div>
+                    <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                      {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
+                    </h1>
+                    <p className="text-xs text-gray-500">v1.0</p>
+                  </div>
                 )}
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100"
+                className="lg:hidden p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1029,39 +1048,55 @@ const DashboardSiswa = () => {
             </div>
           </div>
 
-          <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2' : 'gap-3 px-4 py-3'} rounded-xl text-left transition-all duration-200 group border-2 ${
-                  activeTab === item.id
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium border-blue-300 shadow-md'
-                    : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700 border-transparent hover:border-blue-200'
-                }`}
-                title={sidebarCollapsed ? item.label : ""}
-              >
-                <span className="text-lg transition-transform group-hover:scale-110">{item.icon}</span>
-                {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-              </button>
-            ))}
+          {/* Navigation Menu */}
+          <nav className="flex-1 p-4 overflow-y-auto">
+            <div className="mb-2">
+              {!sidebarCollapsed && (
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-2">MENU</div>
+              )}
+              <div className="space-y-1">
+                {menuItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
+                    className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2.5'} rounded-lg text-left transition-all duration-200 ${
+                      activeTab === item.id
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                    title={sidebarCollapsed ? item.label : ""}
+                  >
+                    <span className="text-xl flex-shrink-0">{item.icon}</span>
+                    {!sidebarCollapsed && (
+                      <span className="text-sm font-medium flex-1">{item.label}</span>
+                    )}
+                    {!sidebarCollapsed && item.id === 'absensi' && stats.lateDays > 0 && (
+                      <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        {stats.lateDays}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </nav>
 
-          <div className="p-4 border-t-2 border-blue-100">
+          {/* Bottom Section - User Profile & Logout */}
+          <div className="p-4 border-t border-gray-100">
             {!sidebarCollapsed && (
-              <div className="mb-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border-2 border-blue-200">
+              <div className="mb-3 bg-gray-50 rounded-xl p-3 border border-gray-200">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border-2 border-blue-300 overflow-hidden">
+                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border border-gray-200 overflow-hidden">
                     <img
-                      src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Siswa')}&background=2563eb&color=ffffff`}
+                      src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Siswa')}&background=3b82f6&color=ffffff`}
                       alt="User Avatar"
                       className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Siswa')}&background=2563eb&color=ffffff`; }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Siswa')}&background=3b82f6&color=ffffff`; }}
                     />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-blue-800 font-semibold text-sm truncate max-w-[140px]" title={user.name}>{user.name || 'Siswa'}</p>
-                    <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 truncate" title={user.name}>{user.name || 'Siswa'}</p>
+                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                       🧑‍🎓 Siswa
                     </span>
                   </div>
@@ -1070,16 +1105,18 @@ const DashboardSiswa = () => {
             )}
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-medium border-2 border-transparent hover:border-red-200"
+              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2.5'} text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all text-sm font-medium border border-transparent hover:border-red-200`}
               title="Keluar"
             >
-              <span className="flex-shrink-0">🚪</span>
-              {!sidebarCollapsed && <span>Keluar</span>}
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              {!sidebarCollapsed && <span className="flex-1 text-left">Keluar</span>}
             </button>
           </div>
         </aside>
 
-        {/* Main UI Column */}
+        {/* Main UI Column - UNTOUCHED */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {sessionInfo?.attendanceSessionOpen === false && (
             <div className="bg-amber-100 border-b-2 border-amber-300 px-4 py-2 text-center text-sm text-amber-900 flex-shrink-0">
@@ -1134,6 +1171,34 @@ const DashboardSiswa = () => {
               {/* TAB: Ringkasan */}
               {activeTab === 'ringkasan' && (
                 <div>
+                  {/* ✨ TAMBAHAN: Kartu Event Countdown */}
+                  {events.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                      {events.map((event) => {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const target = new Date(event.date);
+                        const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+                        if (days < 0) return null;
+                        return (
+                          <div key={event.id} className="relative bg-white rounded-2xl border-2 border-indigo-200 overflow-hidden shadow-lg group">
+                            <img src={resolvePhotoUrl(event.image)} className="w-full h-24 object-cover opacity-80 group-hover:scale-105 transition-transform" />
+                            <div className="p-3">
+                              <div className="flex justify-between items-center">
+                                <h4 className="font-bold text-indigo-900 text-sm truncate">{event.title}</h4>
+                                <span className="bg-indigo-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
+                                  {days === 0 ? 'HARI INI' : `${days} HARI LAGI`}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-indigo-400 font-medium">
+                                {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
                     <h2 className="text-xl font-bold text-blue-800 mb-1">Halo, {user.name}! 👋</h2>
                     <p className="text-blue-600 text-sm">Ini ringkasan kehadiranmu</p>

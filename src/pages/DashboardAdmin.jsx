@@ -185,6 +185,13 @@ const DashboardAdmin = () => {
   const [mediaVideoFile, setMediaVideoFile] = useState(null);
   const [mediaVideoPreview, setMediaVideoPreview] = useState(null);
 
+  // ✨ TAMBAHAN: State untuk Fitur Event
+  const [events, setEvents] = useState([]);
+  const [showEventModal, setShowAnnouncementModal_Event] = useState(false); // Menggunakan nama unik
+  const [eventFormData, setEventFormData] = useState({ title: '', date: '', image: null });
+  const [eventImagePreview, setEventImagePreview] = useState(null);
+  const [isSavingEvent, setIsSavingEvent] = useState(false);
+
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
   // ✨ TAMBAHAN: State untuk Modal Profil Detail
@@ -656,6 +663,70 @@ const fetchSettings = async () => {
     } finally {
       setDataLoading(false);
     }
+  };
+
+  // ✨ TAMBAHAN: Fetch & CRUD Event
+  const fetchEvents = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await api.get('/admin/events', { headers: { Authorization: `Bearer ${token}` } });
+      setEvents(Array.isArray(res.data) ? res.data : (res.data.data || []));
+    } catch (err) {
+      console.error('Gagal mengambil data event:', err);
+      // Fallback data dummy jika API belum siap
+      setEvents([]);
+    }
+  };
+
+  useEffect(() => {
+    if (user) fetchEvents();
+  }, [user]);
+
+  const handleSaveEvent = async (e) => {
+    e.preventDefault();
+    setIsSavingEvent(true);
+    try {
+      const token = localStorage.getItem('token');
+      const data = new FormData();
+      data.append('title', eventFormData.title);
+      data.append('date', eventFormData.date);
+      if (eventFormData.image) data.append('image', eventFormData.image);
+
+      await api.post('/admin/events', data, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
+      });
+      
+      alert('✅ Event berhasil disimpan!');
+      setShowAnnouncementModal_Event(false);
+      setEventFormData({ title: '', date: '', image: null });
+      setEventImagePreview(null);
+      fetchEvents();
+    } catch (err) {
+      alert('❌ Gagal menyimpan event');
+    } finally {
+      setIsSavingEvent(false);
+    }
+  };
+
+  const handleDeleteEvent = async (id) => {
+    if (!confirm('Yakin ingin menghapus event ini?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      await api.delete(`/admin/events/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      fetchEvents();
+    } catch (err) {
+      alert('❌ Gagal menghapus event');
+    }
+  };
+
+  // Helper hitung mundur
+  const getDaysRemaining = (dateString) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateString);
+    const diffTime = target - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
   };
 
   // Handle photo upload
@@ -1506,82 +1577,75 @@ const handleSaveSettings = async (section, e) => {
         )}
         
         {/* SIDEBAR - Responsive dengan hamburger menu */}
-        <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-white border-r-2 border-blue-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0 w-72' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20 lg:w-20' : '-translate-x-full lg:translate-x-0 lg:w-72'}`}>
+        <aside className={`fixed lg:sticky top-0 h-screen z-50 bg-white border-r border-slate-100 flex flex-col transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${sidebarOpen ? 'translate-x-0 w-64' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20' : '-translate-x-full lg:translate-x-0 lg:w-64'} py-8 px-4`}>
           {/* Logo */}
-          <div className="p-6 border-b-2 border-blue-100">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg overflow-hidden shadow-md border-2 border-blue-200">
-                  <img
-                    src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : `https://ui-avatars.com/api/?name=${encodeURIComponent(settingsData.schoolName || 'S')}&background=2563eb&color=ffffff`}
-                    alt="Logo Sekolah"
-                    className="w-full h-full object-contain bg-white"
-                    onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=S&background=2563eb&color=ffffff`; }}
-                  />
-                </div>
-                {!sidebarCollapsed && <span className="text-lg font-bold text-blue-800 truncate max-w-[150px]">{settingsData.schoolName || ''}</span>}
+          <div className="mb-10 px-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full overflow-hidden shadow-sm ring-1 ring-slate-100 flex-shrink-0">
+                <img
+                  src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : `https://ui-avatars.com/api/?name=${encodeURIComponent(settingsData.schoolName || 'S')}&background=2563eb&color=ffffff`}
+                  alt="Logo"
+                  className="w-full h-full object-contain bg-white"
+                />
               </div>
-              {/* Tombol close untuk mobile */}
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              {!sidebarCollapsed && <span className="text-lg font-black text-slate-800 tracking-tight truncate">{settingsData.schoolName || 'ADMIN'}</span>}
             </div>
+            {sidebarOpen && (
+              <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-slate-900">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            )}
           </div>
           
           {/* Navigation */}
-          <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+          <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar px-1">
             {menuItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2' : 'gap-3 px-4 py-3'} rounded-xl text-left transition-all duration-200 group border-2 ${activeTab === item.id
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium border-blue-300 shadow-md'
-                    : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700 border-transparent hover:border-blue-200'
+                onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'gap-4 px-4 py-3'} rounded-full transition-all duration-300 group ${activeTab === item.id
+                    ? 'bg-slate-900 text-white shadow-lg shadow-slate-200'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                   }`}
               >
-                <span className="text-lg transition-transform group-hover:scale-110">{item.icon}</span>
-                {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+                <span className={`text-xl transition-all duration-300 ${activeTab === item.id ? 'scale-110' : 'opacity-70 group-hover:opacity-100'}`}>{item.icon}</span>
+                {!sidebarCollapsed && <span className="text-[15px] font-bold tracking-tight">{item.label}</span>}
               </button>
             ))}
           </nav>
           
-          {/* Logout */}
-          <div className="p-4 border-t-2 border-blue-100">
-            {!sidebarCollapsed && (
-              <div className="mb-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border-2 border-blue-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border-2 border-blue-300 overflow-hidden">
-                    <img
-                      src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`}
-                      alt="User Avatar"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=A&background=2563eb&color=ffffff`; }}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-blue-800 font-semibold text-sm truncate max-w-[140px]" title={user.name}>{user.name || 'Admin'}</p>
-                    <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
-                      👮 Admin
-                    </span>
-                  </div>
+          {/* Profile & Logout Section at Bottom */}
+          <div className="mt-auto pt-6 space-y-3 px-1">
+            {!sidebarCollapsed ? (
+              <div className="p-3 bg-slate-50 rounded-[2rem] flex items-center gap-3 ring-1 ring-slate-100">
+                <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-white shadow-sm flex-shrink-0">
+                  <img
+                    src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`}
+                    alt="User"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-800 truncate">{user.name || 'Admin'}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">Admin</p>
                 </div>
               </div>
+            ) : (
+              <div className="w-12 h-12 mx-auto rounded-full overflow-hidden ring-1 ring-slate-100 shadow-sm">
+                <img
+                  src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`}
+                  alt="User"
+                  className="w-full h-full object-cover"
+                />
+              </div>
             )}
+            
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-medium border-2 border-transparent hover:border-red-200"
-              title="Keluar"
+              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'gap-4 px-4 py-3'} rounded-full text-slate-400 hover:bg-red-50 hover:text-red-600 transition-all duration-300 font-bold group`}
             >
-              <span className="flex-shrink-0">🚪</span>
-              {!sidebarCollapsed && <span>Keluar</span>}
+              <span className="text-xl group-hover:scale-110 transition-transform">🚪</span>
+              {!sidebarCollapsed && <span className="text-[15px] tracking-tight">Keluar</span>}
             </button>
           </div>
         </aside>
@@ -1601,57 +1665,37 @@ const handleSaveSettings = async (section, e) => {
                       setSidebarOpen(true);
                     }
                   }}
-                  className="p-2 text-gray-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all"
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                   title="Toggle Sidebar"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
                 </button>
-                {/* Theme Toggle */}
-                <div>
-                  <h1 className="text-lg lg:text-xl font-bold text-blue-800">
-                    {activeTab === 'overview' && '📊 Ringkasan Dashboard'}
-                    {activeTab === 'users' && '👥 Kelola Pengguna'}
-                    {activeTab === 'dataGuru' && '🎓 Data Guru'}
-                    {activeTab === 'dataSiswa' && '🧑‍🎓 Data Siswa'}
-                    {activeTab === 'pesanWA' && '💬 Pesan WhatsApp'}
-                    {activeTab === 'classes' && '🏫 Data Kelas'}
-                    {activeTab === 'activity' && '⏰ Aktivitas Sistem'}
-                    {activeTab === 'alumni' && '🧑‍🎓 Data Alumni'} {/* ✨ TAMBAHAN: Judul untuk tab Alumni */}
-                    {activeTab === 'settings' && '⚙️ Pengaturan Sistem'}
-                  </h1>
-                  <p className="text-slate-500 text-xs lg:text-sm mt-0.5">
-                    Monitor dan kelola sistem absensi dengan mudah
-                  </p>
-                </div>
+
+                {/* ✨ Judul dinamis mengikuti fitur yang diklik */}
+                <h1 className="text-lg md:text-xl font-bold text-blue-900 tracking-tight ml-2">
+                  {menuItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
+                </h1>
               </div>
-              <div className="flex items-center gap-2 lg:gap-3">
+
+              <div className="flex items-center gap-2 md:gap-6">
                 {(activeTab === 'users' || activeTab === 'dataGuru' || activeTab === 'dataSiswa' || activeTab === 'pesanWA') && (
                   <input
                     type="text"
                     placeholder="Cari..."
                     value={activeTab === 'pesanWA' ? waSearchQuery : searchQuery}
                     onChange={(e) => activeTab === 'pesanWA' ? setWaSearchQuery(e.target.value) : setSearchQuery(e.target.value)}
-                    className="hidden sm:block px-4 py-2 border-2 border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="hidden lg:block px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                 )}
-                <span className="text-xs text-slate-400 bg-blue-50 px-2 lg:px-3 py-1.5 rounded-full border border-blue-200">
-                  {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </span>
-                <div className="flex items-center gap-2 bg-white border border-blue-200 px-3 py-1.5 rounded-full shadow-sm">
-                  <div className="w-7 h-7 rounded-full overflow-hidden bg-blue-500 border-2 border-blue-200">
-                    <img
-                      src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Admin')}&background=2563eb&color=ffffff`}
-                      alt="User Avatar"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=A&background=2563eb&color=ffffff`; }}
-                    />
-                  </div>
-                  <div className="hidden sm:block text-xs text-blue-700 leading-tight">
-                    <div className="font-semibold truncate max-w-[130px]">{user.name || user.email || 'Admin'}</div>
-                    <div className="text-blue-400">Admin</div>
-                  </div>
+                <div className="flex flex-col items-end border-l-2 border-blue-50 pl-3 md:pl-6">
+                  <p className="hidden md:block text-[11px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">
+                    {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                  <p className="text-sm md:text-lg font-black text-blue-900 font-mono leading-none">
+                    {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1934,6 +1978,37 @@ const handleSaveSettings = async (section, e) => {
                         </div>
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ✨ TAMBAHAN: Seksi Event Mendatang di Overview */}
+              {activeTab === 'overview' && events.length > 0 && (
+                <div className="mx-4 lg:mx-8 mb-8">
+                  <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
+                    <span>📅</span> Event & Hari Besar Mendatang
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {events.map((event) => {
+                      const days = getDaysRemaining(event.date);
+                      if (days < 0) return null;
+                      return (
+                        <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md hover:shadow-xl transition-all group">
+                          <div className="h-32 overflow-hidden relative">
+                            <img src={resolvePhotoUrl(event.image) || 'https://images.unsplash.com/photo-1506784911079-531bb9934257?w=500'} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                            <div className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg">
+                              {days === 0 ? 'HARI INI' : `${days} Hari Lagi`}
+                            </div>
+                          </div>
+                          <div className="p-4">
+                            <h4 className="font-bold text-slate-800 truncate">{event.title}</h4>
+                            <p className="text-xs text-slate-500 mt-1">
+                              📅 {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -3148,7 +3223,8 @@ const handleSaveSettings = async (section, e) => {
                         {[
                           { id: 'school', title: 'Sekolah', icon: '🏫', description: 'Identitas' },
                           { id: 'attendance', title: 'Absensi', icon: '⏰', description: 'Jadwal' },
-                          { id: 'notification', title: 'Notifikasi', icon: '🔔', description: 'Email/QR' },
+                          { id: 'notification', title: 'Sistem', icon: '🔔', description: 'Notifikasi' },
+                          { id: 'events', title: 'Event', icon: '📅', description: 'Hari Besar' },
                         ].map((tab) => (
                           <button
                             key={tab.id}
@@ -3463,6 +3539,75 @@ const handleSaveSettings = async (section, e) => {
                               </button>
                             </div>
                           </form>
+                        )}
+
+                        {/* ✨ TAMBAHAN: Pengaturan Event */}
+                        {settingsSection === 'events' && (
+                          <div className="space-y-4">
+                            <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4">
+                              <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-base font-bold text-blue-800">📅 Kelola Event Sekolah</h3>
+                                <button 
+                                  onClick={() => setShowAnnouncementModal_Event(true)}
+                                  className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-all"
+                                >
+                                  ➕ Tambah Event
+                                </button>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {events.length === 0 ? (
+                                  <p className="col-span-full text-center py-8 text-slate-400 italic text-sm">Belum ada event terdaftar.</p>
+                                ) : (
+                                  events.map(ev => (
+                                    <div key={ev.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                      <img src={resolvePhotoUrl(ev.image)} className="w-12 h-12 rounded-lg object-cover bg-white" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-slate-800 truncate">{ev.title}</p>
+                                        <p className="text-[10px] text-slate-500">{ev.date}</p>
+                                      </div>
+                                      <button onClick={() => handleDeleteEvent(ev.id)} className="text-red-500 hover:text-red-700 p-2">🗑️</button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            {showEventModal && (
+                              <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                                <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl animate-fade-in-up">
+                                  <h3 className="text-lg font-bold text-blue-900 mb-4">Tambah Event Baru</h3>
+                                  <form onSubmit={handleSaveEvent} className="space-y-4">
+                                    <div>
+                                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Event / Hari Besar</label>
+                                      <input type="text" required value={eventFormData.title} onChange={e => setEventFormData({...eventFormData, title: e.target.value})} className="w-full px-4 py-2 border-2 border-blue-50 rounded-xl text-sm" placeholder="Contoh: HUT RI ke-80" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tanggal</label>
+                                      <input type="date" required value={eventFormData.date} onChange={e => setEventFormData({...eventFormData, date: e.target.value})} className="w-full px-4 py-2 border-2 border-blue-50 rounded-xl text-sm" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Gambar Event</label>
+                                      <input type="file" accept="image/*" required onChange={e => {
+                                        const file = e.target.files[0];
+                                        if(file) {
+                                          setEventFormData({...eventFormData, image: file});
+                                          setEventImagePreview(URL.createObjectURL(file));
+                                        }
+                                      }} className="text-xs w-full" />
+                                      {eventImagePreview && <img src={eventImagePreview} className="mt-2 w-full h-32 object-cover rounded-xl" />}
+                                    </div>
+                                    <div className="flex gap-3 pt-2">
+                                      <button type="button" onClick={() => setShowAnnouncementModal_Event(false)} className="flex-1 py-2.5 border-2 border-slate-100 rounded-xl text-sm font-bold text-slate-500">Batal</button>
+                                      <button type="submit" disabled={isSavingEvent} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg">
+                                        {isSavingEvent ? '⏳ Menyimpan...' : 'Simpan Event'}
+                                      </button>
+                                    </div>
+                                  </form>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="space-y-4">
