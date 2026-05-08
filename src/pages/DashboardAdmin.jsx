@@ -135,6 +135,8 @@ const DashboardAdmin = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   // State untuk data
@@ -156,6 +158,11 @@ const DashboardAdmin = () => {
       setCurrentActivityPage(totalPages);
     }
   }, [attendanceReports, currentActivityPage, activityPageSize]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   
   // ✨ TAMBAHAN: State untuk fitur baru
   const [subjects, setSubjects] = useState([]);
@@ -235,6 +242,36 @@ const DashboardAdmin = () => {
   });
 
   const [settingsSection, setSettingsSection] = useState('school');
+
+  // ✨ KONFIGURASI BACKGROUND DINAMIS (LANDING STYLE)
+  const lakeBackgrounds = [
+    'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1280&q=80',
+    'https://images.unsplash.com/photo-1476610182048-b716b8518aae?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1280&q=80'
+  ];
+
+  const holidayBackgrounds = {
+    '01-01': { name: 'Tahun Baru Masehi', image: 'https://images.unsplash.com/photo-1483721310020-03333e577078?w=1280&q=80' },
+    '05-01': { name: 'Hari Buruh Internasional', image: 'https://images.unsplash.com/photo-1514474959185-08fb602660ef?w=1280&q=80' },
+    '06-01': { name: 'Hari Lahir Pancasila', image: 'https://images.unsplash.com/photo-1520923302269-6990cb8d0a23?w=1280&q=80' },
+    '08-17': { name: 'Hari Kemerdekaan RI', image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=1280&q=80' },
+    '11-10': { name: 'Hari Pahlawan', image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1280&q=80' },
+    '12-25': { name: 'Hari Raya Natal', image: 'https://images.unsplash.com/photo-1511993226959-0f2ecb18f6a5?w=1280&q=80' }
+  };
+
+  const getHolidayInfo = (date) => {
+    if (!date) return null;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return holidayBackgrounds[`${month}-${day}`] || null;
+  };
+
+  const getSectionBackground = (date) => {
+    const holiday = getHolidayInfo(date);
+    if (holiday) return { image: holiday.image, label: holiday.name, isHoliday: true };
+    return { image: lakeBackgrounds[date.getDate() % lakeBackgrounds.length], label: 'Hari Biasa', isHoliday: false };
+  };
 
   // Fetch Data Guru
 const fetchDataGuru = async () => {
@@ -1651,12 +1688,11 @@ const handleSaveSettings = async (section, e) => {
         </aside>
 
         {/* ✅ MAIN CONTENT */}
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="relative flex-1 flex flex-col overflow-hidden">
           {/* Header */}
-          <header className="bg-white border-b-2 border-blue-200 px-4 lg:px-8 py-4 sticky top-0 z-30 shadow-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                {/* ✨ HAMBURGER MENU */}
+          <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm h-[70px] flex items-center w-full transition-all duration-300 flex-shrink-0">
+            <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => {
                     if (window.innerWidth >= 1024) {
@@ -1668,12 +1704,11 @@ const handleSaveSettings = async (section, e) => {
                   className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                   title="Toggle Sidebar"
                 >
-                  <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
                 </button>
 
-                {/* ✨ Judul dinamis mengikuti fitur yang diklik */}
                 <h1 className="text-lg md:text-xl font-bold text-blue-900 tracking-tight ml-2">
                   {menuItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
                 </h1>
@@ -1689,17 +1724,48 @@ const handleSaveSettings = async (section, e) => {
                     className="hidden lg:block px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                 )}
-                <div className="flex flex-col items-end border-l-2 border-blue-50 pl-3 md:pl-6">
-                  <p className="hidden md:block text-[11px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">
-                    {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+
+                <div className="hidden md:flex flex-col items-end border-l border-gray-200 pl-6">
+                  <p className="text-[11px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">
+                    {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                   </p>
-                  <p className="text-sm md:text-lg font-black text-blue-900 font-mono leading-none">
-                    {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  <p className="text-lg font-black text-blue-900 font-mono leading-none">
+                    {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </p>
                 </div>
+
+                <button
+                  onClick={() => setShowNotifications(prev => !prev)}
+                  className="relative p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  <span className="text-xl">🔔</span>
+                  {notifications.length > 0 && (
+                    <span className="absolute top-0 right-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                      {notifications.length}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </header>
+
+          {showNotifications && (
+            <div className="absolute right-4 top-[74px] w-[min(320px,calc(100%-2rem))] rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden z-50">
+              <div className="px-4 py-3 border-b border-slate-100 font-semibold text-slate-800">Notifikasi</div>
+              <div className="p-4 text-sm text-slate-600">
+                {notifications.length > 0 ? (
+                  notifications.map((notif, index) => (
+                    <div key={index} className="mb-3 last:mb-0">
+                      <p className="font-semibold text-slate-800">{notif.title || 'Pemberitahuan'}</p>
+                      <p className="text-slate-500">{notif.message || notif}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-slate-500">Belum ada notifikasi untuk saat ini.</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 lg:p-8">
@@ -1922,7 +1988,42 @@ const handleSaveSettings = async (section, e) => {
 
               {/* Banner Selamat Datang hanya di tab Ringkasan */}
               {activeTab === 'overview' && (
-                <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 mt-2 shadow-sm mb-6 flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
+                <div className="space-y-6">
+                  {/* ✨ TANGGAL KOTAK DINAMIS (LANDING STYLE) */}
+                  <div className="mx-4 lg:mx-8 mt-2">
+                    {(() => {
+                      const sectionBg = getSectionBackground(currentTime);
+                      return (
+                        <div
+                          className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg"
+                          style={{
+                            backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                          }}
+                        >
+                          <div className="relative">
+                            <p className="text-xs uppercase tracking-[0.24em] text-blue-200/90 mb-3 font-bold">
+                              {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
+                            </p>
+                            <h3 className="text-2xl md:text-3xl font-black mb-2 tracking-tight">
+                              {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                            </h3>
+                            <p className="text-sm text-slate-200/80 mb-6">
+                              Sistem pencatatan waktu otomatis zona waktu Jakarta.
+                            </p>
+                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg border border-white/20">
+                              <span>{currentTime.getFullYear()}</span>
+                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+                              <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 shadow-sm flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
                   {/* Efek dekorasi subtle di background agar tidak membosankan */}
                   <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
                   
@@ -1939,6 +2040,7 @@ const handleSaveSettings = async (section, e) => {
                     </p>
                   </div>
                 </div>
+              </div>
               )}
 
               {/* ✨ SEKSI MEDIA (GABUNGAN KE OVERVIEW) */}
@@ -1985,19 +2087,21 @@ const handleSaveSettings = async (section, e) => {
               {/* ✨ TAMBAHAN: Seksi Event Mendatang di Overview */}
               {activeTab === 'overview' && events.length > 0 && (
                 <div className="mx-4 lg:mx-8 mb-8">
-                  <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
-                    <span>📅</span> Event & Hari Besar Mendatang
-                  </h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-blue-900 flex items-center gap-2 text-lg">
+                      <span>📅</span> Event & Hari Besar Mendatang
+                    </h3>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {events.map((event) => {
                       const days = getDaysRemaining(event.date);
                       if (days < 0) return null;
                       return (
-                        <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md hover:shadow-xl transition-all group">
+                        <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md hover:shadow-xl transition-all group relative">
                           <div className="h-32 overflow-hidden relative">
                             <img src={resolvePhotoUrl(event.image) || 'https://images.unsplash.com/photo-1506784911079-531bb9934257?w=500'} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                            <div className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg">
-                              {days === 0 ? 'HARI INI' : `${days} Hari Lagi`}
+                            <div className={`absolute top-2 right-2 ${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg border border-white/20`}>
+                              {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} Hari Lagi`}
                             </div>
                           </div>
                           <div className="p-4">

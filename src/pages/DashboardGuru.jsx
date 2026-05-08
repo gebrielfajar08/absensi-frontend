@@ -58,6 +58,7 @@ const DashboardGuru = () => {
   const [classes, setClasses] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [students, setStudents] = useState([]);
+  const [events, setEvents] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
   const [lastSync, setLastSync] = useState(null);
@@ -74,6 +75,44 @@ const DashboardGuru = () => {
     dashboardVideo: null
   });
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // ✨ KONFIGURASI BACKGROUND DINAMIS (LANDING STYLE)
+  const lakeBackgrounds = [
+    'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1280&q=80',
+    'https://images.unsplash.com/photo-1476610182048-b716b8518aae?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1280&q=80'
+  ];
+
+  const holidayBackgrounds = {
+    '01-01': { name: 'Tahun Baru Masehi', image: 'https://images.unsplash.com/photo-1483721310020-03333e577078?w=1280&q=80' },
+    '05-01': { name: 'Hari Buruh Internasional', image: 'https://images.unsplash.com/photo-1514474959185-08fb602660ef?w=1280&q=80' },
+    '06-01': { name: 'Hari Lahir Pancasila', image: 'https://images.unsplash.com/photo-1520923302269-6990cb8d0a23?w=1280&q=80' },
+    '08-17': { name: 'Hari Kemerdekaan RI', image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=1280&q=80' },
+    '11-10': { name: 'Hari Pahlawan', image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1280&q=80' },
+    '12-25': { name: 'Hari Raya Natal', image: 'https://images.unsplash.com/photo-1511993226959-0f2ecb18f6a5?w=1280&q=80' }
+  };
+
+  const getHolidayInfo = (date) => {
+    if (!date) return null;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return holidayBackgrounds[`${month}-${day}`] || null;
+  };
+
+  const getSectionBackground = (date) => {
+    const holiday = getHolidayInfo(date);
+    if (holiday) return { image: holiday.image, label: holiday.name, isHoliday: true };
+    return { image: lakeBackgrounds[date.getDate() % lakeBackgrounds.length], label: 'Hari Biasa', isHoliday: false };
+  };
+
+  // ✨ HELPER: Mendapatkan nama kelas secara akurat dari ID
+  const getClassName = (classId) => {
+    const found = classes.find(c => c.id?.toString() === classId?.toString());
+    if (found) return found.name;
+    // Fallback ke data user jika guru adalah wali kelas
+    return user?.class_name || user?.kelas || '-';
+  };
 
   // ✨ Theme Sync
 
@@ -137,6 +176,29 @@ const DashboardGuru = () => {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/public/settings');
+        if (res.data) {
+          const settings = res.data;
+          const mappedSettings = {
+            schoolName: settings.schoolName || settings.nama_sekolah || 'AbsensiPro',
+            schoolLogo: settings.schoolLogo || settings.logo || settings.logo_url || null,
+            dashboardPhoto1: settings.dashboard_photo_1 || settings.dashboardPhoto1 || settings.photo1_url || null,
+            dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || settings.photo2_url || null,
+            dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || settings.photo3_url || null,
+            dashboardVideo: settings.dashboardVideo || settings.dashboard_video || settings.video_url || null,
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+          };
+          setAttendanceSettings(mappedSettings);
+          localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
+        }
+      } catch (err) {
+        console.warn("Gagal fetch settings, pakai local storage", err);
+        loadSettings();
+      }
+    };
+
     const loadSettings = () => {
       const savedSettings = localStorage.getItem('school_settings');
       if (savedSettings) {
@@ -157,7 +219,7 @@ const DashboardGuru = () => {
       }
     };
 
-    loadSettings();
+    fetchSettings();
     window.addEventListener('storage', loadSettings);
     return () => {
       clearInterval(timer);
@@ -269,14 +331,14 @@ const DashboardGuru = () => {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const [statsRes, classesRes, activityRes] = await Promise.all([
+      const [statsRes, classesRes, activityRes, eventsRes] = await Promise.all([
         fetchWithRetry(() => api.get('/guru/stats', config)),
         fetchWithRetry(() => api.get('/guru/classes', config)),
         fetchWithRetry(() => api.get('/guru/activity', config)),
         api.get('/public/events', config).catch(() => ({ data: [] }))
       ]);
       
-      if(arguments[0]?.data) setEvents(arguments[0].data); // simplified for brevity
+      setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : (eventsRes.data?.data || []));
       setStats(statsRes.data);
       setClasses(classesRes.data);
       setRecentActivity(activityRes.data);
@@ -733,27 +795,91 @@ const DashboardGuru = () => {
 
               {/* TAB: Ringkasan */}
               {activeTab === 'ringkasan' && (
-                <div>
+                <div className="space-y-6">
+                  {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                    {/* Ornamen Dekoratif */}
+                    <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                    <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
+                      <span className="text-8xl">🎓</span>
+                    </div>
+
+                    <div className="relative z-10">
+                      <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
+                        <img
+                          src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Guru')}&background=2563eb&color=ffffff`}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="text-center sm:text-left relative z-10">
+                      <div className="flex flex-wrap items-center gap-2 mb-1 justify-center sm:justify-start">
+                        <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-black rounded-lg uppercase tracking-widest shadow-sm">
+                          Wali Kelas {getClassName(user?.class_id)}
+                        </span>
+                      </div>
+                      <h2 className="text-xl lg:text-2xl font-black text-blue-900 leading-tight">
+                        Halo, Bapak/Ibu {user?.name}! 👋
+                      </h2>
+                      <p className="text-blue-600/80 text-sm mt-1 font-medium">
+                        Siap untuk menginspirasi siswa Anda hari ini? Berikut ringkasan aktivitas mengajar Anda.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* ✨ TANGGAL KOTAK DINAMIS (LANDING STYLE) */}
+                  {(() => {
+                    const sectionBg = getSectionBackground(currentTime);
+                    return (
+                      <div
+                        className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg"
+                        style={{
+                          backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center'
+                        }}
+                      >
+                        <div className="relative">
+                          <p className="text-xs uppercase tracking-[0.24em] text-blue-200/90 mb-3 font-bold">
+                            {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
+                          </p>
+                          <h3 className="text-2xl md:text-3xl font-black mb-2 tracking-tight">
+                            {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                          </h3>
+                          <p className="text-sm text-slate-200/80 mb-6">
+                            Sistem pencatatan waktu otomatis zona waktu Jakarta.
+                          </p>
+                          <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg border border-white/20">
+                            <span>{currentTime.getFullYear()}</span>
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+                            <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* ✨ TAMBAHAN: Kartu Event Countdown untuk Guru */}
                   {events.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                       {events.map((event) => {
                         const today = new Date(); today.setHours(0,0,0,0);
                         const target = new Date(event.date);
                         const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
                         if (days < 0) return null;
                         return (
-                          <div key={event.id} className="bg-white rounded-2xl border-2 border-amber-200 overflow-hidden shadow-md flex items-center p-2 gap-3 group">
+                          <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md flex items-center p-3 gap-4 group hover:border-blue-300 transition-all">
                             <img src={resolvePhotoUrl(event.image)} className="w-16 h-16 rounded-xl object-cover border border-amber-100" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-black text-amber-900 uppercase tracking-tighter truncate">{event.title}</p>
+                              <p className="text-xs font-black text-blue-900 uppercase tracking-tighter truncate">{event.title}</p>
                               <div className="flex items-center gap-2 mt-1">
-                                <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-0.5 rounded-md border border-amber-200">
-                                  {days === 0 ? 'HARI INI' : `${days} Hari Lagi`}
+                                <span className={`${days === 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-700'} text-[10px] font-bold px-2 py-0.5 rounded-md border`}>
+                                  {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} Hari Lagi`}
                                 </span>
                               </div>
                             </div>
-                            <div className="text-amber-300 group-hover:text-amber-500 transition-colors mr-2">
+                            <div className="text-blue-300 group-hover:text-blue-500 transition-colors mr-2">
                               📅
                             </div>
                           </div>
@@ -762,24 +888,19 @@ const DashboardGuru = () => {
                     </div>
                   )}
 
-                  <div className="bg-white rounded-2xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">Halo, {user.name}! 👋</h2>
-                    <p className="text-blue-600 text-sm">Ringkasan aktivitas mengajar hari ini</p>
-                  </div>
-
                   {/* ✨ SEKSI MEDIA (SAMA SEPERTI DASHBOARD SISWA) */}
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-6">
+                  <div className="bg-blue-50 rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-6">
                     <h3 className="font-semibold text-blue-800 mb-4 flex items-center gap-2">
                       <span>🖼️</span> Media & Kegiatan Sekolah
                     </h3>
-                    <div className="flex flex-col gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Baris Foto: Sliding Left Animation */}
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
                           {[1, 2, 3, 1, 2, 3].map((i, idx) => (
                             <div key={`guru-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-lg overflow-hidden border border-blue-100 bg-slate-50 shadow-sm">
                               {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
                               ) : (
                                 <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
                                   <span className="text-2xl">📸</span>
@@ -790,10 +911,10 @@ const DashboardGuru = () => {
                           ))}
                         </div>
                       </div>
-                      {/* Baris Video: Di bawah foto */}
+                      {/* Baris Video: Di sebelah kanan foto pada desktop */}
                       <div className="rounded-lg overflow-hidden border border-blue-100 bg-black shadow-md">
                         {attendanceSettings.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-40 sm:h-64 object-contain" />
+                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[160px] sm:min-h-[192px] object-contain" />
                         ) : (
                           <div className="h-32 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
                             <span className="text-2xl">🎥</span><p className="text-[10px]">Belum ada video terbaru</p>
@@ -856,7 +977,7 @@ const DashboardGuru = () => {
                         classes.map((cls) => (
                           <div key={cls.id} className="p-4 flex items-center justify-between hover:bg-blue-50 transition-colors">
                             <div>
-                              <p className="font-medium text-blue-800">{cls.name}</p>
+                              <p className="font-bold text-blue-900">{cls.name}</p>
                               <p className="text-sm text-blue-600">{cls.total_students} siswa</p>
                             </div>
                             <div className="flex items-center gap-4">
@@ -1124,7 +1245,7 @@ const DashboardGuru = () => {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-blue-600">{student.nis || '-'}</td>
-                                <td className="px-6 py-4 text-sm text-blue-600">{student.class_name || '-'}</td>
+                                <td className="px-6 py-4 text-sm font-bold text-blue-800">{getClassName(student.class_id)}</td>
                                 <td className="px-6 py-4">
                                   <span className={`inline-flex px-3 py-1 text-xs font-medium rounded-full border-2 ${
                                     (student.attendance_percentage || 0) >= 80

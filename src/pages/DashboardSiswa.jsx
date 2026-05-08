@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Html5Qrcode } from 'html5-qrcode';
 
 // Helper function to resolve photo URL
 const resolvePhotoUrl = (photo) => {
@@ -65,6 +64,8 @@ const resolveClassName = (user, classInfo) => {
 const DashboardSiswa = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [sessionInfo, setSessionInfo] = useState(null);
   const [activeTab, setActiveTab] = useState('ringkasan');
   const [isExiting, setIsExiting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -78,31 +79,14 @@ const DashboardSiswa = () => {
     presentDays: 0,
     lateDays: 0,
     absentDays: 0,
-    izinDays: 0,
-    sakitDays: 0,
     percentage: 0,
   });
-  const [sessionInfo, setSessionInfo] = useState(null);
-  const [izinForm, setIzinForm] = useState({
-    fullName: '',
-    type: 'izin',
-    reason: '',
-    attachment: null
-  });
-  const [izinSubmitting, setIzinSubmitting] = useState(false);
-  const [izinMessage, setIzinMessage] = useState({ type: '', text: '' });
-  const [fingerprintForm, setFingerprintForm] = useState({ fullName: '', nis: '' });
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [classInfo, setClassInfo] = useState(null);
   const [teacherInfo, setTeacherInfo] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [lastSync, setLastSync] = useState(null);
-
-  const [manualForm, setManualForm] = useState({ fullName: '', nis: '' });
-  const qrReaderRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const modalContentRef = useRef(null);
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     schoolName: 'SMPK DON BOSCO',
@@ -111,6 +95,7 @@ const DashboardSiswa = () => {
     attendanceEndTime: '08:00',
     lateThreshold: '08:00',
     schoolEndTime: '15:30',
+    attendanceSessionOpen: true,
     dashboardPhoto1: null,
     dashboardPhoto2: null,
     dashboardPhoto3: null,
@@ -122,20 +107,7 @@ const DashboardSiswa = () => {
   // State untuk QR Code
   const [myQRCode, setMyQRCode] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
-
-  // State untuk Absensi
-  const [showAbsenModal, setShowAbsenModal] = useState(false);
-  const [activeAbsenTab, setActiveAbsenTab] = useState('scan');
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [qrScanner, setQrScanner] = useState(null);
-  const [facingMode, setFacingMode] = useState('environment');
-  const [cameraError, setCameraError] = useState('');
-  const [qrResult, setQrResult] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
-  const [showQRNotification, setShowQRNotification] = useState(false);
-  const [qrNotificationMessage, setQrNotificationMessage] = useState('');
-  const [qrNotificationType, setQrNotificationType] = useState('error');
 
   // ✨ TAMBAHAN: State Event
   const [events, setEvents] = useState([]);
@@ -162,6 +134,31 @@ const DashboardSiswa = () => {
 
   // Load Settings (Nama & Logo Sekolah) agar sinkron dengan Admin
   useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/public/settings');
+        if (res.data) {
+          const settings = res.data;
+          const mappedSettings = {
+            schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
+            schoolLogo: settings.schoolLogo || settings.logo || settings.logo_url || null,
+            dashboardPhoto1: settings.dashboard_photo_1 || settings.dashboardPhoto1 || settings.photo1_url || null,
+            dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || settings.photo2_url || null,
+            dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || settings.photo3_url || null,
+            dashboardVideo: settings.dashboardVideo || settings.dashboard_video || settings.video_url || null,
+            limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
+            attendanceSessionOpen: settings.attendance_session_open ?? settings.attendanceSessionOpen ?? true,
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+          };
+          setAttendanceSettings(mappedSettings);
+          localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
+        }
+      } catch (err) {
+        console.warn('Gagal fetch settings dari API, menggunakan cache local');
+        loadSettings();
+      }
+    };
+
     const loadSettings = () => {
       const savedSettings = localStorage.getItem('school_settings');
       if (savedSettings) {
@@ -174,6 +171,7 @@ const DashboardSiswa = () => {
             dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || null,
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null,
+            attendanceSessionOpen: settings.attendanceSessionOpen ?? true,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
             disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
           });
@@ -183,11 +181,41 @@ const DashboardSiswa = () => {
       }
     };
 
-    loadSettings();
+    fetchSettings();
     // Listen jika ada perubahan di tab lain (misal admin baru save)
     window.addEventListener('storage', loadSettings);
     return () => window.removeEventListener('storage', loadSettings);
   }, []);
+
+  // ✨ KONFIGURASI BACKGROUND DINAMIS (LANDING STYLE)
+  const lakeBackgrounds = [
+    'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1280&q=80',
+    'https://images.unsplash.com/photo-1476610182048-b716b8518aae?w=1280&q=80',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1280&q=80'
+  ];
+
+  const holidayBackgrounds = {
+    '01-01': { name: 'Tahun Baru Masehi', image: 'https://images.unsplash.com/photo-1483721310020-03333e577078?w=1280&q=80' },
+    '05-01': { name: 'Hari Buruh Internasional', image: 'https://images.unsplash.com/photo-1514474959185-08fb602660ef?w=1280&q=80' },
+    '06-01': { name: 'Hari Lahir Pancasila', image: 'https://images.unsplash.com/photo-1520923302269-6990cb8d0a23?w=1280&q=80' },
+    '08-17': { name: 'Hari Kemerdekaan RI', image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=1280&q=80' },
+    '11-10': { name: 'Hari Pahlawan', image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1280&q=80' },
+    '12-25': { name: 'Hari Raya Natal', image: 'https://images.unsplash.com/photo-1511993226959-0f2ecb18f6a5?w=1280&q=80' }
+  };
+
+  const getHolidayInfo = (date) => {
+    if (!date) return null;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return holidayBackgrounds[`${month}-${day}`] || null;
+  };
+
+  const getSectionBackground = (date) => {
+    const holiday = getHolidayInfo(date);
+    if (holiday) return { image: holiday.image, label: holiday.name, isHoliday: true };
+    return { image: lakeBackgrounds[date.getDate() % lakeBackgrounds.length], label: 'Hari Biasa', isHoliday: false };
+  };
 
   // Update waktu real-time
   useEffect(() => {
@@ -202,21 +230,8 @@ const DashboardSiswa = () => {
     if (user?.id) {
       fetchStudentData();
       generateLocalQRCode();
-      // Pre-populate forms
-      setManualForm({ 
-        fullName: user.name || '',
-        nis: user.nis || user.user_id || '' 
-      });
-      setIzinForm(prev => ({ ...prev, fullName: user.name || '', parentPhone: user.parent_phone || '' }));
-
-      const syncInterval = setInterval(() => {
-        if (document.visibilityState === 'visible' && user?.id) {
-          fetchStudentData(true);
-        }
-      }, 30000);
-      return () => clearInterval(syncInterval);
     }
-  }, [user?.id]); // Gunakan user.id agar tidak terjadi infinite loop saat merge data profil
+  }, [user?.id]);
 
   // ➕ TAMBAHAN: Auto fetch jadwal saat tab aktif
   useEffect(() => {
@@ -236,37 +251,8 @@ const DashboardSiswa = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Cleanup QR scanner saat unmount
-  useEffect(() => {
-    return () => {
-      if (qrScanner) {
-        stopQRScanner();
-      }
-    };
-  }, [qrScanner]);
-
-  // Ref untuk instance Html5Qrcode agar tidak terjadi tabrakan (timeout)
-  const html5QrcodeScannerRef = useRef(null);
-
-  // Watch untuk modal dan start scanner saat modal terbuka
-  useEffect(() => {
-    let isMounted = true;
-    if (showAbsenModal && activeAbsenTab === 'scan') {
-      const timer = setTimeout(() => {
-        if (isMounted) startQRScanner();
-      }, 500);
-      return () => {
-        isMounted = false;
-        clearTimeout(timer);
-        stopQRScanner();
-      };
-    } else {
-      stopQRScanner();
-    }
-  }, [showAbsenModal, activeAbsenTab]);
-
   const fetchStudentData = async (silent = true) => {
-    if (!silent) setLoading(true);
+    if (!silent) setDataLoading(true);
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
@@ -277,7 +263,7 @@ const DashboardSiswa = () => {
         api.get('/siswa/class', config).catch(e => { console.warn("Class API fail", e); throw e; })
       ]);
 
-      const eventRes = await api.get('/public/events', config).catch(() => ({ data: [] }));
+      const eventRes = await api.get('/public/events', config).catch(err => ({ data: [], status: 404 }));
       setEvents(Array.isArray(eventRes.data) ? eventRes.data : []);
 
     const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
@@ -295,6 +281,7 @@ const DashboardSiswa = () => {
     if (results[2].status === 'fulfilled') {
       setClassInfo(results[2].value.data.class);
       setTeacherInfo(results[2].value.data.teacher);
+      setSessionInfo(results[2].value.data.session || null);
     }
 
     // Sinkronisasi data user dari database ke state
@@ -306,7 +293,6 @@ const DashboardSiswa = () => {
         ...prevUser, ...dbUser
       }));
     }
-    setLastSync(new Date());
     
   } catch (err) {
     console.error('❌ Gagal mengambil data siswa:', err);
@@ -422,336 +408,6 @@ const DashboardSiswa = () => {
     }, 600);
   };
 
-  // Fungsi play sound effect
-  const playSound = (type) => {
-    try {
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      if (type === 'success') {
-        oscillator.frequency.setValueAtTime(523.25, ctx.currentTime);
-        oscillator.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
-        oscillator.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
-        gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-        oscillator.start(ctx.currentTime);
-        oscillator.stop(ctx.currentTime + 0.4);
-      } else if (type === 'failed') {
-        oscillator.frequency.setValueAtTime(150, ctx.currentTime);
-        oscillator.frequency.setValueAtTime(100, ctx.currentTime + 0.2);
-        gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-        oscillator.start(ctx.currentTime);
-        oscillator.stop(ctx.currentTime + 0.3);
-      }
-    } catch (err) {
-      console.warn('Audio play error:', err.message);
-    }
-  };
-
-  // Fungsi ganti kamera
-  const toggleCamera = async () => {
-    const newMode = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(newMode);
-    await stopQRScanner();
-    setTimeout(() => startQRScanner(newMode), 300);
-  };
-
-  // Fungsi QR Scanner
-  const startQRScanner = async (mode = facingMode) => {
-    try {
-      setCameraError('');
-      console.log('🎥 Memulai QR Scanner...');
-      
-      // Cek apakah element sudah ada di DOM
-      const readerElement = document.getElementById('qr-reader-absen');
-      if (!readerElement) {
-        console.warn('QR reader element not found in DOM yet.');
-        return;
-      }
-
-      // Cek izin kamera dengan timeout yang lebih longgar
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: mode }
-        });
-        stream.getTracks().forEach(track => track.stop());
-      } catch (permError) {
-        setCameraError('Izin kamera ditolak. Mohon izinkan akses kamera di browser Anda.');
-        return;
-      }
-      
-      const scanner = new Html5Qrcode("qr-reader-absen");
-      html5QrcodeScannerRef.current = scanner;
-      
-      // ✨ DIPERBAIKI: Ukuran QR box lebih kecil agar tidak terlalu zoom
-      await scanner.start(
-        { facingMode: mode },
-        {
-          fps: 10,
-          qrbox: { width: 220, height: 220 },
-          aspectRatio: 1.0,
-          disableFlip: false
-        },
-        (decodedText) => {
-          console.log('📱 QR Code terdeteksi:', decodedText);
-          handleQRScan(decodedText);
-        },
-        () => {}
-      );
-      
-      console.log('✅ QR Scanner berhasil dimulai');
-    } catch (err) {
-      console.error('❌ Failed to start QR scanner:', err);
-      let errorMsg = 'Gagal mengakses kamera. ';
-      
-      if (err.name === 'NotAllowedError') { 
-        errorMsg += 'Izin kamera ditolak. Mohon izinkan akses kamera di browser Anda.';
-      } else if (err.name === 'NotFoundError') {
-        errorMsg += 'Kamera tidak ditemukan pada perangkat ini.';
-      } else if (err.name === 'NotReadableError') {
-        errorMsg += 'Kamera sedang digunakan oleh aplikasi lain.';
-      } else {
-        errorMsg += 'Pastikan kamera tersedia dan izin diberikan.'; 
-      }
-      setCameraError(errorMsg);
-      html5QrcodeScannerRef.current = null;
-    }
-  };
-
-  const stopQRScanner = async () => { 
-    const scanner = html5QrcodeScannerRef.current;
-    if (scanner) {
-      html5QrcodeScannerRef.current = null;
-      try {
-        console.log('🛑 Menghentikan QR Scanner...');
-        if (scanner.isScanning) {
-          await scanner.stop();
-        }
-        await scanner.clear();
-        console.log('✅ QR Scanner berhasil dihentikan');
-      } catch (err) {
-        console.warn('⚠️ QR scanner stop warning:', err.message);
-      }
-    }
-  };
-
-  const showQRNotificationMessage = (message, type = 'error') => {
-    setQrNotificationMessage(message);
-    setQrNotificationType(type);
-    setShowQRNotification(true);
-    setTimeout(() => {
-      setShowQRNotification(false);
-    }, 3000);
-  };
-
-  const handleQRScan = async (decodedText) => {
-    try {
-      const qrData = JSON.parse(decodedText);
-      setQrResult(qrData);
-      
-      if (!qrData.type || !['attendance_session', 'student_qr', 'teacher_qr'].includes(qrData.type)) {
-        playSound('failed');
-        showQRNotificationMessage('❌ QR Code tidak valid untuk absensi!', 'error');
-        return;
-      }
-      
-      if (!qrData.id && !qrData.student_id && !qrData.teacher_id) {
-        playSound('failed');
-        showQRNotificationMessage('❌ QR Code tidak memiliki ID yang valid!', 'error');
-        return;
-      }
-      
-      await submitQRAttendance(qrData);
-    } catch (err) {
-      console.error('❌ QR Parse Error:', err);
-      playSound('failed');
-      showQRNotificationMessage('❌ Format QR Code tidak dikenali!', 'error');
-    }
-  };
-
-  const submitQRAttendance = async (qrData) => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      if (checkIsHoliday()) {
-        showQRNotificationMessage('❌ Hari ini adalah hari libur. Absensi ditiadakan.', 'error');
-        return;
-      }
-
-      const token = localStorage.getItem('token');
-      const status = getAttendanceStatus();
-
-      if (status === 'belum_buka') {
-        showQRNotificationMessage(`❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceStartTime}`, 'error');
-        return;
-      }
-      if (status === 'sudah_tutup') {
-        showQRNotificationMessage(`❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceEndTime}`, 'error');
-        return;
-      }
-
-      const requestData = {
-        qr_data: qrData,
-        scan_time: currentTime.toISOString(),
-        status: status,
-        type: qrData.type || 'student_qr',
-        user_id: qrData.user_id || qrData.id || qrData.student_id || '',
-        student_id: qrData.student_id || qrData.id || '',
-        teacher_id: qrData.teacher_id || '',
-        name: qrData.name || user.name || '',
-        role: qrData.role || user.role || 'siswa',
-        generated_at: qrData.generated_at || new Date().toISOString()
-      };
-      
-      console.log('📤 Mengirim absensi QR:', requestData);
-      
-      // DIPERBAIKI: Endpoint API yang benar
-      const response = await api.post('/scan', requestData, {
-        timeout: 120000,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('✅ Absensi QR berhasil:', response.data);
-
-      const attendance = response.data?.data || {};
-      const finalStatus = attendance.status || response.data?.status || 'hadir';
-      const isLate = finalStatus === 'terlambat';
-      const message = isLate
-        ? '⚠️ Absensi berhasil, tetapi kamu tercatat TERLAMBAT.'
-        : '✅ Absensi via QR berhasil!';
-
-      playSound('success');
-      showQRNotificationMessage(message, 'success');
-      setSubmitMessage({ type: 'success', text: message });
-      setQrResult(null);
-      
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      
-      setTimeout(() => {
-        setShowAbsenModal(false);
-        setSubmitMessage({ type: '', text: '' });
-        stopQRScanner();
-      }, 2000);
-    } catch (err) {
-      console.error('❌ QR Submit Error:', err);
-      const errorMsg = err.response?.data?.message || 'Gagal menyimpan absensi';
-      playSound('failed');
-      showQRNotificationMessage(`❌ ${errorMsg}`, 'error');
-      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Handle submit manual
-  const handleManualSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setSubmitMessage({ type: '', text: '' });
-    try {
-      if (checkIsHoliday()) {
-        setSubmitMessage({ type: 'error', text: '❌ Hari ini adalah hari libur. Absensi ditiadakan.' });
-        return;
-      }
-
-      const token = localStorage.getItem('token');
-
-      const status = getAttendanceStatus();
-
-      if (status === 'belum_buka') {
-        setSubmitMessage({ type: 'error', text: `❌ Absen belum dibuka! Mulai jam ${attendanceSettings.attendanceStartTime}` });
-        return;
-      }
-      if (status === 'sudah_tutup') {
-        setSubmitMessage({ type: 'error', text: `❌ Absen sudah ditutup! Batas jam ${attendanceSettings.attendanceEndTime}` });
-        return;
-      }
-
-      // Kirim hanya nama dan NIS
-      const requestData = {
-        name: manualForm.fullName || user.name || '',
-        full_name: manualForm.fullName || user.name || '',
-        user_id: manualForm.nis || user.nis || user.user_id || '',
-        nis: manualForm.nis || user.nis || user.user_id || '',
-        attendance_time: currentTime.toISOString(),
-        status: status,
-        role: 'siswa',
-        type: 'manual'
-      };
-      
-      console.log('📤 Mengirim absensi manual:', requestData);
-      
-      const res = await api.post('/attendance/student/manual', requestData, {
-        timeout: 120000,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('✅ Absensi manual berhasil', res.data);
-
-      const attendance = res.data?.data || {};
-      const finalStatus = attendance.status || res.data?.status || 'hadir';
-      const isLate = finalStatus === 'terlambat';
-      const message = isLate
-        ? '⚠️ Absensi berhasil, tetapi kamu tercatat TERLAMBAT.'
-        : '✅ Absensi manual berhasil!';
-
-      playSound('success');
-      showQRNotificationMessage(message, 'success');
-      setSubmitMessage({ type: 'success', text: message });
-      
-      // Reset form
-      setManualForm({ 
-        fullName: user.name || '',
-        nis: user.nis || user.user_id || ''
-      });
-      
-      // Broadcast ke storage
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      
-      // Refresh data ringkasan
-      await fetchStudentData(true);
-      
-      setTimeout(() => {
-        setShowAbsenModal(false);
-        setSubmitMessage({ type: '', text: '' });
-      }, 2000);
-    } catch (err) {
-      console.error('❌ Manual Submit Error:', err);
-      const errorMsg = err.response?.data?.message || 'Gagal menyimpan absensi';
-      playSound('failed');
-      showQRNotificationMessage(`❌ ${errorMsg}`, 'error');
-      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleOpenScanner = () => {
-    setActiveAbsenTab('scan');
-    setShowAbsenModal(true);
-  };
-
-  const handleCloseScanner = () => {
-    stopQRScanner();
-    setQrResult(null);
-    setCameraError('');
-  };
-
   // Format waktu Indonesia
   const formatTime = (date) => {
     return date.toLocaleTimeString('id-ID', {
@@ -778,22 +434,6 @@ const DashboardSiswa = () => {
   const checkIsHoliday = () => {
     if (!attendanceSettings.disableAttendanceOnHolidays) return false;
     return currentTime.getDay() === 0; // 0 is Sunday
-  };
-
-  // Helper to determine status based on time
-  const getAttendanceStatus = () => {
-    const now = currentTime;
-    const currentTimeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
-    
-    const openTime = (attendanceSettings.attendanceStartTime || "07:00").substring(0, 5);
-    const closeTime = (attendanceSettings.attendanceEndTime || "12:00").substring(0, 5);
-    const lateTime = (attendanceSettings.lateThreshold || "08:00").substring(0, 5);
-
-    if (checkIsHoliday()) return 'libur';
-    if (currentTimeStr < openTime) return 'belum_buka';
-    if (currentTimeStr > closeTime) return 'sudah_tutup';
-
-    return currentTimeStr <= lateTime ? 'hadir' : 'terlambat';
   };
 
   // Helper matching Admin for categorized activity
@@ -845,137 +485,9 @@ const DashboardSiswa = () => {
     }
   };
 
-  const handleIzinSubmit = async (e) => {
-    e.preventDefault();
-    setIzinSubmitting(true);
-    setIzinMessage({ type: '', text: '' });
-    try {
-      if (checkIsHoliday()) {
-        setIzinMessage({ type: 'error', text: '❌ Tidak dapat mengirim izin pada hari libur.' });
-        return;
-      }
-
-      const token = localStorage.getItem('token');
-      const status = getAttendanceStatus();
-
-      if (status === 'belum_buka' || status === 'sudah_tutup') {
-        setIzinMessage({ type: 'error', text: `❌ Izin hanya bisa dikirim pada jam operasional (${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime})` });
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('full_name', izinForm.fullName || user.name);
-      formData.append('user_id', user.nis || user.user_id);
-      formData.append('type', izinForm.type);
-      formData.append('reason', izinForm.reason);
-      formData.append('status', 'izin');
-      formData.append('attendance_time', currentTime.toISOString());
-
-      if (izinForm.attachment) {
-        formData.append('attachment', izinForm.attachment);
-      }
-
-      // Mengirim ke endpoint absensi izin
-      await api.post('/attendance/izin', formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        },
-        timeout: 60000
-      });
-
-      setIzinMessage({ type: 'success', text: '✅ Pengajuan izin berhasil terkirim ke database.' });
-      playSound('success');
-      
-      // Reset Form
-      setIzinForm({ fullName: user.name || '', type: 'izin', reason: '', attachment: null });
-      
-      // Broadcast & Refresh data
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      await fetchStudentData(true);
-
-      setTimeout(() => {
-        setShowAbsenModal(false);
-        setIzinMessage({ type: '', text: '' });
-      }, 2500);
-    } catch (err) {
-      setIzinMessage({
-        type: 'error',
-        text: err.response?.data?.message || 'Gagal mengirim izin',
-      });
-    } finally {
-      setIzinSubmitting(false);
-    }
-  };
-
-  const handleFingerprintSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setSubmitMessage({ type: '', text: '' });
-    try {
-      if (checkIsHoliday()) {
-        setSubmitMessage({ type: 'error', text: '❌ Hari ini adalah hari libur. Absensi ditiadakan.' });
-        return;
-      }
-
-      const status = getAttendanceStatus();
-      if (status === 'belum_buka') {
-        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
-        setSubmitMessage({ type: 'error', text: msg });
-        return;
-      }
-      if (status === 'sudah_tutup') {
-        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
-        setSubmitMessage({ type: 'error', text: msg });
-        return;
-      }
-
-      // Simulate fingerprint verification
-      setSubmitMessage({ type: 'info', text: '🔍 Memverifikasi sidik jari...' });
-      
-      // Simulate fingerprint scanning delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const token = localStorage.getItem('token');
-      const endpoint = '/attendance/student/fingerprint';
-      
-      const payload = {
-        full_name: fingerprintForm.fullName.trim(),
-        user_id: fingerprintForm.nis.trim(),
-        attendance_time: currentTime.toISOString(),
-        type: 'fingerprint'
-      };
-
-      await api.post(endpoint, payload, {
-        timeout: 60000,
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-
-      setSubmitMessage({ type: 'success', text: '✅ Absen sidik jari berhasil!' });
-      playSound('success');
-
-      setFingerprintForm({ fullName: '', nis: '' });
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      
-      setTimeout(() => {
-        setShowAbsenModal(false);
-        setSubmitMessage({ type: '', text: '' });
-      }, 2000);
-    } catch (err) {
-      if (err.response?.status !== 401 && err.code !== 'ERR_NETWORK') {
-        console.error('Error submitting fingerprint:', err);
-      }
-      const errorMsg = err.response?.data?.message || err.message || 'Gagal memverifikasi sidik jari';
-      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
-      playSound('failed');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const menuItems = [
     { id: 'ringkasan', label: 'Ringkasan', icon: '📊' },
-    { id: 'absensi', label: 'Absensi', icon: '✅' },
+    { id: 'unduh qr', label: 'Unduh QR', icon: '✅' },
     { id: 'jadwal', label: 'Jadwal', icon: '📚' },
     { id: 'riwayat', label: 'Riwayat', icon: '📅' },
     { id: 'profil', label: 'Profil', icon: '👤' },
@@ -1033,7 +545,6 @@ const DashboardSiswa = () => {
                     <h1 className="text-lg font-bold text-gray-900 leading-tight">
                       {attendanceSettings.schoolName || 'SMPK DON BOSCO'}
                     </h1>
-                    <p className="text-xs text-gray-500">v1.0</p>
                   </div>
                 )}
               </div>
@@ -1069,11 +580,6 @@ const DashboardSiswa = () => {
                     <span className="text-xl flex-shrink-0">{item.icon}</span>
                     {!sidebarCollapsed && (
                       <span className="text-sm font-medium flex-1">{item.label}</span>
-                    )}
-                    {!sidebarCollapsed && item.id === 'absensi' && stats.lateDays > 0 && (
-                      <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                        {stats.lateDays}
-                      </span>
                     )}
                   </button>
                 ))}
@@ -1118,7 +624,7 @@ const DashboardSiswa = () => {
 
         {/* Main UI Column - UNTOUCHED */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {sessionInfo?.attendanceSessionOpen === false && (
+          {(sessionInfo?.attendanceSessionOpen === false || attendanceSettings.attendanceSessionOpen === false) && (
             <div className="bg-amber-100 border-b-2 border-amber-300 px-4 py-2 text-center text-sm text-amber-900 flex-shrink-0">
               Sesi absensi sedang ditutup oleh administrator. Absensi QR/manual tidak dapat dilakukan hingga dibuka kembali.
             </div>
@@ -1170,26 +676,86 @@ const DashboardSiswa = () => {
             <div className="animate-fade-in">
               {/* TAB: Ringkasan */}
               {activeTab === 'ringkasan' && (
-                <div>
+                <div className="space-y-6">
+                  {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                    {/* Ornamen Dekoratif */}
+                    <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                    <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
+                      <span className="text-8xl">🧑‍🎓</span>
+                    </div>
+
+                    <div className="relative z-10">
+                      <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
+                        <img
+                          src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Siswa')}&background=3b82f6&color=ffffff`}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="text-center sm:text-left relative z-10">
+                      <h2 className="text-xl lg:text-2xl font-black text-blue-900 leading-tight">
+                        Halo, {user?.name}! 👋
+                      </h2>
+                      <p className="text-blue-600/80 text-sm mt-1 font-medium">
+                        Tetap semangat belajar ya! Jangan lupa untuk selalu disiplin dalam presensi.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* ✨ TANGGAL KOTAK DINAMIS (LANDING STYLE) */}
+                  {(() => {
+                    const sectionBg = getSectionBackground(currentTime);
+                    return (
+                      <div
+                        className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg mb-6"
+                        style={{
+                          backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center'
+                        }}
+                      >
+                        <div className="relative">
+                          <p className="text-xs uppercase tracking-[0.24em] text-blue-200/90 mb-3 font-bold">
+                            {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
+                          </p>
+                          <h3 className="text-2xl md:text-3xl font-black mb-2 tracking-tight">
+                            {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                          </h3>
+                          <p className="text-sm text-slate-200/80 mb-6">
+                            Sistem pencatatan waktu otomatis zona waktu Jakarta.
+                          </p>
+                          <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg border border-white/20">
+                            <span>{currentTime.getFullYear()}</span>
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+                            <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* ✨ TAMBAHAN: Kartu Event Countdown */}
                   {events.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                       {events.map((event) => {
                         const today = new Date(); today.setHours(0,0,0,0);
                         const target = new Date(event.date);
                         const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
                         if (days < 0) return null;
                         return (
-                          <div key={event.id} className="relative bg-white rounded-2xl border-2 border-indigo-200 overflow-hidden shadow-lg group">
+                          <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md group hover:shadow-xl transition-all">
                             <img src={resolvePhotoUrl(event.image)} className="w-full h-24 object-cover opacity-80 group-hover:scale-105 transition-transform" />
-                            <div className="p-3">
+                            <div className="p-4 bg-white">
                               <div className="flex justify-between items-center">
-                                <h4 className="font-bold text-indigo-900 text-sm truncate">{event.title}</h4>
-                                <span className="bg-indigo-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
-                                  {days === 0 ? 'HARI INI' : `${days} HARI LAGI`}
+                                <h4 className="font-bold text-blue-900 text-sm truncate">{event.title}</h4>
+                                <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[9px] font-black px-2 py-0.5 rounded-full`}>
+                                  {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} HARI LAGI`}
                                 </span>
                               </div>
-                              <p className="text-[10px] text-indigo-400 font-medium">
+                              <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">
                                 {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
                               </p>
                             </div>
@@ -1199,24 +765,19 @@ const DashboardSiswa = () => {
                     </div>
                   )}
 
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">Halo, {user.name}! 👋</h2>
-                    <p className="text-blue-600 text-sm">Ini ringkasan kehadiranmu</p>
-                  </div>
-
                   {/* ✨ SEKSI MEDIA (DIPINDAHKAN KE BAWAH SALAM) */}
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-6">
+                    <div className="bg-blue-50 rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-6">
                     <h3 className="font-semibold text-blue-800 mb-4 flex items-center gap-2">
                       <span>🖼️</span> Media & Kegiatan Sekolah
                     </h3>
-                    <div className="flex flex-col gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Baris Foto: Sliding Left Animation */}
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
                           {[1, 2, 3, 1, 2, 3].map((i, idx) => (
                             <div key={`siswa-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-lg overflow-hidden border border-blue-100 bg-slate-50 shadow-sm">
                               {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
                               ) : (
                                 <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
                                   <span className="text-2xl">📸</span>
@@ -1227,10 +788,10 @@ const DashboardSiswa = () => {
                           ))}
                         </div>
                       </div>
-                      {/* Baris Video: Di bawah foto */}
+                      {/* Baris Video: Di sebelah kanan foto pada desktop */}
                       <div className="rounded-lg overflow-hidden border border-blue-100 bg-black shadow-md">
                         {attendanceSettings.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-40 sm:h-64 object-contain" />
+                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[160px] sm:min-h-[192px] object-contain" />
                         ) : (
                           <div className="h-32 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
                             <span className="text-2xl">🎥</span><p className="text-[10px]">Belum ada video terbaru</p>
@@ -1240,7 +801,7 @@ const DashboardSiswa = () => {
                     </div>
                   </div>
 
-                  {loading ? (
+                  {dataLoading ? (
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                       {[1,2,3,4].map((i) => (
                         <div key={i} className="bg-white rounded-xl p-5 border-2 border-blue-200 animate-pulse">
@@ -1339,7 +900,7 @@ const DashboardSiswa = () => {
                       <button onClick={() => setActiveTab('riwayat')} className="text-xs text-blue-600 hover:underline">Lihat Semua →</button>
                     </div>
                     <div className="divide-y-2 divide-blue-50">
-                      {loading ? (
+                      {dataLoading ? (
                         <div className="p-6 text-center text-blue-600">Memuat...</div>
                       ) : attendanceHistory.length === 0 ? (
                         <div className="p-6 text-center text-blue-600">
@@ -1366,58 +927,70 @@ const DashboardSiswa = () => {
 
               {/* TAB: Absensi */}
               {activeTab === 'absensi' && (
-                <div>
+                <div className="animate-fade-in">
                   <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">✅ Absensi</h2>
-                    <p className="text-blue-600 text-sm">Lakukan absensi menggunakan QR Code atau manual</p>
+                    <h2 className="text-xl font-bold text-blue-800 mb-1">🪪 Kode QR Presensi Digital</h2>
+                    <p className="text-blue-600 text-sm">Gunakan kode di bawah ini untuk melakukan scan pada perangkat scanner sekolah.</p>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
-                    <button
-                      onClick={() => {
-                        setActiveAbsenTab('my-qr');
-                        setShowAbsenModal(true);
-                      }}
-                      className="p-8 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl hover:shadow-xl transition-all text-left shadow-lg group border-2 border-indigo-300"
-                    >
-                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">🪪</div>
-                      <h3 className="font-bold text-xl mb-1">Unduh Kode QR</h3>
-                      <p className="text-indigo-100 text-sm">Tampilkan dan unduh QR identitasmu</p>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveAbsenTab('scan');
-                        setShowAbsenModal(true);
-                      }}
-                      disabled={sessionInfo?.attendanceSessionOpen === false}
-                      className="p-8 bg-gradient-to-br from-blue-500 to-cyan-600 text-white rounded-2xl hover:shadow-xl transition-all text-left shadow-lg disabled:opacity-50 group border-2 border-blue-300"
-                    >
-                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">✅</div>
-                      <h3 className="font-bold text-xl mb-1">Absen Sekarang</h3>
-                      <p className="text-blue-100 text-sm">Scan QR, Manual, atau kirim Izin</p>
-                    </button>
-                  </div>
-                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 shadow-lg">
-                    <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                      <span>ℹ️</span> Cara Absensi
-                    </h4>
-                    <ul className="space-y-2 text-sm text-blue-800">
-                      <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs flex-shrink-0 mt-0.5">1</span>
-                        <span>Pilih metode absensi (Scan QR atau Manual)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs flex-shrink-0 mt-0.5">2</span>
-                        <span>Untuk scan QR, arahkan kamera ke QR code yang disediakan guru</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs flex-shrink-0 mt-0.5">3</span>
-                        <span>Untuk manual, isi nama lengkap dan NIS</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs flex-shrink-0 mt-0.5">4</span>
-                        <span>Data absensi akan tersimpan otomatis</span>
-                      </li>
-                    </ul>
+
+                  <div className="max-w-md mx-auto">
+                    <div className="bg-white rounded-[2.5rem] border-2 border-blue-200 shadow-2xl overflow-hidden relative group">
+                      {/* Header Kartu */}
+                      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white text-center relative">
+                        <div className="absolute top-0 right-0 p-4 opacity-20">
+                          <svg className="w-20 h-20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        </div>
+                        <div className="w-16 h-16 bg-white rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg">
+                          <img 
+                            src={attendanceSettings.schoolLogo ? resolvePhotoUrl(attendanceSettings.schoolLogo) : "/logo sekolah.jpeg"} 
+                            className="w-12 h-12 object-contain" 
+                            alt="School"
+                          />
+                        </div>
+                        <h3 className="font-black text-xl tracking-tight leading-tight uppercase">{attendanceSettings.schoolName}</h3>
+                        <p className="text-blue-100 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">Kartu Presensi Siswa</p>
+                      </div>
+
+                      {/* Body Kartu (QR Area) */}
+                      <div className="p-10 flex flex-col items-center bg-slate-50/50">
+                        <div className="relative p-5 bg-white rounded-[2rem] shadow-xl border-2 border-blue-50 mb-8 transform transition-transform group-hover:scale-105 duration-500">
+                          {qrLoading ? (
+                            <div className="w-48 h-48 flex items-center justify-center">
+                              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                          ) : (
+                            <img src={myQRCode} alt="QR Saya" className="w-48 h-48" />
+                          )}
+                        </div>
+
+                        <div className="text-center space-y-1 mb-8">
+                          <p className="text-2xl font-black text-slate-800 tracking-tight">{user.name}</p>
+                          <div className="inline-block px-4 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-black uppercase tracking-widest">
+                            NIS: {user.nis || user.user_id}
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={downloadQRCode}
+                          className="w-full py-4 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-2xl transition-all duration-300 shadow-lg hover:shadow-blue-500/30 flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
+                        >
+                          <span>⬇️</span> Simpan Ke Galeri
+                        </button>
+                      </div>
+
+                      {/* Footer Aksen */}
+                      <div className="h-2 bg-gradient-to-r from-blue-400 via-indigo-500 to-blue-600"></div>
+                    </div>
+
+                    <div className="mt-8 bg-amber-50 border-2 border-amber-100 rounded-2xl p-5 flex items-start gap-4">
+                      <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl flex-shrink-0">💡</div>
+                      <div>
+                        <p className="text-xs font-bold text-amber-900 uppercase tracking-wide mb-1">Tips Penting</p>
+                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                          Simpan QR Code ini ke galeri HP Anda agar tetap bisa melakukan presensi meskipun tidak ada koneksi internet di sekolah.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1562,7 +1135,7 @@ const DashboardSiswa = () => {
                     <p className="text-blue-600 text-sm">Catatan kehadiranmu sepanjang semester</p>
                   </div>
                   <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-lg">
-                    {loading ? (
+                    {dataLoading ? (
                       <div className="p-6 text-center text-blue-600">Memuat riwayat...</div>
                     ) : attendanceHistory.length === 0 ? (
                       <div className="p-6 text-center text-blue-600">
@@ -1606,344 +1179,6 @@ const DashboardSiswa = () => {
         </main>
         </div>
 
-      {/* MODAL ABSENSI */}
-{showAbsenModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-    <div className="bg-white rounded-3xl w-full max-w-md my-auto shadow-2xl relative border-2 border-blue-200 overflow-hidden flex flex-col">
-      
-      {/* Header Modal */}
-      <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
-        <div>
-          <h3 className="text-base font-bold text-slate-800">
-            {activeAbsenTab === 'my-qr' ? '🪪 Kode QR Saya' : 'Absensi'}
-          </h3>
-          <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
-            {activeAbsenTab === 'my-qr' ? 'Identitas digital Anda' : `Metode: ${activeAbsenTab}`}
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            handleCloseScanner();
-            setShowAbsenModal(false);
-            setSubmitMessage({ type: '', text: '' });
-          }}
-          className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Content Modal */}
-      <div className="p-5 flex-1 overflow-y-auto" ref={modalContentRef}>
-        
-        {/* Tab Navigation */}
-        {activeAbsenTab !== 'my-qr' && (
-          <div className="flex justify-center mb-5">
-            <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full">
-              <button
-                onClick={() => setActiveAbsenTab('scan')}
-                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'scan' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                <span>📷</span> Scan QR
-              </button>
-              <button
-                onClick={() => setActiveAbsenTab('manual')}
-                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'manual' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                <span>✍️</span> Manual
-              </button>
-              <button
-                onClick={() => setActiveAbsenTab('izin')}
-                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'izin' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                <span>📋</span> Izin
-              </button>
-              <button
-                onClick={() => setActiveAbsenTab('fingerprint')}
-                className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeAbsenTab === 'fingerprint' ? 'bg-blue-600 text-white shadow-lg border border-blue-400' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                <span>👆</span> Sidik Jari
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Content Area */}
-        <div className="bg-white rounded-2xl border-2 border-slate-100 shadow-inner overflow-hidden min-h-[380px] flex flex-col justify-center transition-all duration-300">
-          <div className="p-5">
-            
-            {/* TAB: Scan QR */}
-            {activeAbsenTab === 'scan' && (
-              <div className="animate-fade-in text-center">
-                <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-2xl mb-4 mx-auto max-w-[280px] aspect-square relative border-4 border-blue-50">
-                  <div id="qr-reader-absen" className="w-full h-full" ref={qrReaderRef}></div>
-                </div>
-                
-                {cameraError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-[10px] text-red-600 font-bold">
-                    ⚠️ {cameraError}
-                  </div>
-                )}
-
-                {!qrScanner ? (
-                  <button
-                    onClick={startQRScanner}
-                    className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
-                  >
-                    <span>📷</span> Mulai Scanner
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleCloseScanner}
-                    className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                  >
-                    Tutup Scanner
-                  </button>
-                )}
-                
-                <button 
-                  onClick={toggleCamera}
-                  className="w-full mt-3 py-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-black border-2 border-blue-100 hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
-                >
-                  <span>🔄</span> Putar Kamera ({facingMode === 'environment' ? 'Belakang' : 'Depan'})
-                </button>
-
-                <p className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                  Arahkan Ke QR Absensi
-                </p>
-              </div>
-            )}
-
-            {/* TAB: Manual */}
-            {activeAbsenTab === 'manual' && (
-              <div className="animate-fade-in">
-                <form onSubmit={handleManualSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Nama Lengkap *</label>
-                    <input
-                      type="text"
-                      value={manualForm.fullName}
-                      onChange={(e) => setManualForm(prev => ({...prev, fullName: e.target.value}))}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      placeholder="Nama lengkap sesuai data"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">NIS Siswa *</label>
-                    <input
-                      type="text"
-                      value={manualForm.nis}
-                      onChange={(e) => setManualForm(prev => ({...prev, nis: e.target.value}))}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      placeholder="Masukkan NIS Anda"
-                      required
-                    />
-                  </div>
-                  <div className="text-[10px] text-blue-500 font-bold italic">
-                    Status: {getAttendanceStatus() === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat'}
-                  </div>
-                  {submitMessage.text && (
-                    <div className={`p-3 rounded-lg text-xs font-medium ${
-                      submitMessage.type === 'success'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-red-50 text-red-700 border border-red-200'
-                    }`}>
-                      {submitMessage.text}
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-3 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isSubmitting ? 'Memproses...' : 'Absen Sekarang'}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* TAB: My QR */}
-            {activeAbsenTab === 'my-qr' && (
-              <div className="animate-fade-in text-center">
-                <div className="mb-4">
-                  <h4 className="font-bold text-slate-800">QR Code Identitas</h4>
-                  <p className="text-xs text-slate-500">Gunakan untuk verifikasi kehadiran</p>
-                </div>
-                
-                {qrLoading ? (
-                  <div className="p-8"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
-                ) : myQRCode ? (
-                  <div className="inline-block p-3 bg-white rounded-2xl border-2 border-slate-100 shadow-md mb-6">
-                    <img src={myQRCode} alt="QR Saya" className="w-40 h-40 mx-auto" />
-                  </div>
-                ) : (
-                  <div className="p-8 text-slate-400 text-xs italic">QR Code tidak tersedia</div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <button onClick={downloadQRCode} className="py-2.5 bg-blue-600 text-white text-[11px] font-black rounded-xl hover:bg-blue-700 transition-all shadow-md">
-                    ⬇️ Unduh QR
-                  </button>
-                  <button onClick={fetchMyQRCode} className="py-2.5 bg-slate-100 text-slate-600 text-[11px] font-black rounded-xl hover:bg-slate-200 border border-slate-200 transition-all">
-                    🔄 Refresh
-                  </button>
-                </div>
-
-                <div className="text-left bg-slate-50 rounded-xl p-4 text-[10px] text-slate-600 space-y-2 border border-slate-100">
-                  <div className="flex justify-between border-b border-slate-200 pb-1"><span>Nama:</span><span className="font-bold text-slate-800">{user.name}</span></div>
-                  <div className="flex justify-between border-b border-slate-200 pb-1"><span>NIS:</span><span className="font-bold text-slate-800">{user.nis || '-'}</span></div>
-                  <div className="flex justify-between uppercase tracking-tighter"><span>Role:</span><span className="font-bold text-blue-600">{user.role || 'siswa'}</span></div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: Izin */}
-            {activeAbsenTab === 'izin' && (
-              <div className="animate-fade-in">
-                <form onSubmit={handleIzinSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Nama Lengkap *</label>
-                    <input
-                      type="text"
-                      value={izinForm.fullName}
-                      onChange={(e) => setIzinForm(prev => ({ ...prev, fullName: e.target.value }))}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      placeholder="Nama lengkap"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Jenis Pengajuan *</label>
-                    <select
-                      value={izinForm.type}
-                      onChange={(e) => setIzinForm(prev => ({ ...prev, type: e.target.value }))}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      required
-                    >
-                      <option value="izin">Izin</option>
-                      <option value="sakit">Sakit</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Keterangan *</label>
-                    <textarea
-                      required
-                      rows={3}
-                      value={izinForm.reason}
-                      onChange={(e) => setIzinForm((p) => ({ ...p, reason: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm resize-none"
-                      placeholder="Alasan izin..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Lampiran (Opsional)</label>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf,.doc,.docx"
-                      onChange={(e) => setIzinForm(prev => ({ ...prev, attachment: e.target.files[0] }))}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">Format: JPG, PNG, PDF, DOC, DOCX (Max 5MB)</p>
-                  </div>
-                  {izinMessage.text && (
-                    <div className={`p-3 rounded-lg text-xs font-medium border ${izinMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                      {izinMessage.text}
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={izinSubmitting}
-                    className="w-full py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-lg hover:bg-emerald-700 transition-all disabled:opacity-50"
-                  >
-                    {izinSubmitting ? 'Mengirim...' : 'Kirim Pengajuan Izin'}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {activeAbsenTab === 'fingerprint' && (
-              <div className="space-y-4">
-                <div className="text-center mb-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
-                    <span className="text-2xl">👆</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800 mb-1">Absen Sidik Jari</h3>
-                  <p className="text-xs text-slate-600">Tempatkan jari Anda pada sensor untuk verifikasi</p>
-                </div>
-
-                <form onSubmit={handleFingerprintSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">Nama Lengkap *</label>
-                    <input
-                      type="text"
-                      required
-                      value={fingerprintForm.fullName}
-                      onChange={(e) => setFingerprintForm((p) => ({ ...p, fullName: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm"
-                      placeholder="Masukkan nama lengkap..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5 uppercase tracking-wider">NIS *</label>
-                    <input
-                      type="text"
-                      required
-                      value={fingerprintForm.nis}
-                      onChange={(e) => setFingerprintForm((p) => ({ ...p, nis: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm"
-                      placeholder="Masukkan NIS..."
-                    />
-                  </div>
-                  {submitMessage.text && (
-                    <div className={`p-3 rounded-lg text-xs font-medium border ${submitMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : submitMessage.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                      {submitMessage.text}
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-3 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'Memverifikasi...' : 'Verifikasi Sidik Jari'}
-                  </button>
-                </form>
-              </div>
-            )}
-
-          </div>
-        </div>
-
-        {/* Info Box */}
-        <div className="mt-5 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="font-medium text-blue-900 mb-2 text-xs flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Info Waktu
-          </h4>
-          <ul className="space-y-1 text-xs text-blue-800">
-            <li>• Jam masuk: <strong>{attendanceSettings.attendanceStartTime}</strong></li>
-            <li>• Batas terlambat: <strong>{attendanceSettings.lateThreshold}</strong></li>
-            <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
-          </ul>
-        </div>
-
-      </div>
-    </div>
-  </div>
-)}
-
       {/* MODAL KONFIRMASI LOGOUT */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
@@ -1974,75 +1209,6 @@ const DashboardSiswa = () => {
           </div>
         </div>
       )}
-
-      {/* NOTIFIKASI QR CODE */}
-      {showQRNotification && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className={`bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full transform transition-all animate-fade-in border-4 ${
-            qrNotificationType === 'success' ? 'border-green-500' : 'border-red-500'
-          }`}>
-            <div className="text-center">
-              <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${
-                qrNotificationType === 'success' ? 'bg-green-100' : 'bg-red-100'
-              }`}>
-                {qrNotificationType === 'success' ? (
-                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                )}
-              </div>
-              <h3 className={`text-xl font-bold mb-2 ${
-                qrNotificationType === 'success' ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {qrNotificationType === 'success' ? '✅ Berhasil!' : '❌ Error!'}
-              </h3>
-              <p className="text-blue-600 mb-6">{qrNotificationMessage}</p>
-              <button
-                onClick={() => setShowQRNotification(false)}
-                className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
-                  qrNotificationType === 'success'
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                }`}
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CSS Animations */}
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slideLeft {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(calc(-50% - 8px)); }
-        }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        #qr-reader-absen {
-          width: 100%;
-          min-height: 250px;
-        }
-        .animate-slide-left {
-          animation: slideLeft 25s linear infinite;
-        }
-        .animate-slide-left:hover {
-          animation-play-state: paused;
-        }
-        #qr-reader-absen video {
-          width: 100% !important;
-          border-radius: 8px;
-        }
-      `}</style>
     </div>
   );
 };
