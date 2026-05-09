@@ -671,7 +671,11 @@ const DashboardGuru = () => {
                   onClick={() => {
                     setActiveTab(item.id);
                     setSidebarOpen(false);
-                    if (item.id === 'siswa' && students.length === 0) fetchStudents();
+                  if (item.id === 'siswa') {
+                    selectedClass ? fetchStudents(selectedClass) : fetchStudents();
+                  } else if (item.id === 'jadwal' && !selectedClass && classes.length > 0) {
+                    setSelectedClass(classes[0].id);
+                  }
                   }}
                   className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2.5'} rounded-lg text-left transition-all duration-200 ${
                     activeTab === item.id ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -980,7 +984,7 @@ const DashboardGuru = () => {
                               <p className="font-bold text-blue-900">{cls.name}</p>
                               <p className="text-sm text-blue-600">{cls.total_students} siswa</p>
                             </div>
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
                               <div className="text-right">
                                 <p className="text-xs text-blue-600">Kehadiran</p>
                                 <p className="text-lg font-bold text-blue-600">{cls.attendance_percentage}%</p>
@@ -989,8 +993,8 @@ const DashboardGuru = () => {
                                 onClick={() => {
                                   setSelectedClass(cls.id);
                                   fetchStudents(cls.id);
+                                  addNotification(`📝 Absensi ${cls.name}`, 'info');
                                   setActiveTab('absensi');
-                                  addNotification(`📝 Input absensi untuk ${cls.name}`, 'info');
                                 }}
                                 className="px-4 py-2 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-xl transition-all shadow-md"
                               >
@@ -1207,9 +1211,31 @@ const DashboardGuru = () => {
               {activeTab === 'siswa' && (
                 <div>
                   <div className="bg-white rounded-2xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">Data Siswa</h2>
-                    <p className="text-blue-600 text-sm">Kelola data siswa di kelas Anda</p>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-blue-800 mb-1">👥 Data Siswa</h2>
+                        <p className="text-blue-600 text-sm">Manajemen daftar siswa sesuai kelas pengampu</p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <select 
+                          value={selectedClass} 
+                          onChange={(e) => fetchStudents(e.target.value)}
+                          className="px-4 py-2 border-2 border-blue-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50 font-semibold text-blue-800"
+                        >
+                          <option value="">Semua Kelas</option>
+                          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Cari nama/NIS..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="px-4 py-2 border-2 border-blue-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
                   </div>
+
                   {dataLoading ? (
                     <div className="bg-white rounded-2xl border-2 border-blue-200 p-6 text-center shadow-lg">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
@@ -1234,7 +1260,7 @@ const DashboardGuru = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y-2 divide-blue-100">
-                            {students.map((student) => (
+                            {filteredStudents.map((student) => (
                               <tr key={student.id} className="hover:bg-blue-50 transition-colors">
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-3">

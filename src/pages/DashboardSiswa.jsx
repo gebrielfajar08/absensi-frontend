@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
@@ -64,8 +64,6 @@ const resolveClassName = (user, classInfo) => {
 const DashboardSiswa = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [sessionInfo, setSessionInfo] = useState(null);
   const [activeTab, setActiveTab] = useState('ringkasan');
   const [isExiting, setIsExiting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -86,7 +84,6 @@ const DashboardSiswa = () => {
   const [teacherInfo, setTeacherInfo] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     schoolName: 'SMPK DON BOSCO',
@@ -95,7 +92,6 @@ const DashboardSiswa = () => {
     attendanceEndTime: '08:00',
     lateThreshold: '08:00',
     schoolEndTime: '15:30',
-    attendanceSessionOpen: true,
     dashboardPhoto1: null,
     dashboardPhoto2: null,
     dashboardPhoto3: null,
@@ -107,7 +103,6 @@ const DashboardSiswa = () => {
   // State untuk QR Code
   const [myQRCode, setMyQRCode] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
 
   // ✨ TAMBAHAN: State Event
   const [events, setEvents] = useState([]);
@@ -147,7 +142,6 @@ const DashboardSiswa = () => {
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || settings.photo3_url || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || settings.video_url || null,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
-            attendanceSessionOpen: settings.attendance_session_open ?? settings.attendanceSessionOpen ?? true,
             disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
           };
           setAttendanceSettings(mappedSettings);
@@ -171,7 +165,6 @@ const DashboardSiswa = () => {
             dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || null,
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null,
-            attendanceSessionOpen: settings.attendanceSessionOpen ?? true,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
             disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
           });
@@ -251,8 +244,37 @@ const DashboardSiswa = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Cleanup QR scanner saat unmount
+  useEffect(() => {
+    return () => {
+      if (qrScanner) {
+        stopQRScanner();
+      }
+    };
+  }, [qrScanner]);
+
+  // Ref untuk instance Html5Qrcode agar tidak terjadi tabrakan (timeout)
+  const html5QrcodeScannerRef = useRef(null);
+
+  // Watch untuk modal dan start scanner saat modal terbuka
+  useEffect(() => {
+    let isMounted = true;
+    if (showAbsenModal && activeAbsenTab === 'scan') {
+      const timer = setTimeout(() => {
+        if (isMounted) startQRScanner();
+      }, 500);
+      return () => {
+        isMounted = false;
+        clearTimeout(timer);
+        stopQRScanner();
+      };
+    } else {
+      stopQRScanner();
+    }
+  }, [showAbsenModal, activeAbsenTab]);
+
   const fetchStudentData = async (silent = true) => {
-    if (!silent) setDataLoading(true);
+    if (!silent) setLoading(true);
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
@@ -263,7 +285,7 @@ const DashboardSiswa = () => {
         api.get('/siswa/class', config).catch(e => { console.warn("Class API fail", e); throw e; })
       ]);
 
-      const eventRes = await api.get('/public/events', config).catch(err => ({ data: [], status: 404 }));
+      const eventRes = await api.get('/public/events', config).catch(() => ({ data: [] }));
       setEvents(Array.isArray(eventRes.data) ? eventRes.data : []);
 
     const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
@@ -281,7 +303,6 @@ const DashboardSiswa = () => {
     if (results[2].status === 'fulfilled') {
       setClassInfo(results[2].value.data.class);
       setTeacherInfo(results[2].value.data.teacher);
-      setSessionInfo(results[2].value.data.session || null);
     }
 
     // Sinkronisasi data user dari database ke state
@@ -487,7 +508,7 @@ const DashboardSiswa = () => {
 
   const menuItems = [
     { id: 'ringkasan', label: 'Ringkasan', icon: '📊' },
-    { id: 'unduh qr', label: 'Unduh QR', icon: '✅' },
+    { id: 'absensi', label: 'Absensi', icon: '✅' },
     { id: 'jadwal', label: 'Jadwal', icon: '📚' },
     { id: 'riwayat', label: 'Riwayat', icon: '📅' },
     { id: 'profil', label: 'Profil', icon: '👤' },
@@ -624,7 +645,7 @@ const DashboardSiswa = () => {
 
         {/* Main UI Column - UNTOUCHED */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {(sessionInfo?.attendanceSessionOpen === false || attendanceSettings.attendanceSessionOpen === false) && (
+          {sessionInfo?.attendanceSessionOpen === false && (
             <div className="bg-amber-100 border-b-2 border-amber-300 px-4 py-2 text-center text-sm text-amber-900 flex-shrink-0">
               Sesi absensi sedang ditutup oleh administrator. Absensi QR/manual tidak dapat dilakukan hingga dibuka kembali.
             </div>
@@ -801,7 +822,7 @@ const DashboardSiswa = () => {
                     </div>
                   </div>
 
-                  {dataLoading ? (
+                  {loading ? (
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                       {[1,2,3,4].map((i) => (
                         <div key={i} className="bg-white rounded-xl p-5 border-2 border-blue-200 animate-pulse">
@@ -900,7 +921,7 @@ const DashboardSiswa = () => {
                       <button onClick={() => setActiveTab('riwayat')} className="text-xs text-blue-600 hover:underline">Lihat Semua →</button>
                     </div>
                     <div className="divide-y-2 divide-blue-50">
-                      {dataLoading ? (
+                      {loading ? (
                         <div className="p-6 text-center text-blue-600">Memuat...</div>
                       ) : attendanceHistory.length === 0 ? (
                         <div className="p-6 text-center text-blue-600">
@@ -1135,7 +1156,7 @@ const DashboardSiswa = () => {
                     <p className="text-blue-600 text-sm">Catatan kehadiranmu sepanjang semester</p>
                   </div>
                   <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-lg">
-                    {dataLoading ? (
+                    {loading ? (
                       <div className="p-6 text-center text-blue-600">Memuat riwayat...</div>
                     ) : attendanceHistory.length === 0 ? (
                       <div className="p-6 text-center text-blue-600">
