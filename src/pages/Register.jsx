@@ -29,6 +29,8 @@ const Register = () => {
         parent_name: '',
         parent_phone: ''
     });
+    const [photo, setPhoto] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -100,6 +102,19 @@ const Register = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Optional: Add file size validation (e.g., max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        alert("Ukuran foto terlalu besar! Maksimal 2MB.");
+        return;
+      }
+      setPhoto(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
     const handleRegister = async (e) => {
         e.preventDefault();
         setError('');
@@ -109,42 +124,50 @@ const Register = () => {
             if (formData.password.length < 8) throw new Error('Kata sandi minimal 8 karakter!');
             if (formData.password !== formData.password_confirmation) throw new Error('Konfirmasi kata sandi tidak cocok!');
 
-            const payload = {
-                name: formData.name.trim(),
-                email: formData.email.trim(),
-                password: formData.password,
-                password_confirmation: formData.password_confirmation,
-                role: formData.role
-            };
+            // Gunakan FormData untuk mendukung pengiriman file foto
+            const data = new FormData();
+            data.append('name', formData.name.trim());
+            data.append('email', formData.email.trim());
+            data.append('password', formData.password);
+            data.append('password_confirmation', formData.password_confirmation);
+            data.append('role', formData.role);
 
-            payload.username = (formData.role === 'siswa' ? formData.nis : formData.nip) || formData.email.split('@')[0];
+            const username = (formData.role === 'siswa' ? formData.nis : formData.nip) || formData.email.split('@')[0];
+            data.append('username', username);
 
             if (formData.role === 'siswa') {
                 if (!formData.class_name || !formData.nis || !formData.gender || !formData.phone || !formData.parent_name || !formData.parent_phone) {
                     throw new Error('Semua data profil siswa wajib diisi!');
                 }
-                payload.nis = formData.nis;
-                payload.user_id = formData.nis;
-                payload.class_id = parseInt(formData.class_name);
-                payload.class_name = `Kelas ${formData.class_name}`;
-                payload.gender = formData.gender;
-                payload.phone = formData.phone;
-                payload.parent_name = formData.parent_name;
-                payload.parent_phone = formData.parent_phone;
+                data.append('nis', formData.nis);
+                data.append('user_id', formData.nis);
+                data.append('class_id', formData.class_name);
+                data.append('class_name', `Kelas ${formData.class_name}`);
+                data.append('gender', formData.gender);
+                data.append('phone', formData.phone);
+                data.append('parent_name', formData.parent_name);
+                data.append('parent_phone', formData.parent_phone);
             } else if (formData.role === 'guru') {
                 if (!formData.nip || !formData.gender || !formData.phone || !formData.class_name) {
                     throw new Error('Data NIP, Jenis Kelamin, No. Telepon, dan Wali Kelas wajib diisi!');
                 }
-                payload.nip = formData.nip;
-                payload.nis = formData.nip;
-                payload.user_id = formData.nip;
-                payload.class_id = parseInt(formData.class_name);
-                payload.class_name = `Kelas ${formData.class_name}`;
-                payload.gender = formData.gender;
-                payload.phone = formData.phone;
+                data.append('nip', formData.nip);
+                data.append('nis', formData.nip);
+                data.append('user_id', formData.nip);
+                data.append('class_id', formData.class_name);
+                data.append('class_name', `Kelas ${formData.class_name}`);
+                data.append('gender', formData.gender);
+                data.append('phone', formData.phone);
             }
 
-            await api.post('/register', payload);
+            // Tambahkan file foto jika ada
+            if (photo) {
+                data.append('photo', photo);
+            }
+
+            await api.post('/register', data, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             alert('Registrasi berhasil! Silakan login.');
             setIsExiting(true);
             setTimeout(() => navigate('/', { replace: true }), 600);
@@ -252,6 +275,26 @@ const Register = () => {
                                                 {role === 'siswa' ? '🧑‍🎓' : role === 'guru' ? '👨‍🏫' : '👨‍💼'} {role.charAt(0).toUpperCase() + role.slice(1)}
                                             </button>
                                         ))}
+                                    </div>
+                                </div>
+
+                                {/* Input Foto Profil */}
+                                <div className="mb-4">
+                                    <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                                        Foto Profil (Opsional)
+                                    </label>
+                                    <div className="flex items-center gap-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                                        <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-blue-200 shadow-sm flex-shrink-0">
+                                            {photoPreview ? (
+                                                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="text-2xl text-blue-200">👤</span>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <input type="file" accept="image/*" onChange={handlePhotoChange} className="w-full text-[10px] text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all cursor-pointer" />
+                                            <p className="text-[10px] text-gray-400 mt-1">Format: JPG, PNG. Maksimal 2MB.</p>
+                                        </div>
                                     </div>
                                 </div>
 

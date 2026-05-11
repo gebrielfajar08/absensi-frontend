@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
 // Helper function to resolve photo URL
-const resolvePhotoUrl = (photo) => {
-  if (!photo) return null;
-  if (typeof photo !== 'string') return null;
+const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
+  if (!photo || typeof photo !== 'string') return null;
   const trimmed = photo.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || '';
+  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || fallbackBase;
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
@@ -69,6 +68,7 @@ const DashboardSiswa = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
 
   // State data siswa
@@ -97,7 +97,8 @@ const DashboardSiswa = () => {
     dashboardPhoto3: null,
     dashboardVideo: null,
     limitOneScanPerDay: true,
-    disableAttendanceOnHolidays: true
+    disableAttendanceOnHolidays: true,
+    attendanceSessionOpen: true
   });
 
   // State untuk QR Code
@@ -142,7 +143,8 @@ const DashboardSiswa = () => {
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || settings.photo3_url || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || settings.video_url || null,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
-            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
+            attendanceSessionOpen: settings.attendanceSessionOpen ?? settings.attendance_session_open ?? true
           };
           setAttendanceSettings(mappedSettings);
           localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
@@ -166,7 +168,8 @@ const DashboardSiswa = () => {
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null,
             limitOneScanPerDay: settings.limit_one_scan_per_day || settings.limitOneScanPerDay || false,
-            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
+            attendanceSessionOpen: settings.attendanceSessionOpen ?? settings.attendance_session_open ?? true
           });
         } catch (err) {
           console.error("Error parsing settings", err);
@@ -243,35 +246,6 @@ const DashboardSiswa = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
-
-  // Cleanup QR scanner saat unmount
-  useEffect(() => {
-    return () => {
-      if (qrScanner) {
-        stopQRScanner();
-      }
-    };
-  }, [qrScanner]);
-
-  // Ref untuk instance Html5Qrcode agar tidak terjadi tabrakan (timeout)
-  const html5QrcodeScannerRef = useRef(null);
-
-  // Watch untuk modal dan start scanner saat modal terbuka
-  useEffect(() => {
-    let isMounted = true;
-    if (showAbsenModal && activeAbsenTab === 'scan') {
-      const timer = setTimeout(() => {
-        if (isMounted) startQRScanner();
-      }, 500);
-      return () => {
-        isMounted = false;
-        clearTimeout(timer);
-        stopQRScanner();
-      };
-    } else {
-      stopQRScanner();
-    }
-  }, [showAbsenModal, activeAbsenTab]);
 
   const fetchStudentData = async (silent = true) => {
     if (!silent) setLoading(true);
@@ -545,21 +519,12 @@ const DashboardSiswa = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
-                  {attendanceSettings.schoolLogo ? (
-                    <img
-                      src={resolvePhotoUrl(attendanceSettings.schoolLogo)}
-                      alt="Logo Sekolah"
-                      className="w-8 h-8 object-contain"
-                      onError={(e) => { 
-                        e.target.onerror = null; 
-                        e.target.src = 'https://via.placeholder.com/40/3b82f6/ffffff?text=S'; 
-                      }}
-                    />
-                  ) : (
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                  )}
+                  <img
+                    src={attendanceSettings.schoolLogo ? resolvePhotoUrl(attendanceSettings.schoolLogo) : "/logo sekolah.jpeg"}
+                    alt="Logo Sekolah"
+                    className="w-8 h-8 object-contain"
+                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
+                  />
                 </div>
                 {!sidebarCollapsed && (
                   <div>
@@ -645,7 +610,7 @@ const DashboardSiswa = () => {
 
         {/* Main UI Column - UNTOUCHED */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {sessionInfo?.attendanceSessionOpen === false && (
+          {attendanceSettings.attendanceSessionOpen === false && (
             <div className="bg-amber-100 border-b-2 border-amber-300 px-4 py-2 text-center text-sm text-amber-900 flex-shrink-0">
               Sesi absensi sedang ditutup oleh administrator. Absensi QR/manual tidak dapat dilakukan hingga dibuka kembali.
             </div>
@@ -786,9 +751,9 @@ const DashboardSiswa = () => {
                     </div>
                   )}
 
-                  {/* ✨ SEKSI MEDIA (DIPINDAHKAN KE BAWAH SALAM) */}
-                    <div className="bg-blue-50 rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-6">
-                    <h3 className="font-semibold text-blue-800 mb-4 flex items-center gap-2">
+                  {/* Seksi Media & Kegiatan (Simple Style) */}
+                  <div className="bg-white rounded-2xl border-2 border-blue-100 p-6 shadow-md mb-6">
+                    <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
                       <span>🖼️</span> Media & Kegiatan Sekolah
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -796,26 +761,27 @@ const DashboardSiswa = () => {
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
                           {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`siswa-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-lg overflow-hidden border border-blue-100 bg-slate-50 shadow-sm">
+                            <div key={`siswa-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
                               {attendanceSettings[`dashboardPhoto${i}`] ? (
                                 <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
                               ) : (
-                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                                <div className="h-32 sm:h-48 flex flex-col items-center justify-center text-slate-400">
                                   <span className="text-2xl">📸</span>
-                                  <p className="text-[10px]">Foto {i}</p>
+                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
                                 </div>
                               )}
                             </div>
                           ))}
                         </div>
                       </div>
-                      {/* Baris Video: Di sebelah kanan foto pada desktop */}
-                      <div className="rounded-lg overflow-hidden border border-blue-100 bg-black shadow-md">
+                      {/* Baris Video */}
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner">
                         {attendanceSettings.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[160px] sm:min-h-[192px] object-contain" />
+                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[180px] sm:min-h-[220px] object-contain" />
                         ) : (
-                          <div className="h-32 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                            <span className="text-2xl">🎥</span><p className="text-[10px]">Belum ada video terbaru</p>
+                          <div className="h-full min-h-[180px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-2xl">🎥</span>
+                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
                         )}
                       </div>
@@ -832,29 +798,45 @@ const DashboardSiswa = () => {
                       ))}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                    <div className="grid grid-cols-6 gap-1.5 md:gap-4 mb-6 overflow-hidden">
                       {[
-                        { label: 'Total Pertemuan', value: stats.totalAttendance, color: 'blue', icon: '📅' },
-                        { label: 'Hadir', value: stats.presentDays, color: 'green', icon: '✓' },
+                        { label: 'Total', value: stats.totalAttendance, color: 'indigo', icon: '📅' },
+                        { label: 'Hadir', value: stats.presentDays, color: 'emerald', icon: '✓' },
                         { label: 'Terlambat', value: stats.lateDays, color: 'amber', icon: '⚠' },
-                        { label: 'Izin', value: stats.izinDays, color: 'blue', icon: '📋' },
-                        { label: 'Sakit', value: stats.sakitDays, color: 'blue', icon: '🏥' },
-                        { label: 'Absen', value: stats.absentDays, color: 'red', icon: '✗' },
+                        { label: 'Izin', value: stats.izinDays, color: 'sky', icon: '📋' },
+                        { label: 'Sakit', value: stats.sakitDays, color: 'violet', icon: '🏥' },
+                        { label: 'Absen', value: stats.absentDays, color: 'rose', icon: '✗' },
                       ].map((stat, idx) => (
-                      <div key={idx} className="bg-white rounded-2xl p-5 border-2 border-blue-100 shadow-md hover:shadow-lg transition-all group">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-2xl group-hover:scale-110 transition-transform">{stat.icon}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
-                            stat.color === 'blue' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
-                            stat.color === 'green' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
-                            stat.color === 'amber' ? 'bg-yellow-50 text-yellow-600 border-yellow-200' : 
-                            'bg-red-50 text-red-600 border-red-200'
+                      <div key={idx} className={`rounded-xl md:rounded-2xl p-1.5 md:p-5 border-2 shadow-sm md:shadow-md hover:shadow-lg transition-all group ${
+                        stat.color === 'indigo' ? 'bg-indigo-50/30 border-indigo-100' :
+                        stat.color === 'emerald' ? 'bg-emerald-50/30 border-emerald-100' :
+                        stat.color === 'amber' ? 'bg-amber-50/30 border-amber-100' :
+                        stat.color === 'sky' ? 'bg-sky-50/30 border-sky-100' :
+                        stat.color === 'violet' ? 'bg-violet-50/30 border-violet-100' :
+                        'bg-rose-50/30 border-rose-100'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1 md:mb-3">
+                          <span className="text-xs md:text-2xl group-hover:scale-110 transition-transform">{stat.icon}</span>
+                          <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
+                            stat.color === 'indigo' ? 'bg-white text-indigo-600 border-indigo-200' : 
+                            stat.color === 'emerald' ? 'bg-white text-emerald-600 border-emerald-200' : 
+                            stat.color === 'amber' ? 'bg-white text-amber-600 border-amber-200' : 
+                            stat.color === 'sky' ? 'bg-white text-sky-600 border-sky-200' : 
+                            stat.color === 'violet' ? 'bg-white text-violet-600 border-violet-200' : 
+                            'bg-white text-rose-600 border-rose-200'
                           } border`}>
                             Semester Ini
                           </span>
                         </div>
-                        <p className="text-3xl font-bold text-blue-800">{stat.value}</p>
-                        <p className="text-slate-500 text-sm mt-1">{stat.label}</p>
+                        <p className={`text-xs md:text-3xl font-black ${
+                          stat.color === 'indigo' ? 'text-indigo-800' :
+                          stat.color === 'emerald' ? 'text-emerald-800' :
+                          stat.color === 'amber' ? 'text-amber-800' :
+                          stat.color === 'sky' ? 'text-sky-800' :
+                          stat.color === 'violet' ? 'text-violet-800' :
+                          'text-rose-800'
+                        }`}>{stat.value}</p>
+                        <p className="text-slate-500 text-[7px] md:text-sm mt-0.5 md:mt-1 truncate font-bold leading-tight">{stat.label}</p>
                       </div>
                       ))}
                     </div>
@@ -872,7 +854,7 @@ const DashboardSiswa = () => {
                             cy="18"
                             r="15.9155"
                             fill="none"
-                            className={`${stats.percentage >= 80 ? 'text-green-500' : stats.percentage >= 60 ? 'text-amber-500' : 'text-red-500'} transition-all duration-1000 ease-out`}
+                            className={`${stats.percentage >= 80 ? 'text-emerald-500' : stats.percentage >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000 ease-out`}
                             stroke="currentColor"
                             strokeWidth="3.5"
                             strokeDasharray={`${stats.percentage}, 100`}
@@ -880,7 +862,7 @@ const DashboardSiswa = () => {
                           />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className={`text-2xl font-black ${stats.percentage >= 80 ? 'text-green-600' : stats.percentage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                          <span className={`text-2xl font-black ${stats.percentage >= 80 ? 'text-emerald-600' : stats.percentage >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
                             {Math.round(stats.percentage)}%
                           </span>
                           <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Hadir</span>
@@ -892,7 +874,7 @@ const DashboardSiswa = () => {
                         </p>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-green-500 rounded-full"></span> Hadir</span>
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Hadir</span>
                             <span className="font-medium">{stats.presentDays}</span>
                           </div>
                           <div className="flex justify-between">
@@ -908,7 +890,7 @@ const DashboardSiswa = () => {
                             <span className="font-medium">{stats.sakitDays}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500 rounded-full"></span> Absen</span>
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-rose-500 rounded-full"></span> Absen</span>
                             <span className="font-medium">{stats.absentDays}</span>
                           </div>
                         </div>

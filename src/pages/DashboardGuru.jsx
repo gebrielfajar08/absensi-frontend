@@ -41,6 +41,16 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1000) => {
   throw lastError;
 };
 
+// ➕ TAMBAHAN: Fungsi hitung mundur hari
+const getDaysRemaining = (dateString) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateString);
+  target.setHours(0, 0, 0, 0);
+  const diffTime = target - today;
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
 const DashboardGuru = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -868,9 +878,10 @@ const DashboardGuru = () => {
                   {events.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                       {events.map((event) => {
-                        const today = new Date(); today.setHours(0,0,0,0);
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
                         const target = new Date(event.date);
-                        const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+                        target.setHours(0, 0, 0, 0);
+                        const days = Math.round((target - today) / (1000 * 60 * 60 * 24));
                         if (days < 0) return null;
                         return (
                           <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md flex items-center p-3 gap-4 group hover:border-blue-300 transition-all">
@@ -892,9 +903,9 @@ const DashboardGuru = () => {
                     </div>
                   )}
 
-                  {/* ✨ SEKSI MEDIA (SAMA SEPERTI DASHBOARD SISWA) */}
-                  <div className="bg-blue-50 rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-6">
-                    <h3 className="font-semibold text-blue-800 mb-4 flex items-center gap-2">
+                  {/* Seksi Media & Kegiatan (Simple Style) */}
+                  <div className="bg-white rounded-2xl border-2 border-blue-100 p-6 shadow-md mb-6">
+                    <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
                       <span>🖼️</span> Media & Kegiatan Sekolah
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -902,26 +913,27 @@ const DashboardGuru = () => {
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
                           {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`guru-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-lg overflow-hidden border border-blue-100 bg-slate-50 shadow-sm">
+                            <div key={`guru-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
                               {attendanceSettings[`dashboardPhoto${i}`] ? (
                                 <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
                               ) : (
-                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                                <div className="h-32 sm:h-48 flex flex-col items-center justify-center text-slate-400">
                                   <span className="text-2xl">📸</span>
-                                  <p className="text-[10px]">Foto {i}</p>
+                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
                                 </div>
                               )}
                             </div>
                           ))}
                         </div>
                       </div>
-                      {/* Baris Video: Di sebelah kanan foto pada desktop */}
-                      <div className="rounded-lg overflow-hidden border border-blue-100 bg-black shadow-md">
+                      {/* Baris Video */}
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner">
                         {attendanceSettings.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[160px] sm:min-h-[192px] object-contain" />
+                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[180px] sm:min-h-[220px] object-contain" />
                         ) : (
-                          <div className="h-32 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                            <span className="text-2xl">🎥</span><p className="text-[10px]">Belum ada video terbaru</p>
+                          <div className="h-full min-h-[180px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-2xl">🎥</span>
+                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
                         )}
                       </div>

@@ -75,13 +75,12 @@ const formatDateOnly = (utcDate) => {
   return new Intl.DateTimeFormat('id-ID', options).format(date);
 };
 
-const resolvePhotoUrl = (photo) => {
-  if (!photo) return null;
-  if (typeof photo !== 'string') return null;
+const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
+  if (!photo || typeof photo !== 'string') return null;
   const trimmed = photo.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || '';
+  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || fallbackBase;
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
@@ -280,7 +279,8 @@ const fetchDataGuru = async () => {
     const res = await api.get('/admin/users?role=guru', {
       headers: { Authorization: `Bearer ${token}` }
     });
-    setGuruData(res.data?.data || res.data || []);
+    const rawData = res.data?.data || res.data || [];
+    setGuruData(Array.isArray(rawData) ? rawData.map(normalizeUser) : []);
   } catch (err) {
     console.error('Gagal mengambil data guru:', err);
     setGuruData([]);
@@ -294,7 +294,8 @@ const fetchDataSiswa = async () => {
     const res = await api.get('/admin/users?role=siswa', {
       headers: { Authorization: `Bearer ${token}` }
     });
-    setSiswaData(res.data?.data || res.data || []);
+    const rawData = res.data?.data || res.data || [];
+    setSiswaData(Array.isArray(rawData) ? rawData.map(normalizeUser) : []);
   } catch (err) {
     console.error('Gagal mengambil data siswa:', err);
     setSiswaData([]);
@@ -706,7 +707,9 @@ const fetchSettings = async () => {
   const fetchEvents = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await api.get('/admin/events', { headers: { Authorization: `Bearer ${token}` } });
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      // ✨ Mencoba beberapa kemungkinan endpoint jika salah satu 404
+      const res = await apiTryEndpoints('get', ['/admin/events', '/events', '/public/events'], config);
       setEvents(Array.isArray(res.data) ? res.data : (res.data.data || []));
     } catch (err) {
       console.error('Gagal mengambil data event:', err);
@@ -729,7 +732,8 @@ const fetchSettings = async () => {
       data.append('date', eventFormData.date);
       if (eventFormData.image) data.append('image', eventFormData.image);
 
-      await api.post('/admin/events', data, {
+      // ✨ Gunakan apiTryEndpoints untuk menyimpan agar lebih fleksibel
+      await apiTryEndpoints('post', ['/admin/events', '/events'], data, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
       });
       
@@ -749,7 +753,9 @@ const fetchSettings = async () => {
     if (!confirm('Yakin ingin menghapus event ini?')) return;
     try {
       const token = localStorage.getItem('token');
-      await api.delete(`/admin/events/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      // ✨ Coba hapus ke beberapa kemungkinan endpoint
+      await apiTryEndpoints('delete', [`/admin/events/${id}`, `/events/${id}`], config);
       fetchEvents();
     } catch (err) {
       alert('❌ Gagal menghapus event');
@@ -761,8 +767,9 @@ const fetchSettings = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const target = new Date(dateString);
+    target.setHours(0, 0, 0, 0);
     const diffTime = target - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
 
@@ -1504,6 +1511,18 @@ const handleSaveSettings = async (section, e) => {
              ['terlambat', 'late', 'tardy'].includes(status);
     }).length;
     
+    // Hitung izin
+    const izin = today.filter(item => {
+      const status = (item.status || '').toString().toLowerCase();
+      return ['izin', 'permisi'].includes(status);
+    }).length;
+
+    // Hitung sakit
+    const sakit = today.filter(item => {
+      const status = (item.status || '').toString().toLowerCase();
+      return ['sakit', 'sick'].includes(status);
+    }).length;
+
     // Hitung absen - status yang menunjukkan tidak hadir
     const absen = today.filter(item => {
       const status = (item.status || '').toString().toLowerCase();
@@ -1514,7 +1533,7 @@ const handleSaveSettings = async (section, e) => {
     const totalHadir = hadir + terlambat;
     const hadirPercent = total > 0 ? Math.round((totalHadir / total) * 100) : 0;
     
-    return { total, hadir, terlambat, absen, hadirPercent };
+    return { total, hadir, terlambat, izin, sakit, absen, hadirPercent };
   };
 
   const getAttendanceChartData = () => {
@@ -1589,7 +1608,7 @@ const handleSaveSettings = async (section, e) => {
     return trend;
   };
 
-  const { total, hadir, terlambat, absen, hadirPercent } = getAttendanceStats();
+  const { total, hadir, terlambat, izin, sakit, absen, hadirPercent } = getAttendanceStats();
 
   if (loading || !user) {
     return (
@@ -1605,24 +1624,25 @@ const handleSaveSettings = async (section, e) => {
   return (
     <div className={`min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100 transition-all duration-500 ${isExiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
       <div className="flex h-screen overflow-hidden">
-        {/* ✨ TAMBAHAN: Overlay untuk mobile */}
+        {/* ✨ Overlay untuk mobile agar navbar tidak menutupi konten */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
             onClick={() => setSidebarOpen(false)}
           ></div>
         )}
-        
-        {/* SIDEBAR - Responsive dengan hamburger menu */}
-        <aside className={`fixed lg:sticky top-0 h-screen z-50 bg-white border-r border-slate-100 flex flex-col transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${sidebarOpen ? 'translate-x-0 w-64' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20' : '-translate-x-full lg:translate-x-0 lg:w-64'} py-8 px-4`}>
+
+        {/* SIDEBAR - Kembali ke drawer untuk mobile */}
+        <aside className={`fixed lg:sticky top-0 h-screen z-50 bg-white border-r border-slate-100 flex flex-col transition-all duration-500 ease-in-out ${sidebarOpen ? 'translate-x-0 w-64' : sidebarCollapsed ? '-translate-x-full lg:translate-x-0 w-20' : '-translate-x-full lg:translate-x-0 lg:w-64'} py-8 px-4`}>
           {/* Logo */}
           <div className="mb-10 px-2 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full overflow-hidden shadow-sm ring-1 ring-slate-100 flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0">
                 <img
-                  src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : `https://ui-avatars.com/api/?name=${encodeURIComponent(settingsData.schoolName || 'S')}&background=2563eb&color=ffffff`}
-                  alt="Logo"
-                  className="w-full h-full object-contain bg-white"
+                  src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : "/logo sekolah.jpeg"}
+                  alt="Logo Sekolah"
+                  className="w-8 h-8 object-contain"
+                  onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
                 />
               </div>
               {!sidebarCollapsed && <span className="text-lg font-black text-slate-800 tracking-tight truncate">{settingsData.schoolName || 'ADMIN'}</span>}
@@ -1989,13 +2009,14 @@ const handleSaveSettings = async (section, e) => {
               {/* Banner Selamat Datang hanya di tab Ringkasan */}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
-                  {/* ✨ TANGGAL KOTAK DINAMIS (LANDING STYLE) */}
-                  <div className="mx-4 lg:mx-8 mt-2">
+                  {/* ✨ BARU: Layout Grid Kalender (Kiri) & Event (Kanan) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mx-4 lg:mx-8 mt-2">
+                    {/* 📅 SISI KIRI: TANGGAL DINAMIS */}
                     {(() => {
                       const sectionBg = getSectionBackground(currentTime);
                       return (
                         <div
-                          className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg"
+                          className="relative overflow-hidden rounded-3xl border-2 border-blue-100 p-6 text-white shadow-xl h-full flex flex-col justify-center min-h-[180px]"
                           style={{
                             backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
                             backgroundSize: 'cover',
@@ -2003,24 +2024,56 @@ const handleSaveSettings = async (section, e) => {
                           }}
                         >
                           <div className="relative">
-                            <p className="text-xs uppercase tracking-[0.24em] text-blue-200/90 mb-3 font-bold">
-                              {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
+                            <p className="text-[10px] uppercase tracking-[0.24em] text-blue-200/90 mb-2 font-black">
+                              {sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}
                             </p>
-                            <h3 className="text-2xl md:text-3xl font-black mb-2 tracking-tight">
+                            <h3 className="text-xl md:text-2xl font-black mb-1 tracking-tight">
                               {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                             </h3>
-                            <p className="text-sm text-slate-200/80 mb-6">
-                              Sistem pencatatan waktu otomatis zona waktu Jakarta.
-                            </p>
-                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg border border-white/20">
+                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white border border-white/20 mt-4">
                               <span>{currentTime.getFullYear()}</span>
-                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+                              <span className="inline-block h-1 w-1 rounded-full bg-blue-400" />
                               <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
                             </div>
                           </div>
                         </div>
                       );
                     })()}
+
+                    {/* 🗓️ SISI KANAN: EVENT MENDATANG */}
+                    <div className="bg-white rounded-3xl border-2 border-blue-100 p-5 shadow-lg flex flex-col h-full min-h-[180px]">
+                      <h3 className="font-black text-blue-900 mb-4 flex items-center justify-between text-xs uppercase tracking-wider">
+                        <span className="flex items-center gap-2">📅 Agenda & Event</span>
+                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{events.length} Hari Besar</span>
+                      </h3>
+                      <div className="space-y-3 overflow-y-auto max-h-[180px] custom-scrollbar pr-2 flex-1">
+                        {events.length > 0 ? (
+                          events.map((event) => {
+                            const days = getDaysRemaining(event.date);
+                            if (days < 0) return null;
+                            return (
+                              <div key={event.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-all">
+                                <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                                  <img src={resolvePhotoUrl(event.image) || 'https://images.unsplash.com/photo-1506784911079-531bb9934257?w=500'} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="font-bold text-slate-800 text-[11px] truncate uppercase tracking-tight">{event.title}</h4>
+                                  <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase">{new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
+                                </div>
+                                <div className={`text-[9px] font-black px-2.5 py-1 rounded-lg shadow-sm border ${days === 0 ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                  {days === 0 ? 'HARI INI' : `H-${days}`}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400 py-4">
+                            <span className="text-2xl mb-1 opacity-20">📅</span>
+                            <p className="text-[10px] font-bold uppercase">Belum ada agenda</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 shadow-sm flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
@@ -2084,48 +2137,59 @@ const handleSaveSettings = async (section, e) => {
                 </div>
               )}
 
-              {/* ✨ TAMBAHAN: Seksi Event Mendatang di Overview */}
-              {activeTab === 'overview' && events.length > 0 && (
-                <div className="mx-4 lg:mx-8 mb-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-blue-900 flex items-center gap-2 text-lg">
-                      <span>📅</span> Event & Hari Besar Mendatang
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {events.map((event) => {
-                      const days = getDaysRemaining(event.date);
-                      if (days < 0) return null;
-                      return (
-                        <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md hover:shadow-xl transition-all group relative">
-                          <div className="h-32 overflow-hidden relative">
-                            <img src={resolvePhotoUrl(event.image) || 'https://images.unsplash.com/photo-1506784911079-531bb9934257?w=500'} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                            <div className={`absolute top-2 right-2 ${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg border border-white/20`}>
-                              {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} Hari Lagi`}
-                            </div>
-                          </div>
-                          <div className="p-4">
-                            <h4 className="font-bold text-slate-800 truncate">{event.title}</h4>
-                            <p className="text-xs text-slate-500 mt-1">
-                              📅 {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               {/* TAB: Overview */}
               {activeTab === 'overview' && (
                 <div className="space-y-6 animate-fade-in">
-                  
-                  {/* Ringkasan Kehadiran Bulat (Circular Progress) */}
-                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl p-8 ">
-                    <div className="flex flex-col md:flex-row items-center gap-12">
-                      {/* Bagian Bulat (Circular Progress) */}
-                      <div className="relative w-48 h-48 group flex-shrink-0">
+
+                  {/* Statistik 6 Kotak */}
+                  <div className="grid grid-cols-6 gap-1.5 md:gap-3 mb-6 overflow-hidden">
+                    {[
+                      { label: 'Total', value: total, color: 'indigo', icon: '📅' },
+                      { label: 'Hadir', value: hadir, color: 'emerald', icon: '✓' },
+                      { label: 'Terlambat', value: terlambat, color: 'amber', icon: '⚠' },
+                      { label: 'Izin', value: izin, color: 'sky', icon: '📋' },
+                      { label: 'Sakit', value: sakit, color: 'violet', icon: '🏥' },
+                      { label: 'Absen', value: absen, color: 'rose', icon: '✗' },
+                    ].map((stat, idx) => (
+                      <div key={idx} className={`rounded-xl md:rounded-2xl p-1.5 md:p-5 border-2 shadow-sm md:shadow-md hover:shadow-lg transition-all group ${
+                        stat.color === 'indigo' ? 'bg-indigo-50/50 border-indigo-100' :
+                        stat.color === 'emerald' ? 'bg-emerald-50/50 border-emerald-100' :
+                        stat.color === 'amber' ? 'bg-amber-50/50 border-amber-100' :
+                        stat.color === 'sky' ? 'bg-sky-50/50 border-sky-100' :
+                        stat.color === 'violet' ? 'bg-violet-50/50 border-violet-100' :
+                        'bg-rose-50/50 border-rose-100'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1 md:mb-3">
+                          <span className="text-xs md:text-2xl group-hover:scale-110 transition-transform">{stat.icon}</span>
+                          <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
+                            stat.color === 'indigo' ? 'bg-white text-indigo-600 border-indigo-200' : 
+                            stat.color === 'emerald' ? 'bg-white text-emerald-600 border-emerald-200' : 
+                            stat.color === 'amber' ? 'bg-white text-amber-600 border-amber-200' : 
+                            stat.color === 'sky' ? 'bg-white text-sky-600 border-sky-200' : 
+                            stat.color === 'violet' ? 'bg-white text-violet-600 border-violet-200' : 
+                            'bg-white text-rose-600 border-rose-200'
+                          } border`}>
+                            Hari Ini
+                          </span>
+                        </div>
+                        <p className={`text-xs md:text-3xl font-black ${
+                          stat.color === 'indigo' ? 'text-indigo-800' :
+                          stat.color === 'emerald' ? 'text-emerald-800' :
+                          stat.color === 'amber' ? 'text-amber-800' :
+                          stat.color === 'sky' ? 'text-sky-800' :
+                          stat.color === 'violet' ? 'text-violet-800' :
+                          'text-rose-800'
+                        }`}>{stat.value}</p>
+                        <p className="text-slate-500 text-[8px] md:text-sm mt-0.5 md:mt-1 truncate font-bold leading-tight">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Progress Kehadiran (Gaya Dashboard Siswa) */}
+                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
+                    <h3 className="font-semibold text-blue-800 mb-4">Progress Kehadiran Hari Ini</h3>
+                    <div className="flex flex-col sm:flex-row items-center gap-8">
+                      <div className="relative w-32 h-32 group">
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
                           <circle
@@ -2133,7 +2197,7 @@ const handleSaveSettings = async (section, e) => {
                             cy="18"
                             r="15.9155"
                             fill="none"
-                            className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-red-500'} transition-all duration-1000 ease-in-out`}
+                            className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000 ease-out`}
                             stroke="currentColor"
                             strokeWidth="3.5"
                             strokeDasharray={`${hadirPercent}, 100`}
@@ -2141,28 +2205,33 @@ const handleSaveSettings = async (section, e) => {
                           />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-4xl font-black text-blue-900 leading-none">{hadirPercent}%</span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Hadir</span>
+                          <span className={`text-2xl font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
+                            {hadirPercent}%
+                          </span>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Hadir</span>
                         </div>
                       </div>
-
-                      {/* Bagian Grid Statistik Kanan */}
-                      <div className="flex-1 w-full grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 shadow-sm">
-                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Total Absensi</p>
-                          <p className="text-3xl font-black text-blue-900">{total}</p>
-                        </div>
-                        <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-100 shadow-sm">
-                          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Hadir</p>
-                          <p className="text-3xl font-black text-emerald-900">{hadir}</p>
-                        </div>
-                        <div className="p-4 bg-amber-50 rounded-2xl border-2 border-amber-100 shadow-sm">
-                          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Terlambat</p>
-                          <p className="text-3xl font-black text-amber-900">{terlambat}</p>
-                        </div>
-                        <div className="p-4 bg-red-50 rounded-2xl border-2 border-red-100 shadow-sm">
-                          <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Tidak Hadir</p>
-                          <p className="text-3xl font-black text-red-900">{absen}</p>
+                      <div className="flex-1 w-full">
+                        <p className="text-sm text-blue-600 mb-2">
+                          Kehadiran mencapai <span className="font-bold text-blue-600">{hadirPercent}%</span> dari total <span className="font-bold">{total}</span> rekaman hari ini
+                        </p>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Hadir</span>
+                            <span className="font-medium">{hadir}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-amber-500 rounded-full"></span> Terlambat</span>
+                            <span className="font-medium">{terlambat}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-sky-500 rounded-full"></span> Izin / Sakit</span>
+                            <span className="font-medium">{izin + sakit}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-rose-500 rounded-full"></span> Absen / Alpha</span>
+                            <span className="font-medium">{absen}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
