@@ -924,6 +924,7 @@ const Landing = () => {
                     alt="Logo" 
                     className="w-full h-full object-contain"
                     onError={() => setLogoError(true)}
+                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/40x40/2563eb/ffffff?text=S'; }}
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">

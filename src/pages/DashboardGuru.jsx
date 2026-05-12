@@ -650,7 +650,7 @@ const DashboardGuru = () => {
                     src={attendanceSettings.schoolLogo ? resolvePhotoUrl(attendanceSettings.schoolLogo) : "/logo sekolah.jpeg"}
                     alt="Logo Sekolah"
                     className="w-8 h-8 object-contain"
-                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
+                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/40x40/2563eb/ffffff?text=S'; }}
                   />
                 </div>
                 {!sidebarCollapsed && (
@@ -811,7 +811,7 @@ const DashboardGuru = () => {
               {activeTab === 'ringkasan' && (
                 <div className="space-y-6">
                   {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
-                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-4 sm:p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-200">
                     {/* Ornamen Dekoratif */}
                     <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
                     <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
@@ -819,7 +819,7 @@ const DashboardGuru = () => {
                     </div>
 
                     <div className="relative z-10">
-                      <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
+                      <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
                         <img
                           src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Guru')}&background=2563eb&color=ffffff`}
                           alt="Profile"
@@ -874,6 +874,7 @@ const DashboardGuru = () => {
                       </div>
                     );
                   })()}
+                  
                   {/* ✨ TAMBAHAN: Kartu Event Countdown untuk Guru */}
                   {events.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
@@ -885,7 +886,14 @@ const DashboardGuru = () => {
                         if (days < 0) return null;
                         return (
                           <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md flex items-center p-3 gap-4 group hover:border-blue-300 transition-all">
-                            <img src={resolvePhotoUrl(event.image)} className="w-16 h-16 rounded-xl object-cover border border-amber-100" />
+                            <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                              <img
+                                src={resolvePhotoUrl(event.image)}
+                                alt={event.title}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/100x100/cccccc/ffffff?text=EVENT'; }}
+                              />
+                            </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-black text-blue-900 uppercase tracking-tighter truncate">{event.title}</p>
                               <div className="flex items-center gap-2 mt-1">

@@ -1642,7 +1642,7 @@ const handleSaveSettings = async (section, e) => {
                   src={settingsData.schoolLogo ? resolvePhotoUrl(settingsData.schoolLogo) : "/logo sekolah.jpeg"}
                   alt="Logo Sekolah"
                   className="w-8 h-8 object-contain"
-                  onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/2563eb/ffffff?text=S'; }}
+                  onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/40x40/2563eb/ffffff?text=S'; }}
                 />
               </div>
               {!sidebarCollapsed && <span className="text-lg font-black text-slate-800 tracking-tight truncate">{settingsData.schoolName || 'ADMIN'}</span>}
@@ -2009,6 +2009,25 @@ const handleSaveSettings = async (section, e) => {
               {/* Banner Selamat Datang hanya di tab Ringkasan */}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
+                  {/* Banner Selamat Datang - Sekarang di posisi teratas */}
+                  <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 shadow-sm flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
+                    {/* Efek dekorasi subtle di background agar tidak membosankan */}
+                    <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                    
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md flex-shrink-0 relative z-10">
+                      👋
+                    </div>
+                    
+                    <div className="text-center sm:text-left relative z-10">
+                      <h2 className="text-lg lg:text-xl font-bold text-slate-800 leading-tight">
+                        Selamat datang, {user?.name || 'Administrator'}!
+                      </h2>
+                      <p className="text-slate-500 text-xs lg:text-sm mt-0.5">
+                        Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* ✨ BARU: Layout Grid Kalender (Kiri) & Event (Kanan) */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mx-4 lg:mx-8 mt-2">
                     {/* 📅 SISI KIRI: TANGGAL DINAMIS */}
@@ -2016,7 +2035,7 @@ const handleSaveSettings = async (section, e) => {
                       const sectionBg = getSectionBackground(currentTime);
                       return (
                         <div
-                          className="relative overflow-hidden rounded-3xl border-2 border-blue-100 p-6 text-white shadow-xl h-full flex flex-col justify-center min-h-[180px]"
+                        className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg mb-6"
                           style={{
                             backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
                             backgroundSize: 'cover',
@@ -2041,27 +2060,34 @@ const handleSaveSettings = async (section, e) => {
                     })()}
 
                     {/* 🗓️ SISI KANAN: EVENT MENDATANG */}
-                    <div className="bg-white rounded-3xl border-2 border-blue-100 p-5 shadow-lg flex flex-col h-full min-h-[180px]">
+                  <div className="bg-white rounded-3xl border-2 border-blue-100 p-5 shadow-lg flex flex-col h-full min-h-[180px] mb-6">
                       <h3 className="font-black text-blue-900 mb-4 flex items-center justify-between text-xs uppercase tracking-wider">
                         <span className="flex items-center gap-2">📅 Agenda & Event</span>
                         <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{events.length} Hari Besar</span>
                       </h3>
-                      <div className="space-y-3 overflow-y-auto max-h-[180px] custom-scrollbar pr-2 flex-1">
+                    <div className="space-y-4 overflow-y-auto max-h-[300px] custom-scrollbar pr-2 flex-1">
                         {events.length > 0 ? (
                           events.map((event) => {
                             const days = getDaysRemaining(event.date);
                             if (days < 0) return null;
                             return (
-                              <div key={event.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-all">
-                                <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
-                                  <img src={resolvePhotoUrl(event.image) || 'https://images.unsplash.com/photo-1506784911079-531bb9934257?w=500'} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                            <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-sm group hover:shadow-md transition-all">
+                              <img
+                                src={resolvePhotoUrl(event.image)}
+                                alt={event.title}
+                                className="w-full h-28 object-cover"
+                                onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x200/cccccc/ffffff?text=IMAGE'; }}
+                              />
+                              <div className="p-4 bg-white">
+                                <div className="flex justify-between items-center gap-2">
+                                  <h4 className="font-bold text-blue-900 text-xs truncate uppercase tracking-tight">{event.title}</h4>
+                                  <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm`}>
+                                    {days === 0 ? '🎉 HARI INI' : `⏳ H-${days}`}
+                                  </span>
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                  <h4 className="font-bold text-slate-800 text-[11px] truncate uppercase tracking-tight">{event.title}</h4>
-                                  <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase">{new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
-                                </div>
-                                <div className={`text-[9px] font-black px-2.5 py-1 rounded-lg shadow-sm border ${days === 0 ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                                  {days === 0 ? 'HARI INI' : `H-${days}`}
+                                <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">
+                                  {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
+                                </p>
                                 </div>
                               </div>
                             );
@@ -2075,61 +2101,41 @@ const handleSaveSettings = async (section, e) => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 shadow-sm flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
-                  {/* Efek dekorasi subtle di background agar tidak membosankan */}
-                  <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
-                  
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md flex-shrink-0 relative z-10">
-                    👋
-                  </div>
-                  
-                  <div className="text-center sm:text-left relative z-10">
-                    <h2 className="text-lg lg:text-xl font-bold text-slate-800 leading-tight">
-                      Selamat datang, {user?.name || 'Administrator'}!
-                    </h2>
-                    <p className="text-slate-500 text-xs lg:text-sm mt-0.5">
-                      Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.
-                    </p>
-                  </div>
-                </div>
               </div>
               )}
 
-              {/* ✨ SEKSI MEDIA (GABUNGAN KE OVERVIEW) */}
+              {/* Seksi Media & Kegiatan (Samakan dengan Dashboard Siswa) */}
               {activeTab === 'overview' && (
-                <div className="bg-white rounded-xl border-2 border-blue-200 p-5 shadow-lg mb-8 mx-4 lg:mx-8">
-                  <h3 className="font-semibold text-blue-800 mb-4 flex items-center gap-2">
+                <div className="bg-white rounded-2xl border-2 border-blue-100 p-6 shadow-md mb-10 mx-4 lg:mx-8 mt-4">
+                  <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
                     <span>🖼️</span> Media & Kegiatan Sekolah
                   </h3>
-                  <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Baris Foto: Sliding Left Animation */}
                     <div className="overflow-hidden relative w-full py-1">
                       <div className="flex gap-4 animate-slide-left w-max">
-                        {[1, 2, 3, 1, 2, 3].map((i, idx) => {
-                          const photoNum = i;
-                          const photoUrl = settingsData[`dashboardPhoto${photoNum}`];
-                          return (
-                            <div key={`overview-photo-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-lg overflow-hidden border border-blue-100 bg-slate-50 shadow-sm">
-                              {photoUrl ? (
-                                <img src={resolvePhotoUrl(photoUrl)} alt={`Sekolah ${photoNum}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                        {[1, 2, 3, 1, 2, 3].map((i, idx) => (
+                          <div key={`overview-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
+                            {settingsData[`dashboardPhoto${i}`] ? (
+                              <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
                             ) : (
-                              <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                              <div className="h-32 sm:h-48 flex flex-col items-center justify-center text-slate-400">
                                 <span className="text-2xl">📸</span>
+                                <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
                               </div>
                             )}
                           </div>
-                          );
-                        })}
+                        ))}
                       </div>
                     </div>
-                    {/* Baris Video: Di bawah foto */}
-                    <div className="rounded-lg overflow-hidden border border-blue-100 bg-black shadow-md">
+                    {/* Baris Video */}
+                    <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner">
                       {settingsData.dashboardVideo ? (
-                        <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-40 sm:h-64 object-contain" />
+                        <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-full min-h-[180px] sm:min-h-[220px] object-contain" />
                       ) : (
-                        <div className="h-32 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                          <span className="text-2xl">🎥</span><p className="text-[10px]">Belum ada video terbaru</p>
+                        <div className="h-full min-h-[180px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                          <span className="text-2xl">🎥</span>
+                          <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                         </div>
                       )}
                     </div>
@@ -2142,7 +2148,7 @@ const handleSaveSettings = async (section, e) => {
                 <div className="space-y-6 animate-fade-in">
 
                   {/* Statistik 6 Kotak */}
-                  <div className="grid grid-cols-6 gap-1.5 md:gap-3 mb-6 overflow-hidden">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
                     {[
                       { label: 'Total', value: total, color: 'indigo', icon: '📅' },
                       { label: 'Hadir', value: hadir, color: 'emerald', icon: '✓' },
@@ -2151,7 +2157,7 @@ const handleSaveSettings = async (section, e) => {
                       { label: 'Sakit', value: sakit, color: 'violet', icon: '🏥' },
                       { label: 'Absen', value: absen, color: 'rose', icon: '✗' },
                     ].map((stat, idx) => (
-                      <div key={idx} className={`rounded-xl md:rounded-2xl p-1.5 md:p-5 border-2 shadow-sm md:shadow-md hover:shadow-lg transition-all group ${
+                      <div key={idx} className={`rounded-2xl p-4 md:p-5 border-2 shadow-sm md:shadow-md hover:shadow-lg transition-all group ${
                         stat.color === 'indigo' ? 'bg-indigo-50/50 border-indigo-100' :
                         stat.color === 'emerald' ? 'bg-emerald-50/50 border-emerald-100' :
                         stat.color === 'amber' ? 'bg-amber-50/50 border-amber-100' :

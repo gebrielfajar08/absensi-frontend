@@ -664,7 +664,7 @@ const DashboardSiswa = () => {
               {activeTab === 'ringkasan' && (
                 <div className="space-y-6">
                   {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
-                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-4 sm:p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-200">
                     {/* Ornamen Dekoratif */}
                     <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
                     <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
@@ -672,7 +672,7 @@ const DashboardSiswa = () => {
                     </div>
 
                     <div className="relative z-10">
-                      <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
+                      <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
                         <img
                           src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Siswa')}&background=3b82f6&color=ffffff`}
                           alt="Profile"
@@ -733,7 +733,12 @@ const DashboardSiswa = () => {
                         if (days < 0) return null;
                         return (
                           <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md group hover:shadow-xl transition-all">
-                            <img src={resolvePhotoUrl(event.image)} className="w-full h-24 object-cover opacity-80 group-hover:scale-105 transition-transform" />
+                            <img src={event.image} alt={event.title} />
+                            <img
+                              src={resolvePhotoUrl(event.image)}
+                              alt={event.title}
+                              onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/cccccc/ffffff?text=IMG'; }}
+                            />
                             <div className="p-4 bg-white">
                               <div className="flex justify-between items-center">
                                 <h4 className="font-bold text-blue-900 text-sm truncate">{event.title}</h4>
