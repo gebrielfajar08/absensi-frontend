@@ -68,6 +68,7 @@ const DashboardSiswa = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
 
@@ -100,6 +101,14 @@ const DashboardSiswa = () => {
     disableAttendanceOnHolidays: true,
     attendanceSessionOpen: true
   });
+
+  const addNotification = (message, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 4000);
+  };
 
   // State untuk QR Code
   const [myQRCode, setMyQRCode] = useState(null);
@@ -357,7 +366,7 @@ const DashboardSiswa = () => {
   // Download QR Code
   const downloadQRCode = async () => {
     if (!myQRCode) {
-      alert('❌ QR Code belum tersedia');
+      addNotification('QR Code belum tersedia', 'error');
       return;
     }
     
@@ -386,11 +395,11 @@ const DashboardSiswa = () => {
         document.body.removeChild(link);
       }
       
-      alert('✅ QR Code berhasil diunduh! Cek folder Downloads Anda.');
+      addNotification('QR Code berhasil diunduh!', 'success');
       console.log('✅ QR Code berhasil diunduh:', fileName);
     } catch (err) {
       console.error('❌ Gagal download QR Code:', err);
-      alert('❌ Gagal mengunduh QR Code. Coba lagi.');
+      addNotification('Gagal mengunduh QR Code', 'error');
     }
   };
 
@@ -610,6 +619,29 @@ const DashboardSiswa = () => {
 
         {/* Main UI Column - UNTOUCHED */}
         <main className="flex-1 flex flex-col overflow-hidden">
+          {/* ✨ TOAST NOTIFICATION CONTAINER (RIGHT TOP) */}
+          <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 w-72 pointer-events-none">
+            {notifications.map((n) => (
+              <div key={n.id} className={`pointer-events-auto flex items-center p-4 rounded-xl shadow-2xl border-l-4 transform transition-all duration-300 animate-slide-in-right ${
+                n.type === 'success' ? 'bg-white border-emerald-500 text-emerald-800' :
+                n.type === 'error' ? 'bg-white border-red-500 text-red-800' :
+                n.type === 'warning' ? 'bg-white border-amber-500 text-amber-800' :
+                'bg-white border-blue-500 text-blue-800'
+              }`}>
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider mb-0.5">{n.type === 'success' ? 'Berhasil' : n.type === 'error' ? 'Error' : 'Info'}</p>
+                  <p className="text-sm opacity-90">{n.message}</p>
+                </div>
+                <button onClick={() => setNotifications(prev => prev.filter(i => i.id !== n.id))} className="ml-2 text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+            ))}
+          </div>
+
+          <style>{`
+            @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
+          `}</style>
+
           {attendanceSettings.attendanceSessionOpen === false && (
             <div className="bg-amber-100 border-b-2 border-amber-300 px-4 py-2 text-center text-sm text-amber-900 flex-shrink-0">
               Sesi absensi sedang ditutup oleh administrator. Absensi QR/manual tidak dapat dilakukan hingga dibuka kembali.

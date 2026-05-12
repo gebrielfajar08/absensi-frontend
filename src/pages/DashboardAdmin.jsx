@@ -135,6 +135,7 @@ const DashboardAdmin = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
@@ -157,6 +158,14 @@ const DashboardAdmin = () => {
       setCurrentActivityPage(totalPages);
     }
   }, [attendanceReports, currentActivityPage, activityPageSize]);
+
+  const addNotification = (message, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 4000);
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -758,7 +767,7 @@ const fetchSettings = async () => {
       await apiTryEndpoints('delete', [`/admin/events/${id}`, `/events/${id}`], config);
       fetchEvents();
     } catch (err) {
-      alert('❌ Gagal menghapus event');
+      addNotification('Gagal menghapus event', 'error');
     }
   };
 
@@ -834,14 +843,14 @@ const fetchSettings = async () => {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.user_id || !formData.password) {
-      return alert('❌ Nama, email, NIS/NIP, dan password wajib diisi.');
+      return addNotification('Nama, email, NIS/NIP, dan password wajib diisi.', 'error');
     }
     if (formData.role === 'siswa' && (!formData.class_id || !formData.parent_phone)) {
-      return alert('❌ Untuk siswa, pilih kelas dan isi nomor telepon orang tua.');
+      return addNotification('Untuk siswa, pilih kelas dan isi nomor telepon orang tua.', 'error');
     }
     const emailExists = users.some((u) => (u.email || '').toLowerCase() === formData.email.toLowerCase());
     if (emailExists) {
-      return alert('❌ Email sudah terdaftar. Silakan gunakan email lain.');
+      return addNotification('Email sudah terdaftar. Silakan gunakan email lain.', 'error');
     }
     const nisValue = formData.user_id?.toString().trim();
     if (nisValue) {
@@ -850,7 +859,7 @@ const fetchSettings = async () => {
         return existingNis && existingNis === nisValue;
       });
       if (nisExists) {
-        return alert('❌ NIS/NIP sudah terdaftar. Silakan gunakan NIS/NIP lain.');
+        return addNotification('NIS/NIP sudah terdaftar. Silakan gunakan NIS/NIP lain.', 'error');
       }
     }
     try {
@@ -882,11 +891,11 @@ const fetchSettings = async () => {
         const checkRes = await apiTryEndpoints('get', userEndpointCandidates.index, config);
         const found = (Array.isArray(checkRes.data) ? checkRes.data : (checkRes.data.data || [])).some(u => (u.user_id || u.nis || u.nisn)?.toString() === formData.user_id?.toString());
         if (!found) {
-          alert('⚠️ Pengguna baru tidak ditemukan saat reload. Cek backend DB dan endpoint /admin/users.');
+          addNotification('Pengguna baru tidak ditemukan saat reload. Cek backend.', 'warning');
           return;
         }
       }
-      alert('✅ User berhasil ditambahkan');
+      addNotification('User berhasil ditambahkan', 'success');
     } catch (err) {
       console.error('Create user failed:', err.response?.data || err.message);
       const apiMessage = err.response?.data?.message || err.message || 'Cek log';
@@ -896,7 +905,7 @@ const fetchSettings = async () => {
           .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
           .join('\n');
       }
-      alert(`❌ Gagal menambah user: ${apiMessage}${details ? '\n' + details : ''}`);
+      addNotification(`Gagal menambah user: ${apiMessage}`, 'error');
     }
   };
 
@@ -919,36 +928,41 @@ const fetchSettings = async () => {
 
   const handlePromoteStudents = async (studentIds) => {
     if (!studentIds || studentIds.length === 0) {
-      alert('⚠️ Silakan pilih minimal satu siswa untuk dinaikkan kelasnya.');
+      addNotification('Silakan pilih minimal satu siswa untuk dinaikkan kelasnya.', 'warning');
       return;
     }
-    if (!confirm(`🚀 Yakin ingin menaikkan ${studentIds.length} siswa ke tingkat berikutnya?`)) return;
-
-    setIsPromoting(true);
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      // Endpoint backend: POST /admin/students/promote
-      await api.post('/admin/students/promote', { student_ids: studentIds }, config);
-      alert('✅ Berhasil menaikkan kelas siswa!');
-      setSelectedPromoteStudents([]);
-      await fetchDataSiswa();
-      await fetchAllData();
-    } catch (err) {
-      console.error('Gagal menaikkan kelas:', err);
-      alert('❌ Gagal menaikkan kelas: ' + (err.response?.data?.message || 'Terjadi kesalahan sistem'));
-    } finally {
-      setIsPromoting(false);
-    }
+    
+    setConfirmModal({
+      show: true,
+      title: 'Naik Kelas',
+      message: `Yakin ingin menaikkan ${studentIds.length} siswa ke tingkat berikutnya?`,
+      onConfirm: async () => {
+        setIsPromoting(true);
+        try {
+          const token = localStorage.getItem('token');
+          const config = { headers: { Authorization: `Bearer ${token}` } };
+          await api.post('/admin/students/promote', { student_ids: studentIds }, config);
+          addNotification('Berhasil menaikkan kelas siswa!', 'success');
+          setSelectedPromoteStudents([]);
+          await fetchDataSiswa();
+          await fetchAllData();
+        } catch (err) {
+          addNotification('Gagal menaikkan kelas', 'error');
+        } finally {
+          setIsPromoting(false);
+          setConfirmModal({ show: false });
+        }
+      }
+    });
   };
 
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.user_id) {
-      return alert('❌ Nama, email, dan NIS/NIP wajib diisi.');
+      return addNotification('Nama, email, dan NIS/NIP wajib diisi.', 'error');
     }
     if (formData.role === 'siswa' && (!formData.class_id || !formData.parent_phone)) {
-      return alert('❌ Untuk siswa, pilih kelas dan isi nomor telepon orang tua.');
+      return addNotification('Untuk siswa, pilih kelas dan isi nomor telepon orang tua.', 'error');
     }
     try {
       const token = localStorage.getItem('token');
@@ -980,10 +994,10 @@ const fetchSettings = async () => {
       const checkRes = await apiTryEndpoints('get', userEndpointCandidates.index, config);
       const found = (Array.isArray(checkRes.data) ? checkRes.data : (checkRes.data.data || [])).some(u => (u.user_id || u.nis || u.nisn)?.toString() === formData.user_id?.toString());
       if (!found) {
-        alert('⚠️ Update disimpan namun tidak ditemukan lagi saat reload. Cek backend untuk informasi DB.');
+        addNotification('Update disimpan namun tidak ditemukan lagi saat reload.', 'warning');
         return;
       }
-      alert('✅ User berhasil diupdate');
+      addNotification('User berhasil diupdate', 'success');
     } catch (err) {
       console.error('Update user failed:', err.response?.data || err.message);
       const apiMessage = err.response?.data?.message || err.message || 'Cek log';
@@ -993,22 +1007,30 @@ const fetchSettings = async () => {
           .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
           .join('\n');
       }
-      alert(`❌ Gagal mengupdate user: ${apiMessage}${details ? '\n' + details : ''}`);
+      addNotification(`Gagal mengupdate user: ${apiMessage}`, 'error');
     }
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!confirm('⚠️ Yakin ingin menghapus user ini?')) return;
-    try {
-      const token = localStorage.getItem('token');
-      await apiTryEndpoints('delete', userEndpointCandidates.delete(userId), { headers: { Authorization: `Bearer ${token}` } });
-      alert('✅ User berhasil dihapus');
-      fetchAllData();
-      if (activeTab === 'dataGuru') fetchDataGuru();
-      if (activeTab === 'dataSiswa') fetchDataSiswa();
-    } catch (err) {
-      alert('❌ Gagal menghapus user');
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Hapus User',
+      message: 'Apakah Anda yakin ingin menghapus user ini?',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await apiTryEndpoints('delete', userEndpointCandidates.delete(userId), { headers: { Authorization: `Bearer ${token}` } });
+          addNotification('User berhasil dihapus', 'success');
+          fetchAllData();
+          if (activeTab === 'dataGuru') fetchDataGuru();
+          if (activeTab === 'dataSiswa') fetchDataSiswa();
+        } catch (err) {
+          addNotification('Gagal menghapus user', 'error');
+        } finally {
+          setConfirmModal({ show: false });
+        }
+      }
+    });
   };
 
   const openEditModal = (user) => {
@@ -1088,11 +1110,11 @@ const fetchSettings = async () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
-        alert('✅ QR Code berhasil diunduh!');
+        addNotification('QR Code berhasil diunduh!', 'success');
       })
       .catch(err => {
         console.error('Gagal download QR:', err);
-        alert('❌ Gagal mengunduh QR Code');
+        addNotification('Gagal mengunduh QR Code', 'error');
       });
   };
 
@@ -1105,7 +1127,7 @@ const handleSaveSettings = async (section, e) => {
 
   const token = localStorage.getItem('token');
   if (!token) {
-    alert('Sesi habis, silakan login ulang sebelum menyimpan pengaturan.');
+    addNotification('Sesi habis, silakan login ulang.', 'error');
     return;
   }
 
@@ -1204,7 +1226,7 @@ const handleSaveSettings = async (section, e) => {
         .join("\n");
     }
 
-    alert(`❌ Kesalahan Validasi:\n${detailMsg}`);
+    addNotification(`Kesalahan Validasi: ${detailMsg}`, 'error');
   } finally {
     setIsPromoting(false);
   }
@@ -1236,16 +1258,16 @@ const handleSaveSettings = async (section, e) => {
       link.setAttribute('download', `${type}_${new Date().toISOString().split('T')[0]}.xlsx`);
       document.body.appendChild(link);
       link.click();
-      alert('✅ Data berhasil diekspor!');
+      addNotification('Data berhasil diekspor!', 'success');
     } catch (err) {
-      alert('❌ Gagal mengekspor data');
+      addNotification('Gagal mengekspor data', 'error');
     }
   };
 
   // ✨ TAMBAHAN: Handle Send WhatsApp Message
   const handleSendWhatsApp = (parentPhone, studentName) => {
     if (!parentPhone) {
-      alert('❌ Nomor telepon orang tua tidak tersedia');
+      addNotification('Nomor telepon orang tua tidak tersedia', 'error');
       return;
     }
     // Format nomor: hapus 0 di depan, tambah 62
@@ -1372,39 +1394,63 @@ const handleSaveSettings = async (section, e) => {
 
   // ✨ TAMBAHAN: CRUD Handlers untuk Features Baru
   const handleDeleteSubject = async (id) => {
-    if (!confirm('⚠️ Yakin ingin menghapus mata pelajaran ini?')) return;
-    try {
-      const token = localStorage.getItem('token');
-      await api.delete(`/admin/subjects/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-      alert('✅ Mata pelajaran berhasil dihapus');
-      fetchSubjects();
-    } catch (err) {
-      alert('❌ Gagal menghapus mata pelajaran');
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Hapus Mapel',
+      message: 'Yakin ingin menghapus mata pelajaran ini?',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await api.delete(`/admin/subjects/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+          addNotification('Mata pelajaran berhasil dihapus', 'success');
+          fetchSubjects();
+        } catch (err) {
+          addNotification('Gagal menghapus mata pelajaran', 'error');
+        } finally {
+          setConfirmModal({ show: false });
+        }
+      }
+    });
   };
 
   const handleDeleteSchedule = async (id) => {
-    if (!confirm('⚠️ Yakin ingin menghapus jadwal ini?')) return;
-    try {
-      const token = localStorage.getItem('token');
-      await api.delete(`/admin/schedules/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-      alert('✅ Jadwal berhasil dihapus');
-      fetchSchedules();
-    } catch (err) {
-      alert('❌ Gagal menghapus jadwal');
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Hapus Jadwal',
+      message: 'Yakin ingin menghapus jadwal ini?',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await api.delete(`/admin/schedules/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+          addNotification('Jadwal berhasil dihapus', 'success');
+          fetchSchedules();
+        } catch (err) {
+          addNotification('Gagal menghapus jadwal', 'error');
+        } finally {
+          setConfirmModal({ show: false });
+        }
+      }
+    });
   };
 
   const handleDeleteAnnouncement = async (id) => {
-    if (!confirm('⚠️ Yakin ingin menghapus pengumuman ini?')) return;
-    try {
-      const token = localStorage.getItem('token');
-      await api.delete(`/admin/announcements/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-      alert('✅ Pengumuman berhasil dihapus');
-      fetchAnnouncements();
-    } catch (err) {
-      alert('❌ Gagal menghapus pengumuman');
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Hapus Pengumuman',
+      message: 'Yakin ingin menghapus pengumuman ini?',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await api.delete(`/admin/announcements/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+          addNotification('Pengumuman berhasil dihapus', 'success');
+          fetchAnnouncements();
+        } catch (err) {
+          addNotification('Gagal menghapus pengumuman', 'error');
+        } finally {
+          setConfirmModal({ show: false });
+        }
+      }
+    });
   };
 
   // ✨ TAMBAHAN: Helper untuk memisahkan aktivitas terlambat dan tepat waktu
@@ -1769,6 +1815,31 @@ const handleSaveSettings = async (section, e) => {
             </div>
           </header>
 
+          {/* ✨ TOAST NOTIFICATION CONTAINER (RIGHT TOP) */}
+          <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 w-72 pointer-events-none">
+            {notifications.map((n) => (
+              <div key={n.id} className={`pointer-events-auto flex items-center p-4 rounded-xl shadow-2xl border-l-4 transform transition-all duration-300 animate-slide-in-right ${
+                n.type === 'success' ? 'bg-white border-emerald-500 text-emerald-800' :
+                n.type === 'error' ? 'bg-white border-red-500 text-red-800' :
+                n.type === 'warning' ? 'bg-white border-amber-500 text-amber-800' :
+                'bg-white border-blue-500 text-blue-800'
+              }`}>
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider mb-0.5">
+                    {n.type === 'success' ? 'Berhasil' : n.type === 'error' ? 'Error' : n.type === 'warning' ? 'Peringatan' : 'Info'}
+                  </p>
+                  <p className="text-sm opacity-90">{n.message}</p>
+                </div>
+                <button onClick={() => setNotifications(prev => prev.filter(i => i.id !== n.id))} className="ml-2 text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+            ))}
+          </div>
+
+          <style>{`
+            @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
+          `}</style>
+
           {showNotifications && (
             <div className="absolute right-4 top-[74px] w-[min(320px,calc(100%-2rem))] rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden z-50">
               <div className="px-4 py-3 border-b border-slate-100 font-semibold text-slate-800">Notifikasi</div>
@@ -1790,6 +1861,20 @@ const handleSaveSettings = async (section, e) => {
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 lg:p-8">
             <div className="max-w-7xl mx-auto w-full">
+              {/* ✨ MODAL KONFIRMASI CUSTOM */}
+              {confirmModal.show && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+                  <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-in-up">
+                    <h3 className="text-lg font-bold text-blue-800 mb-2">{confirmModal.title}</h3>
+                    <p className="text-slate-600 text-sm mb-6">{confirmModal.message}</p>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => setConfirmModal({ ...confirmModal, show: false })} className="flex-1 px-4 py-2 border-2 border-slate-100 rounded-xl text-sm font-bold text-slate-500">Batal</button>
+                      <button type="button" onClick={confirmModal.onConfirm} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold shadow-lg">Ya, Lanjutkan</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Modal Edit/Create User */}
               {showModal && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -3796,34 +3881,40 @@ const handleSaveSettings = async (section, e) => {
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm('Yakin ingin mengembalikan pengaturan ke default?')) {
-                                const defaultSettings = {
-                                  schoolName: 'SMK Negeri 1',
-                                  schoolAddress: 'Jl. Pendidikan No. 123',
-                                  schoolPhone: '021-1234567',
-                                  schoolEmail: 'info@smkn1.sch.id',
-                                  academicYear: '2025/2026',
-                                  attendanceStartTime: '07:00',
-                                  attendanceEndTime: '08:00',
-                                  lateThreshold: '08:00',
-                                  enableNotifications: true,
-                                  enableEmailReports: true,
-                                  enableQRCode: true,
-                                  themeColor: 'blue',
-                                  attendanceSessionOpen: true,
-                                  schoolEndTime: '15:30',
-                                  autoMarkAbsentEnabled: true,
-                                  limitOneScanPerDay: true,
-                                  disableAttendanceOnHolidays: true,
-                                  dashboardPhoto1: null,
-                                  dashboardPhoto2: null,
-                                  dashboardPhoto3: null,
-                                  dashboardVideo: null,
-                                };
-                                setSettingsData(defaultSettings);
-                                localStorage.setItem('school_settings', JSON.stringify(defaultSettings));
-                                alert('✅ Pengaturan berhasil direset!');
-                              }
+                              setConfirmModal({
+                                show: true,
+                                title: 'Reset Pengaturan',
+                                message: 'Yakin ingin mengembalikan pengaturan ke default?',
+                                onConfirm: () => {
+                                  const defaultSettings = {
+                                    schoolName: 'SMK Negeri 1',
+                                    schoolAddress: 'Jl. Pendidikan No. 123',
+                                    schoolPhone: '021-1234567',
+                                    schoolEmail: 'info@smkn1.sch.id',
+                                    academicYear: '2025/2026',
+                                    attendanceStartTime: '07:00',
+                                    attendanceEndTime: '08:00',
+                                    lateThreshold: '08:00',
+                                    enableNotifications: true,
+                                    enableEmailReports: true,
+                                    enableQRCode: true,
+                                    themeColor: 'blue',
+                                    attendanceSessionOpen: true,
+                                    schoolEndTime: '15:30',
+                                    autoMarkAbsentEnabled: true,
+                                    limitOneScanPerDay: true,
+                                    disableAttendanceOnHolidays: true,
+                                    dashboardPhoto1: null,
+                                    dashboardPhoto2: null,
+                                    dashboardPhoto3: null,
+                                    dashboardVideo: null,
+                                  };
+                                  setSettingsData(defaultSettings);
+                                  localStorage.setItem('school_settings', JSON.stringify(defaultSettings));
+                                  addNotification('Pengaturan berhasil direset!', 'success');
+                                  setConfirmModal({ show: false });
+                                }
+                              });
                             }}
                             className="w-full px-6 py-3 border border-blue-200 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all"
                           >

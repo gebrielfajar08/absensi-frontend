@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
 // ➕ TAMBAHAN: Fungsi cek koneksi ke backend
-const resolvePhotoUrl = (photo) => {
-  if (!photo) return null;
-  if (typeof photo !== 'string') return null;
+const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
+  if (!photo || typeof photo !== 'string') return null;
   const trimmed = photo.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || '';
+  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || fallbackBase;
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
@@ -62,6 +61,11 @@ const DashboardGuru = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
+
+  // ✨ TAMBAHAN: State untuk Modal Detail Siswa
+  const [showStudentDetail, setShowStudentDetail] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   // State untuk data dashboard
   const [stats, setStats] = useState({ totalClasses: 0, totalStudents: 0, todayAttendance: 0 });
@@ -168,6 +172,17 @@ const DashboardGuru = () => {
     setLoading(false);
   }, [navigate]);
 
+  // ✨ OPTIMASI: Muat data dari cache agar dashboard langsung tampil
+  useEffect(() => {
+    const cachedStats = localStorage.getItem('guru_stats');
+    const cachedClasses = localStorage.getItem('guru_classes');
+    const cachedActivity = localStorage.getItem('guru_activity');
+    
+    if (cachedStats) setStats(JSON.parse(cachedStats));
+    if (cachedClasses) setClasses(JSON.parse(cachedClasses));
+    if (cachedActivity) setRecentActivity(JSON.parse(cachedActivity));
+  }, []);
+
   // ➕ TAMBAHAN: Cek koneksi backend saat komponen mount
   useEffect(() => {
     const verifyConnection = async () => {
@@ -250,15 +265,16 @@ const DashboardGuru = () => {
 
   // ➕ TAMBAHAN: Auto fetch jadwal saat tab aktif
   useEffect(() => {
-    if (user && activeTab === 'jadwal') {
+    if (user && (activeTab === 'jadwal' || activeTab === 'siswa')) {
       if (selectedClass) {
         fetchSchedules(selectedClass);
       } else if (classes && classes.length > 0) {
-        setSelectedClass(classes[0].id);
-        fetchSchedules(classes[0].id);
+        const defaultId = classes[0].id;
+        setSelectedClass(defaultId);
+        fetchSchedules(defaultId);
       }
     }
-  }, [activeTab, selectedClass, classes, user]);
+  }, [activeTab, selectedClass, classes.length, user]);
 
   // ← Listen untuk broadcast dari tab lain
   useEffect(() => {
@@ -282,10 +298,10 @@ const DashboardGuru = () => {
   // ➕ TAMBAHAN: Fungsi notifikasi
   const addNotification = (message, type = 'info', icon = '') => {
     const id = Date.now();
-    setNotifications(prev => [{ id, icon, message, type, time: new Date() }, ...prev.slice(0, 4)]);
+    setNotifications(prev => [...prev, { id, icon, message, type, time: new Date() }]);
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000);
+    }, 4000);
   };
 
   // ➕ TAMBAHAN: Helper notifikasi absensi yang lebih kaya
@@ -348,21 +364,36 @@ const DashboardGuru = () => {
         api.get('/public/events', config).catch(() => ({ data: [] }))
       ]);
       
+      // ✨ Normalisasi data kelas (antisipasi data.data atau data langsung)
+      const classList = Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data?.data || []);
+      
       setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : (eventsRes.data?.data || []));
       setStats(statsRes.data);
-      setClasses(classesRes.data);
+      setClasses(classList);
       setRecentActivity(activityRes.data);
-      if (classesRes.data.length > 0 && !selectedClass) setSelectedClass(classesRes.data[0].id);
+      
+      if (classList.length > 0 && !selectedClass) {
+        // ✨ Hubungkan dengan Walikelas: Cari kelas yang ID-nya cocok dengan profil guru
+        const waliClass = classesRes.data.find(c => 
+          c.id?.toString() === user?.class_id?.toString() || 
+          c.id?.toString() === user?.kelas_id?.toString()
+        );
+        setSelectedClass(waliClass ? waliClass.id : classesRes.data[0].id);
+      }
+      
+      // ✨ Simpan ke cache untuk pemuatan super cepat berikutnya
+      localStorage.setItem('guru_stats', JSON.stringify(statsRes.data));
+      localStorage.setItem('guru_classes', JSON.stringify(classesRes.data));
+      localStorage.setItem('guru_activity', JSON.stringify(activityRes.data));
+      
       setLastSync(new Date());
       if (connectionStatus !== 'connected') {
         setConnectionStatus('connected');
       }
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      localStorage.removeItem('attendance_updated');
       
       // ➕ TAMBAHAN: Hitung pending attendance
       const today = new Date().toISOString().split('T')[0];
-      const pending = classesRes.data.filter(c => !c.attendance_submitted || c.attendance_date !== today).length;
+      const pending = classList.filter(c => !c.attendance_submitted || c.attendance_date !== today).length;
       setPendingAttendance(pending);
       if (pending > 0 && !silent) {
         addNotification(`⚠️ Ada ${pending} kelas belum diisi absensinya`, 'warning');
@@ -383,6 +414,20 @@ const DashboardGuru = () => {
     }
   };
 
+  // ✨ AUTOMASI: Muat data murid setiap kali tab Absensi atau Siswa dibuka
+  useEffect(() => {
+    if (user && (activeTab === 'siswa' || activeTab === 'absensi')) {
+      if (selectedClass) {
+        fetchStudents(selectedClass);
+      } else if (classes && classes.length > 0) {
+        // Fallback jika belum ada yang terpilih, pilih kelas pertama
+        const defaultId = classes[0].id;
+        setSelectedClass(defaultId);
+        fetchStudents(defaultId);
+      }
+    }
+  }, [activeTab, user, classes.length, selectedClass]);
+
   const fetchStudents = async (classroomId = null) => {
     try {
       const token = localStorage.getItem('token');
@@ -390,11 +435,11 @@ const DashboardGuru = () => {
       const url = classroomId ? `/guru/students?classroom_id=${classroomId}` : '/guru/students';
       const res = await fetchWithRetry(() => api.get(url, config));
       setStudents(res.data);
-      setSelectedClass(classroomId || '');
+      if (classroomId) setSelectedClass(classroomId);
     } catch (err) {
       setStudents([]);
       console.error('Gagal memuat siswa:', err);
-      if (err.code !== 'ECONNREFUSED') {
+      if (err?.code !== 'ECONNREFUSED') {
         addNotification('⚠️ Gagal memuat data siswa', 'error');
       }
     }
@@ -454,17 +499,24 @@ const DashboardGuru = () => {
   };
 
   const handleScheduleDelete = async (id) => {
-    if (!confirm('Hapus jadwal ini?')) return;
-    try {
-      const token = localStorage.getItem('token');
-      await api.delete(`/guru/schedules/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      addNotification('✅ Jadwal berhasil dihapus', 'success');
-      fetchSchedules(selectedClass);
-    } catch (err) {
-      addNotification('❌ Gagal menghapus jadwal', 'error');
-    }
+    setConfirmModal({
+      show: true,
+      message: 'Hapus jadwal ini?',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await api.delete(`/guru/schedules/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          addNotification('Jadwal berhasil dihapus', 'success', '🗑️');
+          fetchSchedules(selectedClass);
+        } catch (err) {
+          addNotification('Gagal menghapus jadwal', 'error');
+        } finally {
+          setConfirmModal({ show: false });
+        }
+      }
+    });
   };
 
   const openEditScheduleModal = (item) => {
@@ -681,14 +733,11 @@ const DashboardGuru = () => {
                   onClick={() => {
                     setActiveTab(item.id);
                     setSidebarOpen(false);
-                  if (item.id === 'siswa') {
-                    selectedClass ? fetchStudents(selectedClass) : fetchStudents();
-                  } else if (item.id === 'jadwal' && !selectedClass && classes.length > 0) {
-                    setSelectedClass(classes[0].id);
-                  }
                   }}
                   className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2.5'} rounded-lg text-left transition-all duration-200 ${
-                    activeTab === item.id ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    activeTab === item.id
+                      ? 'bg-gray-100 text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                   title={sidebarCollapsed ? item.label : ""}
                 >
@@ -705,14 +754,14 @@ const DashboardGuru = () => {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border border-gray-200 overflow-hidden">
                     <img
-                      src={resolvePhotoUrl(user.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Guru')}&background=2563eb&color=ffffff`}
+                      src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'Guru')}&background=2563eb&color=ffffff`}
                       alt="User Avatar"
                       className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || 'Guru')}&background=2563eb&color=ffffff`; }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'Guru')}&background=2563eb&color=ffffff`; }}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate" title={user.name}>{user.name || 'Guru'}</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate" title={user?.name}>{user?.name || 'Guru'}</p>
                     <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                       🎓 Guru
                     </span>
@@ -735,6 +784,29 @@ const DashboardGuru = () => {
 
         {/* Main Column */}
         <main className="flex-1 flex flex-col overflow-hidden">
+          {/* ✨ TOAST NOTIFICATION CONTAINER (RIGHT TOP) */}
+          <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 w-80 pointer-events-none">
+            {notifications.map((n) => (
+              <div key={n.id} className={`pointer-events-auto flex items-center p-4 rounded-xl shadow-2xl border-l-4 transform transition-all duration-300 animate-slide-in-right ${
+                n.type === 'success' ? 'bg-white border-emerald-500 text-emerald-800' :
+                n.type === 'error' ? 'bg-white border-red-500 text-red-800' :
+                n.type === 'warning' ? 'bg-white border-amber-500 text-amber-800' :
+                'bg-white border-blue-500 text-blue-800'
+              }`}>
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider mb-0.5">{n.type === 'success' ? 'Berhasil' : n.type === 'error' ? 'Error' : 'Info'}</p>
+                  <p className="text-sm opacity-90">{n.message}</p>
+                </div>
+                <button onClick={() => setNotifications(prev => prev.filter(i => i.id !== n.id))} className="ml-2 text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+            ))}
+          </div>
+
+          <style>{`
+            @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
+          `}</style>
+
           {/* Header */}
           <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm h-[70px] flex items-center w-full transition-all duration-300 flex-shrink-0">
             <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between w-full">
@@ -797,15 +869,19 @@ const DashboardGuru = () => {
           {/* Page Content Area - Scrollable */}
           <div className="flex-1 overflow-y-auto p-4 lg:p-8">
             <div className="max-w-7xl mx-auto w-full animate-fade-in">
-              {/* NOTIFICATION TOASTS */}
-              <div className="fixed top-4 right-4 z-50 space-y-2">
-                {notifications.map(notif => (
-                  <div key={notif.id} className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-fade-in flex items-center gap-2 ${notif.type === 'success' ? 'bg-green-500 text-white' : notif.type === 'error' ? 'bg-red-500 text-white' : notif.type === 'warning' ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'}`}>
-                    {notif.icon && <span className="text-lg">{notif.icon}</span>}
-                    <span>{notif.message}</span>
+              {/* MODAL KONFIRMASI CUSTOM */}
+              {confirmModal.show && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+                  <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border-2 border-blue-100">
+                    <h3 className="text-lg font-bold text-blue-900 mb-2">Konfirmasi</h3>
+                    <p className="text-slate-600 text-sm mb-6">{confirmModal.message}</p>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => setConfirmModal({ ...confirmModal, show: false })} className="flex-1 px-4 py-2.5 border-2 border-slate-100 rounded-xl text-sm font-bold text-slate-500">Batal</button>
+                      <button type="button" onClick={confirmModal.onConfirm} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold shadow-lg">Ya, Hapus</button>
+                    </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* TAB: Ringkasan */}
               {activeTab === 'ringkasan' && (
@@ -875,75 +951,89 @@ const DashboardGuru = () => {
                     );
                   })()}
                   
-                  {/* ✨ TAMBAHAN: Kartu Event Countdown untuk Guru */}
-                  {events.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                      {events.map((event) => {
-                        const today = new Date(); today.setHours(0, 0, 0, 0);
-                        const target = new Date(event.date);
-                        target.setHours(0, 0, 0, 0);
-                        const days = Math.round((target - today) / (1000 * 60 * 60 * 24));
-                        if (days < 0) return null;
-                        return (
-                          <div key={event.id} className="bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md flex items-center p-3 gap-4 group hover:border-blue-300 transition-all">
-                            <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
-                              <img
-                                src={resolvePhotoUrl(event.image)}
-                                alt={event.title}
-                                className="w-full h-full object-cover"
-                                onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/100x100/cccccc/ffffff?text=EVENT'; }}
-                              />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-black text-blue-900 uppercase tracking-tighter truncate">{event.title}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className={`${days === 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-700'} text-[10px] font-bold px-2 py-0.5 rounded-md border`}>
-                                  {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} Hari Lagi`}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-blue-300 group-hover:text-blue-500 transition-colors mr-2">
-                              📅
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
 
-                  {/* Seksi Media & Kegiatan (Simple Style) */}
-                  <div className="bg-white rounded-2xl border-2 border-blue-100 p-6 shadow-md mb-6">
-                    <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
-                      <span>🖼️</span> Media & Kegiatan Sekolah
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Baris Foto: Sliding Left Animation */}
-                      <div className="overflow-hidden relative w-full py-1">
-                        <div className="flex gap-4 animate-slide-left w-max">
-                          {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`guru-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
-                              {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
-                              ) : (
-                                <div className="h-32 sm:h-48 flex flex-col items-center justify-center text-slate-400">
-                                  <span className="text-2xl">📸</span>
-                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
+
+                  {/* ✨ BAGIAN GABUNGAN: Agenda (Kiri) & Media (Kanan) */}
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mb-8">
+                    {/* KIRI: Agenda / Event (Mengambil 8 Kolom agar lebih lebar ke kanan) */}
+                    <div className="xl:col-span-8 flex flex-col">
+                      <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 ml-1">
+                        <span>📅</span> Event Hari Besar
+                      </h3>
+                      {events.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                          {events.map((event) => {
+                            const today = new Date(); today.setHours(0, 0, 0, 0);
+                            const target = new Date(event.date);
+                            const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+                            if (days < 0) return null;
+                            return (
+                              <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md group hover:shadow-xl transition-all">
+                                <img
+                                  src={resolvePhotoUrl(event.image)}
+                                  alt={event.title}
+                                  className="w-full h-32 object-cover"
+                                  onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }}
+                                />
+                                <div className="p-3 bg-white">
+                                  <div className="flex justify-between items-center gap-2">
+                                    <h4 className="font-bold text-blue-900 text-xs truncate uppercase tracking-tighter">{event.title}</h4>
+                                    <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap`}>
+                                      {days === 0 ? '🎉 HARI INI' : `⏳ H-${days}`}
+                                    </span>
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
-                      {/* Baris Video */}
-                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner">
-                        {attendanceSettings.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full min-h-[180px] sm:min-h-[220px] object-contain" />
-                        ) : (
-                          <div className="h-full min-h-[180px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                            <span className="text-2xl">🎥</span>
-                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
+                      ) : (
+                        <div className="flex-1 bg-white rounded-3xl border-2 border-dashed border-blue-100 flex flex-col items-center justify-center p-8 text-slate-400">
+                          <span className="text-4xl mb-2 opacity-30">📅</span>
+                          <p className="text-sm font-medium">Belum ada agenda sekolah terdaftar</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* KANAN: Media Sekolah (Mengambil 4 Kolom agar mepet dengan agenda) */}
+                    <div className="xl:col-span-4 flex flex-col">
+                      <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 ml-1">
+                        <span>🖼️</span> Galeri & Video Sekolah
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                        {/* Slider Foto */}
+                        <div className="bg-white rounded-3xl border-2 border-blue-100 p-4 shadow-lg flex flex-col">
+                          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 block">📸 Foto Kegiatan</span>
+                          <div className="overflow-hidden relative w-full flex-1 flex items-center">
+                            <div className="flex gap-3 animate-slide-left w-max">
+                              {[1, 2, 3, 1, 2, 3].map((i, idx) => (
+                                <div key={`guru-photo-slide-${idx}`} className="w-40 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
+                                  {attendanceSettings[`dashboardPhoto${i}`] ? (
+                                    <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-28 object-cover hover:scale-110 transition-transform duration-700" />
+                                  ) : (
+                                    <div className="h-28 flex flex-col items-center justify-center text-slate-400">
+                                      <span className="text-xl">📸</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        )}
+                        </div>
+                        
+                        {/* Video Profil */}
+                        <div className="bg-white rounded-3xl border-2 border-blue-100 p-4 shadow-lg flex flex-col">
+                          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 block">🎥 Video Profil</span>
+                          <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video flex-1">
+                            {attendanceSettings.dashboardVideo ? (
+                              <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full object-contain" />
+                            ) : (
+                              <div className="h-full bg-slate-900 flex flex-col items-center justify-center text-slate-500 p-4 text-center">
+                                <p className="text-[10px] font-bold uppercase">Video Profil Belum Tersedia</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1304,7 +1394,13 @@ const DashboardGuru = () => {
                                   </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                  <button className="text-blue-600 font-medium hover:text-blue-800 hover:underline text-sm">
+                                  <button 
+                                    onClick={() => {
+                                      setSelectedStudent(student);
+                                      setShowStudentDetail(true);
+                                    }}
+                                    className="text-blue-600 font-medium hover:text-blue-800 hover:underline text-sm"
+                                  >
                                     Detail
                                   </button>
                                 </td>
@@ -1315,6 +1411,75 @@ const DashboardGuru = () => {
                       </div>
                     </div>
                   )}
+
+      {/* ✨ MODAL DETAIL SISWA (Menghubungkan Murid dengan Mapel) */}
+      {showStudentDetail && selectedStudent && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl border-2 border-blue-200 animate-fade-in-up overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white flex justify-between items-center">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <span>👤</span> Detail & Jadwal Siswa
+              </h3>
+              <button onClick={() => setShowStudentDetail(false)} className="text-white/80 hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="p-8 max-h-[80vh] overflow-y-auto">
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-28 h-28 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border-4 border-blue-200 shadow-md mb-4">
+                  {selectedStudent.photo ? (
+                    <img src={resolvePhotoUrl(selectedStudent.photo)} alt={selectedStudent.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-4xl text-blue-400 font-bold">{selectedStudent.name?.charAt(0) || 'S'}</span>
+                  )}
+                </div>
+                <h3 className="text-2xl font-bold text-blue-900">{selectedStudent.name}</h3>
+                <p className="text-blue-600 font-medium">{getClassName(selectedStudent.class_id)}</p>
+                
+                {/* Daftar Mapel yang Nyambung dengan Kelas Siswa Ini */}
+                <div className="mt-6 w-full">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 text-center">📚 Mata Pelajaran Diikuti (Kelas Ini)</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {schedules.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">Jadwal belum tersedia untuk kelas ini</p>
+                    ) : (
+                      Array.from(new Set(schedules.map(s => s.subject_name))).map((sub, idx) => (
+                        <span key={idx} className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-100 shadow-sm">
+                          {sub}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Email</p>
+                  <p className="text-slate-800 font-semibold truncate">{selectedStudent.email || '-'}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">NIS</p>
+                  <p className="text-slate-800 font-semibold">{selectedStudent.nis || '-'}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Telepon Orang Tua</p>
+                  <p className="text-slate-800 font-semibold">{selectedStudent.parent_phone || '-'}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Kehadiran</p>
+                  <p className="text-blue-600 font-bold">{selectedStudent.attendance_percentage || 0}%</p>
+                </div>
+              </div>
+
+              <button onClick={() => setShowStudentDetail(false)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
                 </div>
               )}
 
@@ -1396,11 +1561,15 @@ const DashboardGuru = () => {
                       <div className="w-full md:w-64">
                         <label className="block text-xs font-bold text-blue-800 mb-2 uppercase">Pilih Kelas</label>
                         <select
-                          value={selectedClass}
-                          onChange={(e) => setSelectedClass(e.target.value)}
+                          value={selectedClass || ""}
+                          onChange={(e) => {
+                            setSelectedClass(e.target.value);
+                            if (e.target.value) fetchSchedules(e.target.value);
+                          }}
                           className="w-full px-4 py-2.5 border-2 border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 bg-blue-50 text-sm font-medium"
                         >
-                          {classes.length === 0 ? <option value="">Tidak ada kelas</option> : classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          <option value="">-- Pilih Kelas --</option>
+                          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                       <button
