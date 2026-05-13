@@ -200,6 +200,11 @@ const DashboardAdmin = () => {
   const [mediaVideoFile, setMediaVideoFile] = useState(null);
   const [mediaVideoPreview, setMediaVideoPreview] = useState(null);
 
+  const [startSoundFile, setStartSoundFile] = useState(null);
+  const [startSoundPreview, setStartSoundPreview] = useState(null);
+  const [endSoundFile, setEndSoundFile] = useState(null);
+  const [endSoundPreview, setEndSoundPreview] = useState(null);
+
   // ✨ TAMBAHAN: State untuk Fitur Event
   const [events, setEvents] = useState([]);
   const [showEventModal, setShowAnnouncementModal_Event] = useState(false); // Menggunakan nama unik
@@ -247,6 +252,8 @@ const DashboardAdmin = () => {
     dashboardPhoto2: null,
     dashboardPhoto3: null,
     dashboardVideo: null,
+    startSound: null,
+    endSound: null,
   });
 
   const [settingsSection, setSettingsSection] = useState('school');
@@ -454,6 +461,8 @@ const fetchSettings = async () => {
         dashboardPhoto2: res.data.photo2_url ?? null,
         dashboardPhoto3: res.data.photo3_url ?? null,
         dashboardVideo: res.data.video_url ?? null,
+        startSound: res.data.start_sound_url ?? null,
+        endSound: res.data.end_sound_url ?? null,
       };
 
       console.log('✅ Settings loaded from database:', backendSettings);
@@ -472,6 +481,14 @@ const fetchSettings = async () => {
 
       if (backendSettings.dashboardVideo) {
         setMediaVideoPreview(backendSettings.dashboardVideo);
+      }
+
+      if (backendSettings.startSound) {
+        setStartSoundPreview(backendSettings.startSound);
+      }
+
+      if (backendSettings.endSound) {
+        setEndSoundPreview(backendSettings.endSound);
       }
 
       localStorage.setItem('school_settings', JSON.stringify(backendSettings));
@@ -502,10 +519,43 @@ const fetchSettings = async () => {
       dashboardPhoto2: null,
       dashboardPhoto3: null,
       dashboardVideo: null,
+      startSound: null,
+      endSound: null,
     };
     setSettingsData(defaultSettings);
   }
 };
+
+  // 🔊 LOGIKA AUTO-PLAY BEL SEKOLAH
+  const [lastRungMinute, setLastRungMinute] = useState('');
+
+  useEffect(() => {
+    const now = new Date();
+    const currentMinute = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
+
+    // Hindari bunyi berulang di menit yang sama
+    if (currentMinute === lastRungMinute) return;
+
+    // Cek Bel Masuk
+    if (settingsData.attendanceStartTime && currentMinute === settingsData.attendanceStartTime.substring(0, 5)) {
+      if (startSoundPreview) {
+        const audio = new Audio(startSoundPreview);
+        audio.play().catch(e => console.warn("Autoplay diblokir browser, butuh interaksi user.", e));
+        setLastRungMinute(currentMinute);
+        addNotification("🔊 Bel Masuk Sekolah Berbunyi!", "info");
+      }
+    }
+
+    // Cek Bel Pulang
+    if (settingsData.schoolEndTime && currentMinute === settingsData.schoolEndTime.substring(0, 5)) {
+      if (endSoundPreview) {
+        const audio = new Audio(endSoundPreview);
+        audio.play().catch(e => console.warn("Autoplay diblokir browser, butuh interaksi user.", e));
+        setLastRungMinute(currentMinute);
+        addNotification("🔊 Bel Pulang Sekolah Berbunyi!", "info");
+      }
+    }
+  }, [currentTime, settingsData.attendanceStartTime, settingsData.schoolEndTime, startSoundPreview, endSoundPreview, lastRungMinute]);
 
   // Cek auth & role
   useEffect(() => {
@@ -1167,7 +1217,7 @@ const handleSaveSettings = async (section, e) => {
     data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
     data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
 
-    if (section === 'school') {
+    if (section === 'media') {
       if (logoFile instanceof File) {
         data.append('logo', logoFile);
       }
@@ -1182,6 +1232,15 @@ const handleSaveSettings = async (section, e) => {
       }
       if (mediaVideoFile instanceof File) {
         data.append('video_profile', mediaVideoFile);
+      }
+    }
+
+    if (section === 'sound') {
+      if (startSoundFile instanceof File) {
+        data.append('start_sound', startSoundFile);
+      }
+      if (endSoundFile instanceof File) {
+        data.append('end_sound', endSoundFile);
       }
     }
 
@@ -1204,6 +1263,8 @@ const handleSaveSettings = async (section, e) => {
       setLogoFile(null);
       setMediaPhotoFiles({ 1: null, 2: null, 3: null });
       setMediaVideoFile(null);
+      setStartSoundFile(null);
+      setEndSoundFile(null);
 
       setTimeout(() => {
         setShowSuccessNotification(false);
@@ -2091,50 +2152,29 @@ const handleSaveSettings = async (section, e) => {
                 </div>
               )}
 
-              {/* Banner Selamat Datang hanya di tab Ringkasan */}
               {activeTab === 'overview' && (
-                <div className="space-y-6">
-                  {/* Banner Selamat Datang - Sekarang di posisi teratas */}
+                <div className="space-y-4 animate-fade-in">
+                  {/* Banner Selamat Datang */}
                   <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 shadow-sm flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
-                    {/* Efek dekorasi subtle di background agar tidak membosankan */}
                     <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
-                    
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md flex-shrink-0 relative z-10">
-                      👋
-                    </div>
-                    
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md flex-shrink-0 relative z-10">👋</div>
                     <div className="text-center sm:text-left relative z-10">
-                      <h2 className="text-lg lg:text-xl font-bold text-slate-800 leading-tight">
-                        Selamat datang, {user?.name || 'Administrator'}!
-                      </h2>
-                      <p className="text-slate-500 text-xs lg:text-sm mt-0.5">
-                        Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.
-                      </p>
+                      <h2 className="text-lg lg:text-xl font-bold text-slate-800 leading-tight">Selamat datang, {user?.name || 'Administrator'}!</h2>
+                      <p className="text-slate-500 text-xs lg:text-sm mt-0.5">Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.</p>
                     </div>
                   </div>
 
-                  {/* ✨ BARU: Layout Grid Kalender (Kiri) & Event (Kanan) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mx-4 lg:mx-8 mt-2">
-                    {/* 📅 SISI KIRI: TANGGAL DINAMIS */}
+                  {/* 📅 Grid Kalender & Event (Kecil & Sama Tinggi) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mx-4 lg:mx-8 mt-2">
                     {(() => {
                       const sectionBg = getSectionBackground(currentTime);
                       return (
-                        <div
-                        className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg mb-6"
-                          style={{
-                            backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center'
-                          }}
-                        >
+                        <div className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-5 text-white shadow-lg flex flex-col justify-center min-h-[220px]"
+                          style={{ backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                           <div className="relative">
-                            <p className="text-[10px] uppercase tracking-[0.24em] text-blue-200/90 mb-2 font-black">
-                              {sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}
-                            </p>
-                            <h3 className="text-xl md:text-2xl font-black mb-1 tracking-tight">
-                              {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                            </h3>
-                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white border border-white/20 mt-4">
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-200/90 mb-2 font-black">{sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}</p>
+                            <h3 className="text-lg md:text-xl font-black mb-1 tracking-tight">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
+                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white border border-white/20 mt-4">
                               <span>{currentTime.getFullYear()}</span>
                               <span className="inline-block h-1 w-1 rounded-full bg-blue-400" />
                               <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
@@ -2144,41 +2184,50 @@ const handleSaveSettings = async (section, e) => {
                       );
                     })()}
 
-                    {/* 🗓️ SISI KANAN: EVENT MENDATANG */}
-                  <div className="bg-white rounded-3xl border-2 border-blue-100 p-5 shadow-lg flex flex-col h-full min-h-[180px] mb-6">
-                      <h3 className="font-black text-blue-900 mb-4 flex items-center justify-between text-xs uppercase tracking-wider">
+                    <div className="bg-white rounded-2xl border-2 border-blue-100 p-4 shadow-lg flex flex-col min-h-[220px]">
+                      <h3 className="font-black text-blue-900 mb-3 flex items-center justify-between text-[10px] uppercase tracking-wider">
                         <span className="flex items-center gap-2">📅 Agenda & Event</span>
                         <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{events.length} Hari Besar</span>
                       </h3>
-                    <div className="space-y-4 overflow-y-auto max-h-[300px] custom-scrollbar pr-2 flex-1">
+                      <div className="flex-1">
                         {events.length > 0 ? (
-                          events.map((event) => {
-                            const days = getDaysRemaining(event.date);
-                            if (days < 0) return null;
-                            return (
-                            <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-sm group hover:shadow-md transition-all">
-                              <img
-                                src={resolvePhotoUrl(event.image)}
-                                alt={event.title}
-                                className="w-full h-28 object-cover"
-                                onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x200/cccccc/ffffff?text=IMAGE'; }}
-                              />
-                              <div className="p-4 bg-white">
-                                <div className="flex justify-between items-center gap-2">
-                                  <h4 className="font-bold text-blue-900 text-xs truncate uppercase tracking-tight">{event.title}</h4>
-                                  <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm`}>
-                                    {days === 0 ? '🎉 HARI INI' : `⏳ H-${days}`}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">
-                                  {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
-                                </p>
-                                </div>
+                          (() => {
+                            const sortedUpcoming = [...events].filter(e => getDaysRemaining(e.date) >= 0).sort((a, b) => new Date(a.date) - new Date(b.date));
+                            if (sortedUpcoming.length === 0) return (
+                              <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                <span className="text-2xl mb-1 opacity-20">📅</span>
+                                <p className="text-[10px] font-bold uppercase">Belum ada agenda</p>
                               </div>
                             );
-                          })
+                            const mainEvent = sortedUpcoming[0];
+                            const otherEvents = sortedUpcoming.slice(1);
+                            const days = getDaysRemaining(mainEvent.date);
+                            return (
+                              <div className="flex flex-col h-full">
+                                <div className="relative bg-slate-50 rounded-xl border border-blue-50 overflow-hidden mb-3">
+                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-40 object-contain bg-white" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
+                                  <div className="p-3 bg-white/80 backdrop-blur-sm border-t border-blue-50">
+                                    <div className="flex justify-between items-center">
+                                      <h4 className="font-black text-blue-900 text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
+                                      <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full shadow-sm`}>{days === 0 ? 'HARI INI' : `H-${days}`}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                {otherEvents.length > 0 && (
+                                  <div className="mt-auto flex items-center gap-2 pt-2 border-t border-blue-50">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">Lainnya:</span>
+                                    <div className="flex -space-x-2 overflow-hidden">
+                                      {otherEvents.map((event) => (
+                                        <img key={event.id} src={resolvePhotoUrl(event.image)} className="w-8 h-8 rounded-full border-2 border-white object-cover shadow-sm bg-white" title={event.title} />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })() 
                         ) : (
-                          <div className="h-full flex flex-col items-center justify-center text-slate-400 py-4">
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400">
                             <span className="text-2xl mb-1 opacity-20">📅</span>
                             <p className="text-[10px] font-bold uppercase">Belum ada agenda</p>
                           </div>
@@ -2186,54 +2235,42 @@ const handleSaveSettings = async (section, e) => {
                       </div>
                     </div>
                   </div>
-              </div>
-              )}
 
-              {/* Seksi Media & Kegiatan (Samakan dengan Dashboard Siswa) */}
-              {activeTab === 'overview' && (
-                <div className="bg-white rounded-2xl border-2 border-blue-100 p-6 shadow-md mb-10 mx-4 lg:mx-8 mt-4">
-                  <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
-                    <span>🖼️</span> Media & Kegiatan Sekolah
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Baris Foto: Sliding Left Animation */}
-                    <div className="overflow-hidden relative w-full py-1">
-                      <div className="flex gap-4 animate-slide-left w-max">
-                        {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                          <div key={`overview-photo-slide-${idx}`} className="w-48 sm:w-72 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
-                            {settingsData[`dashboardPhoto${i}`] ? (
-                              <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-48 object-cover hover:scale-110 transition-transform duration-700" />
-                            ) : (
-                              <div className="h-32 sm:h-48 flex flex-col items-center justify-center text-slate-400">
-                                <span className="text-2xl">📸</span>
-                                <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
-                              </div>
-                            )}
+                  {/* Seksi Media & Kegiatan Sekolah */}
+                  <div className="bg-white rounded-2xl border-2 border-blue-100 p-5 shadow-md mx-4 lg:mx-8 mt-2">
+                    <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="overflow-hidden relative w-full py-1">
+                        <div className="flex gap-4 animate-slide-left w-max">
+                          {[1, 2, 3, 1, 2, 3].map((i, idx) => (
+                            <div key={`overview-photo-slide-${idx}`} className="w-48 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
+                              {settingsData[`dashboardPhoto${i}`] ? (
+                                <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                              ) : (
+                                <div className="h-32 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                                  <span className="text-xl">📸</span>
+                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
+                        {settingsData.dashboardVideo ? (
+                          <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="h-full min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-2xl">🎥</span>
+                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
-                    {/* Baris Video */}
-                    <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner">
-                      {settingsData.dashboardVideo ? (
-                        <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-full min-h-[180px] sm:min-h-[220px] object-contain" />
-                      ) : (
-                        <div className="h-full min-h-[180px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                          <span className="text-2xl">🎥</span>
-                          <p className="text-[10px] mt-1">Belum ada video terbaru</p>
-                        </div>
-                      )}
-                    </div>
                   </div>
-                </div>
-              )}
 
-              {/* TAB: Overview */}
-              {activeTab === 'overview' && (
-                <div className="space-y-6 animate-fade-in">
-
-                  {/* Statistik 6 Kotak */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+                  {/* Statistik Utama */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 mx-4 lg:mx-8">
                     {[
                       { label: 'Total', value: total, color: 'indigo', icon: '📅' },
                       { label: 'Hadir', value: hadir, color: 'emerald', icon: '✓' },
@@ -2255,9 +2292,9 @@ const handleSaveSettings = async (section, e) => {
                           <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
                             stat.color === 'indigo' ? 'bg-white text-indigo-600 border-indigo-200' : 
                             stat.color === 'emerald' ? 'bg-white text-emerald-600 border-emerald-200' : 
-                            stat.color === 'amber' ? 'bg-white text-amber-600 border-amber-200' : 
-                            stat.color === 'sky' ? 'bg-white text-sky-600 border-sky-200' : 
-                            stat.color === 'violet' ? 'bg-white text-violet-600 border-violet-200' : 
+                            stat.color === 'amber' ? 'bg-white text-amber-600 border-amber-200' :
+                            stat.color === 'sky' ? 'bg-white text-sky-600 border-sky-200' :
+                            stat.color === 'violet' ? 'bg-white text-violet-600 border-violet-200' :
                             'bg-white text-rose-600 border-rose-200'
                           } border`}>
                             Hari Ini
@@ -2276,62 +2313,35 @@ const handleSaveSettings = async (section, e) => {
                     ))}
                   </div>
 
-                  {/* Progress Kehadiran (Gaya Dashboard Siswa) */}
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
+                  {/* Progress Kehadiran */}
+                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg mx-4 lg:mx-8">
                     <h3 className="font-semibold text-blue-800 mb-4">Progress Kehadiran Hari Ini</h3>
                     <div className="flex flex-col sm:flex-row items-center gap-8">
-                      <div className="relative w-32 h-32 group">
+                      <div className="relative w-28 h-28 group flex-shrink-0">
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="15.9155"
-                            fill="none"
-                            className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000 ease-out`}
-                            stroke="currentColor"
-                            strokeWidth="3.5"
-                            strokeDasharray={`${hadirPercent}, 100`}
-                            strokeLinecap="round"
-                          />
+                          <circle cx="18" cy="18" r="15.9155" fill="none" className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000`} stroke="currentColor" strokeWidth="3.5" strokeDasharray={`${hadirPercent}, 100`} strokeLinecap="round" />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className={`text-2xl font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
-                            {hadirPercent}%
-                          </span>
-                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Hadir</span>
+                          <span className={`text-xl font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{hadirPercent}%</span>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Hadir</span>
                         </div>
                       </div>
                       <div className="flex-1 w-full">
-                        <p className="text-sm text-blue-600 mb-2">
-                          Kehadiran mencapai <span className="font-bold text-blue-600">{hadirPercent}%</span> dari total <span className="font-bold">{total}</span> rekaman hari ini
-                        </p>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Hadir</span>
-                            <span className="font-medium">{hadir}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-amber-500 rounded-full"></span> Terlambat</span>
-                            <span className="font-medium">{terlambat}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-sky-500 rounded-full"></span> Izin / Sakit</span>
-                            <span className="font-medium">{izin + sakit}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-rose-500 rounded-full"></span> Absen / Alpha</span>
-                            <span className="font-medium">{absen}</span>
-                          </div>
+                        <p className="text-sm text-blue-600 mb-2">Kehadiran mencapai <span className="font-bold text-blue-600">{hadirPercent}%</span> hari ini</p>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Hadir</span><span className="font-medium">{hadir}</span></div>
+                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Terlambat</span><span className="font-medium">{terlambat}</span></div>
+                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-sky-500 rounded-full"></span> Izin / Sakit</span><span className="font-medium">{izin + sakit}</span></div>
+                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-rose-500 rounded-full"></span> Absen</span><span className="font-medium">{absen}</span></div>
                         </div>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md overflow-hidden mt-4">
+
+                  <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md overflow-hidden mt-4 mx-4 lg:mx-8">
                     <div className="px-5 py-4 border-b border-blue-100 flex items-center justify-between">
                       <h3 className="font-bold text-blue-800">Aktivitas Absensi Terbaru</h3>
-                      <span className="text-xs text-slate-500">Data tersambung langsung ke database</span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -2346,70 +2356,28 @@ const handleSaveSettings = async (section, e) => {
                           {(() => {
                             const latestReports = [...attendanceReports].reverse();
                             const pageStart = (currentActivityPage - 1) * activityPageSize;
-                            const pageEnd = pageStart + activityPageSize;
-                            const paginatedReports = latestReports.slice(pageStart, pageEnd);
-
+                            const paginatedReports = latestReports.slice(pageStart, pageStart + activityPageSize);
                             return paginatedReports.length > 0 ? paginatedReports.map((item, idx) => {
                               const dateStr = formatToIndonesiaTime(item.attendance_time || item.created_at || item.time || item.date);
-                              const className = getClassName(item.class_id || item.kelas_id || item.kelas || item.class?.id || item.class?.name);
                               const status = (item.status || '').toString().toLowerCase();
-                              const statusLabel = status === 'terlambat' || status === 'late' ? '⏰ Terlambat' : status === 'hadir' || status === 'tepat_waktu' ? '✅ Hadir' : '✗ Absen';
-                              const userDisplay = item.user_name ||
-                                (item.user && typeof item.user === 'object' ? (item.user.name || item.user.full_name || item.user.nama || item.user.user_id || '-') : item.user) ||
-                                item.name || '-';
+                              const statusLabel = status === 'terlambat' ? '⏰ Terlambat' : status === 'hadir' ? '✅ Hadir' : '✗ Absen';
+                              const userDisplay = item.user_name || item.name || '-';
                               return (
-                                <tr key={`${item.id || idx}-${item.user_id || item.user?.user_id || idx}-${item.attendance_time || idx}`}>
+                                <tr key={idx}>
                                   <td className="px-4 py-3 text-slate-600">{dateStr}</td>
                                   <td className="px-4 py-3 text-blue-800 font-medium">{userDisplay}</td>
                                   <td className="px-4 py-3 text-sm font-semibold text-slate-700">{statusLabel}</td>
                                 </tr>
                               );
                             }) : (
-                              <tr>
-                                <td colSpan="4" className="px-4 py-8 text-center text-slate-400">Belum ada data absensi</td>
-                              </tr>
+                              <tr><td colSpan="3" className="px-4 py-8 text-center text-slate-400">Belum ada data absensi</td></tr>
                             );
                           })()}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                  <div className="px-5 py-4 border-t border-blue-100 bg-blue-50 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <p className="text-xs text-slate-500">Halaman {currentActivityPage} dari {Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))} · Total {attendanceReports.length} aktivitas</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={currentActivityPage <= 1}
-                        onClick={() => setCurrentActivityPage((prev) => Math.max(prev - 1, 1))}
-                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage <= 1 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
-                      >
-                        Sebelumnya
-                      </button>
-                      <button
-                        type="button"
-                        disabled={currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))}
-                        onClick={() => setCurrentActivityPage((prev) => Math.min(prev + 1, Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))))}
-                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize)) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
-                      >
-                        Selanjutnya
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-6">
-                    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md p-4">
-                      <h4 className="font-semibold text-blue-800 mb-2">Data Siswa Aktif</h4>
-                      <p className="text-slate-500 text-xs">{stats.totalSiswa} siswa terdaftar</p>
-                    </div>
-                    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md p-4">
-                      <h4 className="font-semibold text-blue-800 mb-2">Data Guru Aktif</h4>
-                      <p className="text-slate-500 text-xs">{stats.totalGuru} guru terdaftar</p>
-                    </div>
-                    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md p-4">
-                      <h4 className="font-semibold text-blue-800 mb-2">Data Kelas Aktif</h4>
-                      <p className="text-slate-500 text-xs">{stats.totalKelas} kelas tersedia</p>
-                    </div>
-                  </div>
-                      </div>
+                </div>
               )}
 
               {/* TAB: Users */}
@@ -3486,6 +3454,8 @@ const handleSaveSettings = async (section, e) => {
                       <div className="flex gap-2 overflow-x-auto pb-2">
                         {[
                           { id: 'school', title: 'Sekolah', icon: '🏫', description: 'Identitas' },
+                          { id: 'media', title: 'Media', icon: '🖼️', description: 'Foto/Video' },
+                          { id: 'sound', title: 'Sound', icon: '🔊', description: 'Bel Sekolah' },
                           { id: 'attendance', title: 'Absensi', icon: '⏰', description: 'Jadwal' },
                           { id: 'notification', title: 'Sistem', icon: '🔔', description: 'Notifikasi' },
                           { id: 'events', title: 'Event', icon: '📅', description: 'Hari Besar' },
@@ -3512,7 +3482,158 @@ const handleSaveSettings = async (section, e) => {
                       <div className="xl:col-span-2 space-y-4">
                         {settingsSection === 'school' && (
                           <form onSubmit={(e) => handleSaveSettings('school', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
-                            <h3 className="text-base font-bold text-blue-800">🏫 Informasi Sekolah</h3>
+                            <h3 className="text-base font-bold text-blue-800">🏫 Identitas Sekolah</h3>
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Nama Sekolah</label>
+                                <input
+                                  type="text"
+                                  name="schoolName"
+                                  value={settingsData.schoolName || ''}
+                                  onChange={handleSettingsChange}
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Alamat Sekolah</label>
+                                <textarea
+                                  name="schoolAddress"
+                                  value={settingsData.schoolAddress}
+                                  onChange={handleSettingsChange}
+                                  rows="2"
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Telepon</label>
+                                  <input
+                                    type="text"
+                                    name="schoolPhone"
+                                    value={settingsData.schoolPhone}
+                                    onChange={handleSettingsChange}
+                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Email</label>
+                                  <input
+                                    type="email"
+                                    name="schoolEmail"
+                                    value={settingsData.schoolEmail}
+                                    onChange={handleSettingsChange}
+                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Tahun Ajaran</label>
+                                <input
+                                  type="text"
+                                  name="academicYear"
+                                  value={settingsData.academicYear}
+                                  onChange={handleSettingsChange}
+                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                type="submit"
+                                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+                              >
+                                Simpan Identitas
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {settingsSection === 'sound' && (
+                          <form onSubmit={(e) => handleSaveSettings('sound', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-6">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-base font-bold text-blue-800">🔊 Pengaturan Sound Bel Sekolah</h3>
+                              <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black animate-pulse">LIVE MONITORING</span>
+                            </div>
+                            
+                            <div className="space-y-6">
+                              {/* Group Bel Masuk */}
+                              <div className="p-4 bg-slate-50 rounded-2xl border-2 border-blue-50 space-y-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                  <div className="flex-1">
+                                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Jam Masuk Sekolah</label>
+                                    <input
+                                      type="time"
+                                      name="attendanceStartTime"
+                                      value={settingsData.attendanceStartTime}
+                                      onChange={handleSettingsChange}
+                                      className="w-full px-3 py-2 border-2 border-blue-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">File Audio/Video Bel Masuk</label>
+                                    <input
+                                      type="file"
+                                      accept="audio/*,video/*"
+                                      onChange={(e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                          setStartSoundFile(file);
+                                          setStartSoundPreview(URL.createObjectURL(file));
+                                        }
+                                      }}
+                                      className="w-full text-[10px]"
+                                    />
+                                  </div>
+                                </div>
+                                {startSoundPreview && <audio src={startSoundPreview} controls className="w-full h-8" />}
+                              </div>
+
+                              {/* Group Bel Pulang */}
+                              <div className="p-4 bg-slate-50 rounded-2xl border-2 border-blue-50 space-y-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                  <div className="flex-1">
+                                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Jam Pulang Sekolah</label>
+                                    <input
+                                      type="time"
+                                      name="schoolEndTime"
+                                      value={settingsData.schoolEndTime}
+                                      onChange={handleSettingsChange}
+                                      className="w-full px-3 py-2 border-2 border-blue-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">File Audio/Video Bel Pulang</label>
+                                    <input
+                                      type="file"
+                                      accept="audio/*,video/*"
+                                      onChange={(e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                          setEndSoundFile(file);
+                                          setEndSoundPreview(URL.createObjectURL(file));
+                                        }
+                                      }}
+                                      className="w-full text-[10px]"
+                                    />
+                                  </div>
+                                </div>
+                                {endSoundPreview && <audio src={endSoundPreview} controls className="w-full h-8" />}
+                              </div>
+                            </div>
+                            <div className="flex justify-end pt-2">
+                              <button
+                                type="submit"
+                                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg"
+                              >
+                                Simpan Sound & Jam
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {settingsSection === 'media' && (
+                          <form onSubmit={(e) => handleSaveSettings('media', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
+                            <h3 className="text-base font-bold text-blue-800">🖼️ Media & Galeri Sekolah</h3>
                             <div className="space-y-4">
                               <div>
                                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Logo Sekolah</label>
@@ -3586,70 +3707,17 @@ const handleSaveSettings = async (section, e) => {
                                   />
                                 </div>
                               </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Nama Sekolah</label>
-                                <input
-                                  type="text"
-                                  name="schoolName"
-                                  value={settingsData.schoolName || ''}
-                                  onChange={handleSettingsChange}
-                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Alamat Sekolah</label>
-                                <textarea
-                                  name="schoolAddress"
-                                  value={settingsData.schoolAddress}
-                                  onChange={handleSettingsChange}
-                                  rows="2"
-                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
-                                />
-                              </div>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Telepon</label>
-                                  <input
-                                    type="text"
-                                    name="schoolPhone"
-                                    value={settingsData.schoolPhone}
-                                    onChange={handleSettingsChange}
-                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Email</label>
-                                  <input
-                                    type="email"
-                                    name="schoolEmail"
-                                    value={settingsData.schoolEmail}
-                                    onChange={handleSettingsChange}
-                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Tahun Ajaran</label>
-                                <input
-                                  type="text"
-                                  name="academicYear"
-                                  value={settingsData.academicYear}
-                                  onChange={handleSettingsChange}
-                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                              </div>
                             </div>
                             <div className="flex justify-end">
                               <button
                                 type="submit"
                                 className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
                               >
-                                Simpan Sekolah
+                                Simpan Media
                               </button>
                             </div>
                           </form>
                         )}
-
                         {settingsSection === 'attendance' && (
                           <form onSubmit={(e) => handleSaveSettings('attendance', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
                             <h3 className="text-base font-bold text-blue-800">⏰ Pengaturan Absensi</h3>

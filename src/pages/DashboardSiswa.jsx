@@ -756,37 +756,65 @@ const DashboardSiswa = () => {
                   })()}
 
                   {/* ✨ TAMBAHAN: Kartu Event Countdown */}
-                  {events.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                      {events.map((event) => {
-                        const today = new Date(); today.setHours(0,0,0,0);
-                        const target = new Date(event.date);
-                        const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
-                        if (days < 0) return null;
-                        return (
-                          <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md group hover:shadow-xl transition-all">
-                            <img src={event.image} alt={event.title} />
-                            <img
-                              src={resolvePhotoUrl(event.image)}
-                              alt={event.title}
-                              onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/cccccc/ffffff?text=IMG'; }}
-                            />
-                            <div className="p-4 bg-white">
-                              <div className="flex justify-between items-center">
-                                <h4 className="font-bold text-blue-900 text-sm truncate">{event.title}</h4>
-                                <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[9px] font-black px-2 py-0.5 rounded-full`}>
-                                  {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} HARI LAGI`}
-                                </span>
+                  {events.length > 0 && 
+                    (() => {
+                      const sortedUpcoming = [...events]
+                        .filter(e => Math.ceil((new Date(e.date) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24)) >= 0)
+                        .sort((a, b) => new Date(a.date) - new Date(b.date));
+                      
+                      if (sortedUpcoming.length === 0) return null;
+                      
+                      const mainEvent = sortedUpcoming[0];
+                      const otherEvents = sortedUpcoming.slice(1);
+                      const days = Math.ceil((new Date(mainEvent.date) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+
+                      return (
+                        <div className="space-y-4 mb-8">
+                          {/* Event Utama (Hanya 1 yang paling dekat) */}
+                          <div className="max-w-sm">
+                            <div className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md group hover:shadow-xl transition-all">
+                              <img
+                                src={resolvePhotoUrl(mainEvent.image)}
+                                alt={mainEvent.title}
+                                className="w-full h-32 object-cover"
+                                onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/40/cccccc/ffffff?text=IMG'; }}
+                              />
+                              <div className="p-4 bg-white">
+                                <div className="flex justify-between items-center">
+                                  <h4 className="font-bold text-blue-900 text-sm truncate">{mainEvent.title}</h4>
+                                  <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[9px] font-black px-2 py-0.5 rounded-full`}>
+                                    {days === 0 ? '🎉 HARI INI' : `⏳ H-${days} HARI LAGI`}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">
+                                  {new Date(mainEvent.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
+                                </p>
                               </div>
-                              <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">
-                                {new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
-                              </p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+
+                          {/* Logo Tumpuk untuk Event-Event Selanjutnya */}
+                          {otherEvents.length > 0 && (
+                            <div className="flex items-center gap-2 p-3 bg-white/50 rounded-2xl border-2 border-dashed border-blue-200">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Mendatang:</span>
+                              <div className="flex -space-x-3 overflow-hidden">
+                                {otherEvents.map((event) => (
+                                  <div key={event.id} className="relative group cursor-help">
+                                    <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden shadow-sm bg-blue-50">
+                                      <img src={resolvePhotoUrl(event.image)} alt={event.title} className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none">
+                                      {event.title} ({new Date(event.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })})
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  }
 
                   {/* Seksi Media & Kegiatan (Simple Style) */}
                   <div className="bg-white rounded-2xl border-2 border-blue-100 p-6 shadow-md mb-6">

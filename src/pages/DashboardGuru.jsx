@@ -960,34 +960,57 @@ const DashboardGuru = () => {
                       <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 ml-1">
                         <span>📅</span> Event Hari Besar
                       </h3>
-                      {events.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                          {events.map((event) => {
-                            const today = new Date(); today.setHours(0, 0, 0, 0);
-                            const target = new Date(event.date);
-                            const days = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
-                            if (days < 0) return null;
-                            return (
-                              <div key={event.id} className="relative bg-white rounded-2xl border-2 border-blue-100 overflow-hidden shadow-md group hover:shadow-xl transition-all">
+                      {events.length > 0 ? (() => {
+                          const sortedUpcoming = [...events]
+                            .filter(e => Math.ceil((new Date(e.date) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24)) >= 0)
+                            .sort((a, b) => new Date(a.date) - new Date(b.date));
+                          
+                          if (sortedUpcoming.length === 0) return null;
+                          
+                          const mainEvent = sortedUpcoming[0];
+                          const otherEvents = sortedUpcoming.slice(1);
+                          const days = Math.ceil((new Date(mainEvent.date) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+
+                          return (
+                            <div className="bg-white rounded-3xl border-2 border-blue-100 p-5 shadow-lg h-full">
+                              {/* Kartu Event Terdekat */}
+                              <div className="relative bg-blue-50/50 rounded-2xl border-2 border-blue-50 overflow-hidden shadow-sm mb-5">
                                 <img
-                                  src={resolvePhotoUrl(event.image)}
-                                  alt={event.title}
-                                  className="w-full h-32 object-cover"
+                                  src={resolvePhotoUrl(mainEvent.image)}
+                                  alt={mainEvent.title}
+                                  className="w-full h-40 object-cover"
                                   onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }}
                                 />
-                                <div className="p-3 bg-white">
+                                <div className="p-4">
                                   <div className="flex justify-between items-center gap-2">
-                                    <h4 className="font-bold text-blue-900 text-xs truncate uppercase tracking-tighter">{event.title}</h4>
-                                    <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap`}>
-                                      {days === 0 ? '🎉 HARI INI' : `⏳ H-${days}`}
+                                    <h4 className="font-extrabold text-blue-900 text-sm truncate uppercase tracking-tight">{mainEvent.title}</h4>
+                                    <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[9px] font-black px-2 py-1 rounded-full shadow-sm`}>
+                                      {days === 0 ? 'HARI INI' : `H-${days}`}
                                     </span>
                                   </div>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
+
+                              {/* Logo Tumpuk untuk event selanjutnya */}
+                              {otherEvents.length > 0 && (
+                                <div className="flex items-center gap-3 pt-3 border-t border-blue-50">
+                                  <span className="text-[10px] font-black text-slate-400 uppercase">Agenda Selanjutnya:</span>
+                                  <div className="flex -space-x-3 overflow-hidden">
+                                    {otherEvents.map((event) => (
+                                      <img 
+                                        key={event.id}
+                                        src={resolvePhotoUrl(event.image)} 
+                                        className="w-9 h-9 rounded-full border-2 border-white object-cover shadow-sm bg-white"
+                                        title={event.title}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
+                       : (
                         <div className="flex-1 bg-white rounded-3xl border-2 border-dashed border-blue-100 flex flex-col items-center justify-center p-8 text-slate-400">
                           <span className="text-4xl mb-2 opacity-30">📅</span>
                           <p className="text-sm font-medium">Belum ada agenda sekolah terdaftar</p>
