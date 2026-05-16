@@ -52,7 +52,8 @@ const Landing = () => {
     user_id: '',
     type: 'izin', // 'izin' or 'sakit'
     reason: '',
-    attachment: null
+    attachment: null,
+    parent_phone: ''
   });
 
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -68,7 +69,8 @@ const Landing = () => {
     schoolEndTime: '',
     schoolName: '',
     schoolLogo: null,
-    limitOneScanPerDay: true
+    limitOneScanPerDay: true,
+    activeDays: 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
   });
 
   const [attendanceStats, setAttendanceStats] = useState({
@@ -86,6 +88,16 @@ const Landing = () => {
       console.warn('Gagal normalisasi tanggal:', err, date);
       return '';
     }
+  };
+
+  // ✨ Helper hitung mundur hari (Normalisasi ke Midnight)
+  const getDaysRemaining = (dateString) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateString);
+    target.setHours(0, 0, 0, 0);
+    const diffTime = target - today;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const normalizeDateKey = (rawDate) => {
@@ -219,7 +231,8 @@ const Landing = () => {
         schoolName: settings.schoolName || settings.nama_sekolah || '',
         schoolLogo: settings.schoolLogo || settings.logo || null,
         limitOneScanPerDay: settings.limitOneScanPerDay || false,
-        disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+        disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
+        activeDays: settings.activeDays || settings.active_days || 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
       };
 
       setAttendanceSettings(mappedSettings);
@@ -365,8 +378,13 @@ const Landing = () => {
   };
 
   const checkIsHoliday = () => {
-    if (!attendanceSettings.disableAttendanceOnHolidays) return false;
-    return currentTime.getDay() === 0; // Sunday
+    if (attendanceSettings.disableAttendanceOnHolidays) {
+      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const currentDay = dayNames[currentTime.getDay()];
+      const activeDays = attendanceSettings.activeDays ? attendanceSettings.activeDays.split(',') : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      return !activeDays.includes(currentDay);
+    }
+    return false;
   };
 
   useEffect(() => {
@@ -601,15 +619,22 @@ const Landing = () => {
       }
       
       const payload = {
+        name: izinForm.fullName.trim(),
         full_name: izinForm.fullName.trim(),
-        user_id: izinForm.user_id.trim(),
-        nis: izinForm.user_id.trim(),
         type: izinForm.type,
         reason: izinForm.reason,
         attendance_time: currentTime.toISOString(),
         status: izinForm.type,
         role: activeUserRole === 'guru' ? 'guru' : 'siswa'
       };
+      if (activeUserRole === 'siswa') {
+        payload.user_id = izinForm.user_id.trim();
+        payload.nis = izinForm.user_id.trim();
+        payload.parent_phone = izinForm.parent_phone.trim();
+      } else if (activeUserRole === 'guru') {
+        payload.user_id = izinForm.user_id.trim();
+        payload.nip = izinForm.user_id.trim();
+      }
 
       // Handle file upload if attachment exists
       if (izinForm.attachment) {
@@ -620,7 +645,7 @@ const Landing = () => {
         await api.post('/attendance/izin', formData, {
           timeout: 60000,
           headers: {
-            'Content-Type': 'multipart/form-data',
+            // Biarkan Axios mengatur Content-Type secara otomatis untuk FormData
             ...(token ? { Authorization: `Bearer ${token}` } : {})
           }
         });
@@ -635,7 +660,7 @@ const Landing = () => {
       setSubmitMessage({ type: 'success', text: `✅ Pengajuan ${izinForm.type} berhasil dikirim!` });
       playSound('success');
 
-      setIzinForm({ fullName: '', user_id: '', type: 'izin', reason: '', attachment: null });
+      setIzinForm({ fullName: '', user_id: '', type: 'izin', reason: '', attachment: null, parent_phone: '' });
       localStorage.setItem('attendance_updated', Date.now().toString());
       
       setTimeout(() => {
@@ -1533,6 +1558,19 @@ const Landing = () => {
                           required
                         />
                       </div>
+                      {activeUserRole === 'siswa' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-1.5">No. Telepon Orang Tua *</label>
+                          <input
+                            type="tel"
+                            value={izinForm.parent_phone}
+                            onChange={(e) => setIzinForm(prev => ({ ...prev, parent_phone: e.target.value }))}
+                            className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                            placeholder="Contoh: 08123456789"
+                            required
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1.5">Nama Lengkap *</label>
                         <input

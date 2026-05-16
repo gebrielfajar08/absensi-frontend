@@ -86,7 +86,10 @@ const DashboardGuru = () => {
     dashboardPhoto1: null,
     dashboardPhoto2: null,
     dashboardPhoto3: null,
-    dashboardVideo: null
+    dashboardVideo: null,
+    startSound: null,
+    endSound: null,
+    activeDays: 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
   });
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -166,7 +169,8 @@ const DashboardGuru = () => {
       }
       setUser(userData);
     } catch {
-      localStorage.clear();
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       navigate('/');
     }
     setLoading(false);
@@ -213,7 +217,10 @@ const DashboardGuru = () => {
             dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || settings.photo2_url || null,
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || settings.photo3_url || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || settings.video_url || null,
-            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
+            startSound: settings.start_sound_url || settings.startSound || null,
+            endSound: settings.end_sound_url || settings.endSound || null,
+            activeDays: settings.activeDays || settings.active_days || 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
           };
           setAttendanceSettings(mappedSettings);
           localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
@@ -236,7 +243,10 @@ const DashboardGuru = () => {
             dashboardPhoto2: settings.dashboard_photo_2 || settings.dashboardPhoto2 || null,
             dashboardPhoto3: settings.dashboard_photo_3 || settings.dashboardPhoto3 || null,
             dashboardVideo: settings.dashboardVideo || settings.dashboard_video || null,
-            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true
+            disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
+            startSound: settings.startSound || null,
+            endSound: settings.endSound || null,
+            activeDays: settings.activeDays || settings.active_days || 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
           });
         } catch (err) {
           console.error("Error parsing settings", err);
@@ -244,6 +254,7 @@ const DashboardGuru = () => {
       }
     };
 
+    loadSettings();
     fetchSettings();
     window.addEventListener('storage', loadSettings);
     return () => {
@@ -251,6 +262,30 @@ const DashboardGuru = () => {
       window.removeEventListener('storage', loadSettings);
     };
   }, []);
+
+  // 🔊 LOGIKA AUTO-PLAY BEL SEKOLAH DI SISI GURU
+  const [lastRungMinute, setLastRungMinute] = useState('');
+
+  useEffect(() => {
+    const now = new Date();
+    const currentMinute = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
+
+    if (currentMinute === lastRungMinute) return;
+
+    // Cek Bel Masuk
+    if (attendanceSettings.startSound && currentMinute === (localStorage.getItem('school_settings') ? JSON.parse(localStorage.getItem('school_settings')).attendanceStartTime?.substring(0,5) : '07:00')) {
+      new Audio(attendanceSettings.startSound).play().catch(e => console.warn("Autoplay blocked", e));
+      setLastRungMinute(currentMinute);
+      addNotification("🔊 Bel Masuk Sekolah Berbunyi!", "info");
+    }
+
+    // Cek Bel Pulang
+    if (attendanceSettings.endSound && currentMinute === (localStorage.getItem('school_settings') ? JSON.parse(localStorage.getItem('school_settings')).schoolEndTime?.substring(0,5) : '15:30')) {
+      new Audio(attendanceSettings.endSound).play().catch(e => console.warn("Autoplay blocked", e));
+      setLastRungMinute(currentMinute);
+      addNotification("🔊 Bel Pulang Sekolah Berbunyi!", "info");
+    }
+  }, [currentTime, attendanceSettings, lastRungMinute]);
 
   // ← Fetch data dari backend
   useEffect(() => {
@@ -290,9 +325,14 @@ const DashboardGuru = () => {
 
   // ➕ Check if selected date is Sunday
   const checkIsHoliday = (dateString) => {
-    if (!attendanceSettings.disableAttendanceOnHolidays) return false;
-    const date = new Date(dateString || selectedDate);
-    return date.getDay() === 0;
+    if (attendanceSettings.disableAttendanceOnHolidays) {
+      const date = new Date(dateString || selectedDate);
+      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const currentDay = dayNames[date.getDay()];
+      const activeDays = attendanceSettings.activeDays ? attendanceSettings.activeDays.split(',') : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      return !activeDays.includes(currentDay);
+    }
+    return false;
   };
 
   // ➕ TAMBAHAN: Fungsi notifikasi
@@ -404,7 +444,8 @@ const DashboardGuru = () => {
         setConnectionStatus('disconnected');
         if (!silent) addNotification('🔌 Koneksi terputus. Periksa server backend.', 'error');
       } else if (err.response?.status === 401) {
-        localStorage.clear();
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         navigate('/');
       } else if (!silent) {
         addNotification(`⚠️ ${err.response?.data?.message || 'Gagal memuat data'}`, 'error');
@@ -919,144 +960,107 @@ const DashboardGuru = () => {
                     </div>
                   </div>
 
-                  {/* ✨ TANGGAL KOTAK DINAMIS (LANDING STYLE) */}
+                  {/* 📅 Grid Kalender & Event (Sama dengan Admin) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2">
                   {(() => {
                     const sectionBg = getSectionBackground(currentTime);
                     return (
-                      <div
-                        className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-6 text-white shadow-lg"
-                        style={{
-                          backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`,
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center'
-                        }}
-                      >
+                        <div className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-5 text-white shadow-lg flex flex-col justify-center min-h-[220px]"
+                          style={{ backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                         <div className="relative">
-                          <p className="text-xs uppercase tracking-[0.24em] text-blue-200/90 mb-3 font-bold">
-                            {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
-                          </p>
-                          <h3 className="text-2xl md:text-3xl font-black mb-2 tracking-tight">
-                            {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                          </h3>
-                          <p className="text-sm text-slate-200/80 mb-6">
-                            Sistem pencatatan waktu otomatis zona waktu Jakarta.
-                          </p>
-                          <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg border border-white/20">
-                            <span>{currentTime.getFullYear()}</span>
-                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
-                            <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
-                          </div>
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-200/90 mb-2 font-black">{sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}</p>
+                            <h3 className="text-lg md:text-xl font-black mb-1 tracking-tight">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
+                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white border border-white/20 mt-4">
+                              <span>{currentTime.getFullYear()}</span>
+                              <span className="inline-block h-1 w-1 rounded-full bg-blue-400" />
+                              <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
+                            </div>
                         </div>
                       </div>
                     );
                   })()}
-                  
 
-
-                  {/* ✨ BAGIAN GABUNGAN: Agenda (Kiri) & Media (Kanan) */}
-                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mb-8">
-                    {/* KIRI: Agenda / Event (Mengambil 8 Kolom agar lebih lebar ke kanan) */}
-                    <div className="xl:col-span-8 flex flex-col">
-                      <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 ml-1">
-                        <span>📅</span> Event Hari Besar
+                    <div className="bg-white rounded-2xl border-2 border-blue-100 p-4 shadow-lg flex flex-col min-h-[220px]">
+                      <h3 className="font-black text-blue-900 mb-3 flex items-center justify-between text-[10px] uppercase tracking-wider">
+                        <span className="flex items-center gap-2">📅 Agenda & Event</span>
+                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{events.length} Hari Besar</span>
                       </h3>
-                      {events.length > 0 ? (() => {
-                          const sortedUpcoming = [...events]
-                            .filter(e => Math.ceil((new Date(e.date) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24)) >= 0)
-                            .sort((a, b) => new Date(a.date) - new Date(b.date));
-                          
-                          if (sortedUpcoming.length === 0) return null;
-                          
+                      <div className="flex-1">
+                        {events.length > 0 ? (
+                          (() => {
+                            const sortedUpcoming = [...events].filter(e => getDaysRemaining(e.date) >= 0).sort((a, b) => new Date(a.date) - new Date(b.date));
+                            if (sortedUpcoming.length === 0) return (
+                              <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                <span className="text-2xl mb-1 opacity-20">📅</span>
+                                <p className="text-[10px] font-bold uppercase">Belum ada agenda</p>
+                              </div>
+                            );
                           const mainEvent = sortedUpcoming[0];
                           const otherEvents = sortedUpcoming.slice(1);
-                          const days = Math.ceil((new Date(mainEvent.date) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
-
+                          const days = getDaysRemaining(mainEvent.date);
                           return (
-                            <div className="bg-white rounded-3xl border-2 border-blue-100 p-5 shadow-lg h-full">
-                              {/* Kartu Event Terdekat */}
-                              <div className="relative bg-blue-50/50 rounded-2xl border-2 border-blue-50 overflow-hidden shadow-sm mb-5">
-                                <img
-                                  src={resolvePhotoUrl(mainEvent.image)}
-                                  alt={mainEvent.title}
-                                  className="w-full h-40 object-cover"
-                                  onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }}
-                                />
-                                <div className="p-4">
-                                  <div className="flex justify-between items-center gap-2">
-                                    <h4 className="font-extrabold text-blue-900 text-sm truncate uppercase tracking-tight">{mainEvent.title}</h4>
-                                    <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[9px] font-black px-2 py-1 rounded-full shadow-sm`}>
-                                      {days === 0 ? 'HARI INI' : `H-${days}`}
-                                    </span>
+                            <div className="flex flex-col h-full">
+                              <div className="relative bg-slate-50 rounded-xl border border-blue-50 overflow-hidden mb-3">
+                                <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-40 object-contain bg-white" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
+                                <div className="p-3 bg-white/80 backdrop-blur-sm border-t border-blue-50">
+                                  <div className="flex justify-between items-center">
+                                    <h4 className="font-black text-blue-900 text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
+                                    <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full shadow-sm`}>{days === 0 ? 'HARI INI' : `H-${days}`}</span>
                                   </div>
                                 </div>
                               </div>
-
-                              {/* Logo Tumpuk untuk event selanjutnya */}
                               {otherEvents.length > 0 && (
-                                <div className="flex items-center gap-3 pt-3 border-t border-blue-50">
-                                  <span className="text-[10px] font-black text-slate-400 uppercase">Agenda Selanjutnya:</span>
-                                  <div className="flex -space-x-3 overflow-hidden">
+                                <div className="mt-auto flex items-center gap-2 pt-2 border-t border-blue-50">
+                                  <span className="text-[10px] font-black text-slate-400 uppercase">Lainnya:</span>
+                                  <div className="flex -space-x-2 overflow-hidden">
                                     {otherEvents.map((event) => (
-                                      <img 
-                                        key={event.id}
-                                        src={resolvePhotoUrl(event.image)} 
-                                        className="w-9 h-9 rounded-full border-2 border-white object-cover shadow-sm bg-white"
-                                        title={event.title}
-                                      />
+                                      <img key={event.id} src={resolvePhotoUrl(event.image)} className="w-8 h-8 rounded-full border-2 border-white object-cover shadow-sm bg-white" title={event.title} />
                                     ))}
                                   </div>
                                 </div>
                               )}
                             </div>
                           );
-                        })()
-                       : (
-                        <div className="flex-1 bg-white rounded-3xl border-2 border-dashed border-blue-100 flex flex-col items-center justify-center p-8 text-slate-400">
-                          <span className="text-4xl mb-2 opacity-30">📅</span>
-                          <p className="text-sm font-medium">Belum ada agenda sekolah terdaftar</p>
-                        </div>
-                      )}
+                        })() 
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                            <span className="text-2xl mb-1 opacity-20">📅</span>
+                            <p className="text-[10px] font-bold uppercase">Belum ada agenda</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                  </div>
 
-                    {/* KANAN: Media Sekolah (Mengambil 4 Kolom agar mepet dengan agenda) */}
-                    <div className="xl:col-span-4 flex flex-col">
-                      <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 ml-1">
-                        <span>🖼️</span> Galeri & Video Sekolah
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-                        {/* Slider Foto */}
-                        <div className="bg-white rounded-3xl border-2 border-blue-100 p-4 shadow-lg flex flex-col">
-                          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 block">📸 Foto Kegiatan</span>
-                          <div className="overflow-hidden relative w-full flex-1 flex items-center">
-                            <div className="flex gap-3 animate-slide-left w-max">
-                              {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                                <div key={`guru-photo-slide-${idx}`} className="w-40 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
-                                  {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                    <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-28 object-cover hover:scale-110 transition-transform duration-700" />
-                                  ) : (
-                                    <div className="h-28 flex flex-col items-center justify-center text-slate-400">
-                                      <span className="text-xl">📸</span>
-                                    </div>
-                                  )}
+                  {/* Seksi Media (Sama dengan Admin) */}
+                  <div className="bg-white rounded-2xl border-2 border-blue-100 p-5 shadow-md mt-2 mb-6">
+                    <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="overflow-hidden relative w-full py-1">
+                        <div className="flex gap-4 animate-slide-left w-max">
+                          {[1, 2, 3, 1, 2, 3].map((i, idx) => (
+                            <div key={`guru-photo-slide-${idx}`} className="w-48 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
+                              {attendanceSettings[`dashboardPhoto${i}`] ? (
+                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                              ) : (
+                                <div className="h-32 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                                  <span className="text-xl">📸</span>
+                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
                                 </div>
-                              ))}
+                              )}
                             </div>
-                          </div>
+                          ))}
                         </div>
-                        
-                        {/* Video Profil */}
-                        <div className="bg-white rounded-3xl border-2 border-blue-100 p-4 shadow-lg flex flex-col">
-                          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 block">🎥 Video Profil</span>
-                          <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video flex-1">
-                            {attendanceSettings.dashboardVideo ? (
-                              <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full object-contain" />
-                            ) : (
-                              <div className="h-full bg-slate-900 flex flex-col items-center justify-center text-slate-500 p-4 text-center">
-                                <p className="text-[10px] font-bold uppercase">Video Profil Belum Tersedia</p>
-                              </div>
-                            )}
+                      </div>
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
+                        {attendanceSettings.dashboardVideo ? (
+                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="h-full min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-2xl">🎥</span>
+                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>

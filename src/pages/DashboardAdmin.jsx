@@ -254,6 +254,7 @@ const DashboardAdmin = () => {
     dashboardVideo: null,
     startSound: null,
     endSound: null,
+    activeDays: 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu', // Default hari aktif
   });
 
   const [settingsSection, setSettingsSection] = useState('school');
@@ -491,40 +492,40 @@ const fetchSettings = async () => {
         setEndSoundPreview(backendSettings.endSound);
       }
 
-      localStorage.setItem('school_settings', JSON.stringify(backendSettings));
+      localStorage.setItem('school_settings', JSON.stringify({
+        ...backendSettings,
+        // Pastikan kita menyimpan URL lengkap agar saat refresh bisa langsung diputar
+        start_sound_url: backendSettings.startSound,
+        end_sound_url: backendSettings.endSound
+      }));
     }
 
   } catch (err) {
     console.error('❌ Error fetching settings:', err?.response?.data || err.message);
-    console.log('⚠️ Trying with default values...');
-    
-    // ✅ FALLBACK: Use default values jika ada error
-    const defaultSettings = {
-      schoolName: 'SMK Negeri 1',
-      schoolAddress: 'Jl. Pendidikan No. 123',
-      schoolPhone: '021-1234567',
-      schoolEmail: 'info@smkn1.sch.id',
-      academicYear: '2025/2026',
-      attendanceStartTime: '07:00',
-      attendanceEndTime: '08:00',
-      lateThreshold: '08:00',
-      schoolEndTime: '15:30',
-      enableQRCode: true,
-      attendanceSessionOpen: true,
-      enableNotifications: true,
-      enableEmailReports: true,
-      autoMarkAbsentEnabled: true,
-      schoolLogo: null,
-      dashboardPhoto1: null,
-      dashboardPhoto2: null,
-      dashboardPhoto3: null,
-      dashboardVideo: null,
-      startSound: null,
-      endSound: null,
-    };
-    setSettingsData(defaultSettings);
+    loadSettings(); // Gunakan data dari localStorage jika API gagal
   }
 };
+
+  // ➕ Fungsi memuat dari memori lokal (Persistence)
+  const loadSettings = () => {
+    const saved = localStorage.getItem('school_settings');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        setSettingsData(prev => ({ ...prev, ...data }));
+        if (data.start_sound_url || data.startSound) setStartSoundPreview(data.start_sound_url || data.startSound);
+        if (data.end_sound_url || data.endSound) setEndSoundPreview(data.end_sound_url || data.endSound);
+        if (data.schoolLogo || data.logo_url) setLogoPreview(data.schoolLogo || data.logo_url);
+      } catch (e) {
+        console.error("Gagal parse cache settings", e);
+      }
+    }
+  };
+
+  // Jalankan loadSettings segera saat mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   // 🔊 LOGIKA AUTO-PLAY BEL SEKOLAH
   const [lastRungMinute, setLastRungMinute] = useState('');
@@ -574,7 +575,7 @@ const fetchSettings = async () => {
         return;
       }
       setUser(userData);
-    } catch { localStorage.clear(); navigate('/'); }
+    } catch { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/'); }
     setLoading(false);
   }, [navigate]);
 
@@ -1210,6 +1211,7 @@ const handleSaveSettings = async (section, e) => {
     appendField('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
     appendField('lateThreshold', formatTime(settingsData.lateThreshold));
     appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
+    appendField('activeDays', settingsData.activeDays);
 
     data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
     data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
@@ -2375,6 +2377,29 @@ const handleSaveSettings = async (section, e) => {
                           })()}
                         </tbody>
                       </table>
+                    </div>
+                    <div className="px-5 py-4 border-t border-blue-100 bg-blue-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <p className="text-xs text-slate-500">
+                        Halaman {currentActivityPage} dari {Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))} · Total {attendanceReports.length} aktivitas
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={currentActivityPage <= 1}
+                          onClick={() => setCurrentActivityPage(prev => Math.max(prev - 1, 1))}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage <= 1 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+                        >
+                          Sebelumnya
+                        </button>
+                        <button
+                          type="button"
+                          disabled={currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))}
+                          onClick={() => setCurrentActivityPage(prev => Math.min(prev + 1, Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))))}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize)) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+                        >
+                          Selanjutnya
+                        </button>
+                      </div>    
                     </div>
                   </div>
                 </div>
@@ -3813,6 +3838,34 @@ const handleSaveSettings = async (section, e) => {
                                   <div className="w-11 h-6 bg-blue-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                 </label>
                               </div>
+
+                            {/* ✨ TAMBAHAN: Pengaturan Hari Aktif */}
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                              <label className="block text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">Hari Aktif Absensi</label>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((day) => {
+                                  const isActive = settingsData.activeDays.split(',').includes(day);
+                                  return (
+                                    <label key={day} className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 transition-all">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={isActive}
+                                        onChange={(e) => {
+                                          const currentDays = settingsData.activeDays.split(',').filter(d => d !== "");
+                                          const nextDays = e.target.checked 
+                                            ? [...currentDays, day] 
+                                            : currentDays.filter(d => d !== day);
+                                          setSettingsData(prev => ({...prev, activeDays: nextDays.join(',')}));
+                                        }}
+                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                      />
+                                      <span className="text-xs font-medium text-slate-700">{day}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-2 italic">Hanya hari yang dicentang yang bisa digunakan untuk melakukan absensi.</p>
+                            </div>
                             </div>
                             <div className="flex justify-end">
                               <button
