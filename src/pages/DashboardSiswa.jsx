@@ -769,15 +769,15 @@ const DashboardSiswa = () => {
               {activeTab === 'ringkasan' && (
                 <div className="space-y-6">
                   {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
-                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-4 sm:p-6 mb-2 shadow-sm flex flex-col sm:flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-3 sm:p-6 mb-2 shadow-sm flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-200">
                     {/* Ornamen Dekoratif */}
                     <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
                     <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
                       <span className="text-8xl">🧑‍🎓</span>
                     </div>
 
-                    <div className="relative z-10">
-                      <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md bg-white flex-shrink-0">
+                    <div className="relative z-10 flex-shrink-0">
+                      <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 sm:border-4 border-white shadow-md bg-white">
                         <img
                           src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Siswa')}&background=3b82f6&color=ffffff`}
                           alt="Profile"
@@ -786,27 +786,27 @@ const DashboardSiswa = () => {
                       </div>
                     </div>
                     
-                    <div className="text-center sm:text-left relative z-10">
-                      <h2 className="text-xl lg:text-2xl font-black text-blue-900 leading-tight">
+                    <div className="text-left relative z-10">
+                      <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-blue-900 leading-tight">
                         Halo, {user?.name}! 👋
                       </h2>
-                      <p className="text-blue-600/80 text-sm mt-1 font-medium">
+                      <p className="text-blue-600/80 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
                         Tetap semangat belajar ya! Jangan lupa untuk selalu disiplin dalam presensi.
                       </p>
                     </div>
                   </div>
 
                   {/* 📅 Grid Kalender & Event (Sama dengan Admin) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-2">
                   {(() => {
                     const sectionBg = getSectionBackground(currentTime);
                     return (
-                        <div className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-5 text-white shadow-lg flex flex-col justify-center min-h-[220px]"
+                        <div className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-3 sm:p-5 text-white shadow-lg flex flex-col justify-center min-h-[160px] sm:min-h-[220px]"
                           style={{ backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                         <div className="relative">
-                            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-200/90 mb-2 font-black">{sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}</p>
-                            <h3 className="text-lg md:text-xl font-black mb-1 tracking-tight">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
-                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white border border-white/20 mt-4">
+                            <p className="text-[8px] sm:text-[10px] uppercase tracking-[0.2em] text-blue-200/90 mb-1 sm:mb-2 font-black">{sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}</p>
+                            <h3 className="text-xs sm:text-lg md:text-xl font-black mb-1 tracking-tight">{currentTime.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</h3>
+                            <div className="inline-flex items-center gap-1.5 sm:gap-3 rounded-full bg-white/10 backdrop-blur-md px-2 sm:px-4 py-1 sm:py-1.5 text-[8px] sm:text-[10px] font-bold uppercase tracking-[0.15em] text-white border border-white/20 mt-2 sm:mt-4">
                               <span>{currentTime.getFullYear()}</span>
                               <span className="inline-block h-1 w-1 rounded-full bg-blue-400" />
                               <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
@@ -816,7 +816,7 @@ const DashboardSiswa = () => {
                     );
                   })()}
 
-                    <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-4 shadow-lg flex flex-col min-h-[220px]">
+                    <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-3 sm:p-4 shadow-lg flex flex-col min-h-[160px] sm:min-h-[220px]">
                       <h3 className="font-black text-white mb-3 flex items-center justify-between text-[10px] uppercase tracking-wider">
                         <span className="flex items-center gap-2">📅 Agenda & Event</span>
                         <span className="text-[10px] bg-white text-green-800 px-2 py-0.5 rounded-full border border-green-200 font-bold">{events.length} Hari Besar</span>
@@ -837,10 +837,10 @@ const DashboardSiswa = () => {
                             return (
                               <div className="flex flex-col h-full">
                                 <div className="relative bg-gray-300 rounded-xl border border-blue-100 overflow-hidden mb-3">
-                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-40 object-contain bg-gray-300" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
+                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-24 sm:h-40 object-contain bg-gray-300" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
                                   <div className="p-3 bg-white/80 backdrop-blur-sm border-t border-blue-50">
                                     <div className="flex justify-between items-center">
-                                      <h4 className="font-black text-blue-900 text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
+                                      <h4 className="font-black text-blue-900 text-[10px] sm:text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
                                       <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full shadow-sm`}>{days === 0 ? 'HARI INI' : `H-${days}`}</span>
                                     </div>
                                   </div>
@@ -871,16 +871,16 @@ const DashboardSiswa = () => {
                   {/* Seksi Media (Sama dengan Admin) */}
                   <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mt-2 mb-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
                           {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`siswa-photo-slide-${idx}`} className="w-48 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
+                            <div key={`siswa-photo-slide-${idx}`} className="w-32 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
                               {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
                               ) : (
-                                <div className="h-32 sm:h-40 flex flex-col items-center justify-center text-slate-400">
-                                  <span className="text-2xl">📸</span>
+                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                                  <span className="text-lg sm:text-xl">📸</span>
                                   <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
                                 </div>
                               )}
@@ -892,8 +892,8 @@ const DashboardSiswa = () => {
                         {attendanceSettings.dashboardVideo ? (
                           <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full object-contain" />
                         ) : (
-                          <div className="h-full min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                            <span className="text-2xl">🎥</span>
+                          <div className="h-full min-h-[100px] sm:min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-lg sm:text-2xl">🎥</span>
                             <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
                         )}
@@ -958,8 +958,8 @@ const DashboardSiswa = () => {
 
                   <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
                     <h3 className="font-semibold text-blue-800 mb-4">Progress Kehadiran</h3>
-                    <div className="flex flex-col sm:flex-row items-center gap-8">
-                      <div className="relative w-32 h-32 group">
+                    <div className="flex flex-row items-center gap-4 sm:gap-8">
+                      <div className="relative w-20 h-20 sm:w-32 sm:h-32 group flex-shrink-0">
                         {/* ✨ Lingkaran Progres dengan Warna Dinamis */}
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
@@ -976,17 +976,17 @@ const DashboardSiswa = () => {
                           />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className={`text-2xl font-black ${stats.percentage >= 80 ? 'text-emerald-600' : stats.percentage >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
+                          <span className={`text-sm sm:text-2xl font-black ${stats.percentage >= 80 ? 'text-emerald-600' : stats.percentage >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
                             {Math.round(stats.percentage)}%
                           </span>
                           <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Hadir</span>
                         </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm text-blue-600 mb-2">
+                      <div className="flex-1 w-full">
+                        <p className="text-xs sm:text-sm text-blue-600 mb-2">
                           Kamu hadir <span className="font-bold text-blue-600">{stats.presentDays}</span> dari <span className="font-bold">{stats.totalAttendance}</span> pertemuan
                         </p>
-                        <div className="space-y-2 text-sm">
+                        <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
                           <div className="flex justify-between">
                             <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Hadir</span>
                             <span className="font-medium">{stats.presentDays}</span>

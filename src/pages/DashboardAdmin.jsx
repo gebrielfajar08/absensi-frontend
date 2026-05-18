@@ -2178,26 +2178,26 @@ const handleSaveSettings = async (section, e) => {
               {activeTab === 'overview' && (
                 <div className="space-y-4 animate-fade-in">
                   {/* Banner Selamat Datang */}
-                  <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 mx-4 lg:mx-8 shadow-sm flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden transition-all hover:border-blue-200">
+                  <div className="bg-white border-2 border-blue-100 rounded-2xl p-3 sm:p-5 mx-4 lg:mx-8 shadow-sm flex flex-row items-center gap-3 sm:gap-4 relative overflow-hidden transition-all hover:border-blue-200">
                     <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl shadow-md flex-shrink-0 relative z-10">👋</div>
-                    <div className="text-center sm:text-left relative z-10">
-                      <h2 className="text-lg lg:text-xl font-bold text-slate-800 leading-tight">Selamat datang, {user?.name || 'Administrator'}!</h2>
-                      <p className="text-slate-500 text-xs lg:text-sm mt-0.5">Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.</p>
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-xl sm:text-2xl shadow-md flex-shrink-0 relative z-10">👋</div>
+                    <div className="text-left relative z-10">
+                      <h2 className="text-sm sm:text-lg lg:text-xl font-bold text-slate-800 leading-tight">Selamat datang, {user?.name || 'Administrator'}!</h2>
+                      <p className="text-slate-500 text-[10px] sm:text-xs lg:text-sm mt-0.5">Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.</p>
                     </div>
                   </div>
 
                   {/* 📅 Grid Kalender & Event (Kecil & Sama Tinggi) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mx-4 lg:mx-8 mt-2">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 mx-4 lg:mx-8 mt-2">
                     {(() => {
                       const sectionBg = getSectionBackground(currentTime);
                       return (
-                        <div className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-5 text-white shadow-lg flex flex-col justify-center min-h-[220px]"
+                        <div className="relative overflow-hidden rounded-2xl border-2 border-blue-100 p-3 sm:p-5 text-white shadow-lg flex flex-col justify-center min-h-[160px] sm:min-h-[220px]"
                           style={{ backgroundImage: `linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.65)), url(${sectionBg.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                           <div className="relative">
-                            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-200/90 mb-2 font-black">{sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}</p>
-                            <h3 className="text-lg md:text-xl font-black mb-1 tracking-tight">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
-                            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white border border-white/20 mt-4">
+                            <p className="text-[8px] sm:text-[10px] uppercase tracking-[0.2em] text-blue-200/90 mb-1 sm:mb-2 font-black">{sectionBg.isHoliday ? `HARI BESAR: ${sectionBg.label}` : sectionBg.label}</p>
+                            <h3 className="text-xs sm:text-lg md:text-xl font-black mb-1 tracking-tight">{currentTime.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</h3>
+                            <div className="inline-flex items-center gap-1.5 sm:gap-3 rounded-full bg-white/10 backdrop-blur-md px-2 sm:px-4 py-1 sm:py-1.5 text-[8px] sm:text-[10px] font-bold uppercase tracking-[0.15em] text-white border border-white/20 mt-2 sm:mt-4">
                               <span>{currentTime.getFullYear()}</span>
                               <span className="inline-block h-1 w-1 rounded-full bg-blue-400" />
                               <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
@@ -2207,7 +2207,7 @@ const handleSaveSettings = async (section, e) => {
                       );
                     })()}
 
-                    <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-4 shadow-lg flex flex-col min-h-[220px]">
+                    <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-3 sm:p-4 shadow-lg flex flex-col min-h-[160px] sm:min-h-[220px]">
                       <h3 className="font-black text-white mb-3 flex items-center justify-between text-[10px] uppercase tracking-wider">
                         <span className="flex items-center gap-2">📅 Agenda & Event</span>
                         <span className="text-[10px] bg-white text-green-800 px-2 py-0.5 rounded-full border border-green-200 font-bold">{events.length} Hari Besar</span>
@@ -2228,10 +2228,10 @@ const handleSaveSettings = async (section, e) => {
                             return (
                               <div className="flex flex-col h-full">
                                <div className="relative bg-gray-300 rounded-xl border border-blue-100 overflow-hidden mb-3">
-                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-40 object-contain bg-gray-300" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
+                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-24 sm:h-40 object-contain bg-gray-300" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
                                   <div className="p-3 bg-white/80 backdrop-blur-sm border-t border-blue-50">
                                     <div className="flex justify-between items-center">
-                                      <h4 className="font-black text-blue-900 text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
+                                      <h4 className="font-black text-blue-900 text-[10px] sm:text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
                                       <span className={`${days === 0 ? 'bg-red-600' : 'bg-blue-600'} text-white text-[8px] font-black px-2 py-0.5 rounded-full shadow-sm`}>{days === 0 ? 'HARI INI' : `H-${days}`}</span>
                                     </div>
                                   </div>
@@ -2262,16 +2262,16 @@ const handleSaveSettings = async (section, e) => {
                   {/* Seksi Media & Kegiatan Sekolah */}
                   <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mx-4 lg:mx-8 mt-2">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
                           {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`overview-photo-slide-${idx}`} className="w-48 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
+                            <div key={`overview-photo-slide-${idx}`} className="w-32 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
                               {settingsData[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-32 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
+                                <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
                               ) : (
-                                <div className="h-32 sm:h-40 flex flex-col items-center justify-center text-slate-400">
-                                  <span className="text-xl">📸</span>
+                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
+                                  <span className="text-lg sm:text-xl">📸</span>
                                   <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
                                 </div>
                               )}
@@ -2283,8 +2283,8 @@ const handleSaveSettings = async (section, e) => {
                         {settingsData.dashboardVideo ? (
                           <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-full object-contain" />
                         ) : (
-                          <div className="h-full min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                            <span className="text-2xl">🎥</span>
+                          <div className="h-full min-h-[100px] sm:min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-lg sm:text-2xl">🎥</span>
                             <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
                         )}
@@ -2339,14 +2339,14 @@ const handleSaveSettings = async (section, e) => {
                   {/* Progress Kehadiran */}
                   <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg mx-4 lg:mx-8">
                     <h3 className="font-semibold text-blue-800 mb-4">Progress Kehadiran Hari Ini</h3>
-                    <div className="flex flex-col sm:flex-row items-center gap-8">
-                      <div className="relative w-28 h-28 group flex-shrink-0">
+                    <div className="flex flex-row items-center gap-4 sm:gap-8">
+                      <div className="relative w-20 h-20 sm:w-28 sm:h-28 group flex-shrink-0">
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
                           <circle cx="18" cy="18" r="15.9155" fill="none" className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000`} stroke="currentColor" strokeWidth="3.5" strokeDasharray={`${hadirPercent}, 100`} strokeLinecap="round" />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className={`text-xl font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{hadirPercent}%</span>
+                          <span className={`text-sm sm:text-xl font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{hadirPercent}%</span>
                           <span className="text-[8px] font-bold text-slate-400 uppercase">Hadir</span>
                         </div>
                       </div>
@@ -2399,9 +2399,9 @@ const handleSaveSettings = async (section, e) => {
                         </tbody>
                       </table>
                     </div>
-                    <div className="px-5 py-4 border-t border-blue-100 bg-blue-50 flex flex-col sm:flex-row items-center justify-between gap-3">
-                      <p className="text-xs text-slate-500">
-                        Halaman {currentActivityPage} dari {Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))} · Total {attendanceReports.length} aktivitas
+                    <div className="px-3 sm:px-5 py-4 border-t border-blue-100 bg-blue-50 flex flex-row items-center justify-between gap-2">
+                      <p className="text-[10px] sm:text-xs text-slate-500">
+                        {currentActivityPage}/{Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))} · {attendanceReports.length} total
                       </p>
                       <div className="flex items-center gap-2">
                         <button
