@@ -114,6 +114,26 @@ const apiTryEndpoints = async (method, endpoints, ...args) => {
   throw lastError;
 };
 
+// ➕ TAMBAHAN: Fungsi retry untuk menangani timeout/koneksi bermasalah
+const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries) break;
+      // Retry jika error timeout atau masalah jaringan
+      if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout')) {
+        await new Promise(resolve => setTimeout(resolve, delay * attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 const DashboardAdmin = () => {
 
   const handleSettingsChange = (e) => {
@@ -435,7 +455,7 @@ const fetchSettings = async () => {
   };
 
   try {
-    const res = await api.get('/admin/settings', config);
+    const res = await fetchWithRetry(() => api.get('/admin/settings', config));
 
     if (res?.data) {
       const backendSettings = {
@@ -455,6 +475,7 @@ const fetchSettings = async () => {
         enableNotifications: res.data.enableNotifications ?? true,
         enableEmailReports: res.data.enableEmailReports ?? true,
         autoMarkAbsentEnabled: res.data.autoMarkAbsentEnabled ?? true,
+        activeDays: res.data.activeDays ?? 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu',
 
         // 🔥 ini bukan input text → boleh null
         schoolLogo: res.data.logo_url ?? null,
@@ -660,10 +681,10 @@ const fetchSettings = async () => {
       
       // Ambil semua data secara paralel
       const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
-        apiTryEndpoints('get', ['/admin/stats', '/stats'], config),
-        apiTryEndpoints('get', userEndpointCandidates.index, config),
-        apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config),
-        api.get('/admin/attendances', config).catch(() => api.get('/admin/activity', config))
+        fetchWithRetry(() => apiTryEndpoints('get', ['/admin/stats', '/stats'], config)),
+        fetchWithRetry(() => apiTryEndpoints('get', userEndpointCandidates.index, config)),
+        fetchWithRetry(() => apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config)),
+        fetchWithRetry(() => api.get('/admin/attendances', config).catch(() => api.get('/admin/activity', config)))
       ]);
       
       // Process Stats - hitung dari data users jika stats endpoint tidak tersedia
@@ -2186,10 +2207,10 @@ const handleSaveSettings = async (section, e) => {
                       );
                     })()}
 
-                    <div className="bg-white rounded-2xl border-2 border-blue-100 p-4 shadow-lg flex flex-col min-h-[220px]">
-                      <h3 className="font-black text-blue-900 mb-3 flex items-center justify-between text-[10px] uppercase tracking-wider">
+                    <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-4 shadow-lg flex flex-col min-h-[220px]">
+                      <h3 className="font-black text-white mb-3 flex items-center justify-between text-[10px] uppercase tracking-wider">
                         <span className="flex items-center gap-2">📅 Agenda & Event</span>
-                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{events.length} Hari Besar</span>
+                        <span className="text-[10px] bg-white text-green-800 px-2 py-0.5 rounded-full border border-green-200 font-bold">{events.length} Hari Besar</span>
                       </h3>
                       <div className="flex-1">
                         {events.length > 0 ? (
@@ -2206,8 +2227,8 @@ const handleSaveSettings = async (section, e) => {
                             const days = getDaysRemaining(mainEvent.date);
                             return (
                               <div className="flex flex-col h-full">
-                                <div className="relative bg-slate-50 rounded-xl border border-blue-50 overflow-hidden mb-3">
-                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-40 object-contain bg-white" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
+                               <div className="relative bg-gray-300 rounded-xl border border-blue-100 overflow-hidden mb-3">
+                                  <img src={resolvePhotoUrl(mainEvent.image)} alt={mainEvent.title} className="w-full h-40 object-contain bg-gray-300" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/cccccc/ffffff?text=AGENDA'; }} />
                                   <div className="p-3 bg-white/80 backdrop-blur-sm border-t border-blue-50">
                                     <div className="flex justify-between items-center">
                                       <h4 className="font-black text-blue-900 text-xs uppercase truncate pr-2">{mainEvent.title}</h4>
@@ -2239,8 +2260,8 @@ const handleSaveSettings = async (section, e) => {
                   </div>
 
                   {/* Seksi Media & Kegiatan Sekolah */}
-                  <div className="bg-white rounded-2xl border-2 border-blue-100 p-5 shadow-md mx-4 lg:mx-8 mt-2">
-                    <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
+                  <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mx-4 lg:mx-8 mt-2">
+                    <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="overflow-hidden relative w-full py-1">
                         <div className="flex gap-4 animate-slide-left w-max">
@@ -3844,7 +3865,7 @@ const handleSaveSettings = async (section, e) => {
                               <label className="block text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">Hari Aktif Absensi</label>
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((day) => {
-                                  const isActive = settingsData.activeDays.split(',').includes(day);
+                              const isActive = (settingsData.activeDays || '').split(',').includes(day);
                                   return (
                                     <label key={day} className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 transition-all">
                                       <input 

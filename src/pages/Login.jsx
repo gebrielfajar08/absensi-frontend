@@ -12,6 +12,25 @@ const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
+// ➕ TAMBAHAN: Fungsi retry untuk menangani timeout/koneksi bermasalah
+const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries) break;
+      if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout')) {
+        await new Promise(resolve => setTimeout(resolve, delay * attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 const SUPPORTED_ROLES = ['siswa', 'guru', 'admin'];
 const ROLE_ICONS = {
   siswa: '🧑‍🎓',
@@ -125,13 +144,13 @@ const LoginUnified = () => {
 
       console.log('📤 Sending login request:', payload);
 
-      const response = await api.post('/login', payload, { 
+      const response = await fetchWithRetry(() => api.post('/login', payload, { 
         timeout: 30000,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         }
-      });
+      }));
 
       console.log('✅ Login response:', response.data);
 
@@ -172,6 +191,8 @@ const LoginUnified = () => {
         
         if (status === 403) {
           errorMsg = 'Akses ditolak. Pastikan Anda memilih role yang benar (Siswa/Guru/Admin) dan menggunakan kredensial yang sesuai.';
+        } else if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+          errorMsg = 'Koneksi timeout. Server atau Tunnel sedang lambat. Silakan coba lagi.';
         } else if (status === 401) {
           errorMsg = 'Email/NIS/NIP atau kata sandi salah!';
         } else if (status === 404) {
