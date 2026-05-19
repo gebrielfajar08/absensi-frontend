@@ -93,6 +93,13 @@ const DashboardGuru = () => {
   });
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // ✨ TAMBAHAN: State untuk media cycling (foto berkedip ganti sendiri)
+  const [activePhotoIndex, setActivePhotoIndex] = useState(1);
+  useEffect(() => {
+    const timer = setInterval(() => setActivePhotoIndex((prev) => (prev % 3) + 1), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
   // ✨ KONFIGURASI BACKGROUND DINAMIS (LANDING STYLE)
   const lakeBackgrounds = [
     'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?w=1280&q=80',
@@ -397,47 +404,63 @@ const DashboardGuru = () => {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const [statsRes, classesRes, activityRes, eventsRes] = await Promise.all([
+      
+      // Menggunakan allSettled agar jika satu endpoint 500, yang lain tetap jalan
+      const results = await Promise.allSettled([
         fetchWithRetry(() => api.get('/guru/stats', config)),
         fetchWithRetry(() => api.get('/guru/classes', config)),
         fetchWithRetry(() => api.get('/guru/activity', config)),
         api.get('/public/events', config).catch(() => ({ data: [] }))
       ]);
+
+      // Ambil data hanya jika request berhasil (fulfilled)
+      if (results[0].status === 'fulfilled' && results[0].value?.data) {
+        setStats(results[0].value.data);
+        localStorage.setItem('guru_stats', JSON.stringify(results[0].value.data));
+      }
       
-      // ✨ Normalisasi data kelas (antisipasi data.data atau data langsung)
-      const classList = Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data?.data || []);
-      
-      setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : (eventsRes.data?.data || []));
-      setStats(statsRes.data);
-      setClasses(classList);
-      setRecentActivity(activityRes.data);
-      
+      if (results[2].status === 'fulfilled' && results[2].value?.data) {
+        setRecentActivity(results[2].value.data);
+        localStorage.setItem('guru_activity', JSON.stringify(results[2].value.data));
+      }
+
+      if (results[3].status === 'fulfilled') {
+        const eventsData = results[3].value?.data;
+        setEvents(Array.isArray(eventsData) ? eventsData : (eventsData?.data || []));
+      }
+
+      let classList = [];
+      if (results[1].status === 'fulfilled') {
+        const classesData = results[1].value?.data;
+        classList = Array.isArray(classesData) ? classesData : (classesData?.data || []);
+        setClasses(classList);
+        localStorage.setItem('guru_classes', JSON.stringify(classList));
+      }
+
       if (classList.length > 0 && !selectedClass) {
-        // ✨ Hubungkan dengan Walikelas: Cari kelas yang ID-nya cocok dengan profil guru
-        const waliClass = classesRes.data.find(c => 
-          c.id?.toString() === user?.class_id?.toString() || 
-          c.id?.toString() === user?.kelas_id?.toString()
-        );
-        setSelectedClass(waliClass ? waliClass.id : classesRes.data[0].id);
+        try {
+          const waliClass = classList.find(c => 
+            c.id?.toString() === user?.class_id?.toString() || 
+            c.id?.toString() === user?.kelas_id?.toString()
+          );
+          setSelectedClass(waliClass ? waliClass.id : classList[0].id);
+        } catch (e) {
+          setSelectedClass(classList[0]?.id || '');
+        }
       }
       
-      // ✨ Simpan ke cache untuk pemuatan super cepat berikutnya
-      localStorage.setItem('guru_stats', JSON.stringify(statsRes.data));
-      localStorage.setItem('guru_classes', JSON.stringify(classesRes.data));
-      localStorage.setItem('guru_activity', JSON.stringify(activityRes.data));
-      
+      // 🚨 Cek jika ada error 500 untuk membantu debugging
+      const hasServerError = results.some(r => r.status === 'rejected' && r.reason?.response?.status === 500);
+      if (hasServerError && !silent) {
+        addNotification('❌ Server Error (500): Gagal mengambil data stats/kelas. Cek log Laravel.', 'error');
+      }
+
       setLastSync(new Date());
-      if (connectionStatus !== 'connected') {
-        setConnectionStatus('connected');
-      }
+      if (connectionStatus !== 'connected') setConnectionStatus('connected');
       
-      // ➕ TAMBAHAN: Hitung pending attendance
       const today = new Date().toISOString().split('T')[0];
-      const pending = classList.filter(c => !c.attendance_submitted || c.attendance_date !== today).length;
-      setPendingAttendance(pending);
-      if (pending > 0 && !silent) {
-        addNotification(`⚠️ Ada ${pending} kelas belum diisi absensinya`, 'warning');
-      }
+      setPendingAttendance(classList.filter(c => !c.attendance_submitted || c.attendance_date !== today).length);
+
     } catch (err) {
       console.error('Gagal mengambil data:', err);
       if (err.code === 'ECONNREFUSED' || err.message?.includes('Network Error')) {
@@ -928,9 +951,9 @@ const DashboardGuru = () => {
               {activeTab === 'ringkasan' && (
                 <div className="space-y-6">
                   {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
-                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-3 sm:p-6 mb-2 shadow-sm flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                  <div className="bg-blue-600 border-2 border-blue-400 rounded-3xl p-3 sm:p-6 mb-2 shadow-lg flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-300">
                     {/* Ornamen Dekoratif */}
-                    <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                    <div className="absolute right-0 top-0 w-32 h-full bg-white/10 -skew-x-12 translate-x-16 pointer-events-none"></div>
                     <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
                       <span className="text-8xl">🎓</span>
                     </div>
@@ -947,14 +970,14 @@ const DashboardGuru = () => {
                     
                     <div className="text-left relative z-10">
                       <div className="flex flex-wrap items-center gap-2 mb-0.5 sm:mb-1">
-                        <span className="px-1.5 py-0.5 bg-blue-600 text-white text-[8px] sm:text-[10px] font-black rounded-md sm:rounded-lg uppercase tracking-widest shadow-sm">
+                        <span className="px-1.5 py-0.5 bg-white text-blue-600 text-[8px] sm:text-[10px] font-black rounded-md sm:rounded-lg uppercase tracking-widest shadow-sm">
                           Wali Kelas {getClassName(user?.class_id)}
                         </span>
                       </div>
-                      <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-blue-900 leading-tight">
+                      <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-white leading-tight">
                         Halo, Bapak/Ibu {user?.name}! 👋
                       </h2>
-                      <p className="text-blue-600/80 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
+                      <p className="text-blue-100 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
                         Siap untuk menginspirasi siswa Anda hari ini? Berikut ringkasan aktivitas mengajar Anda.
                       </p>
                     </div>
@@ -1036,20 +1059,16 @@ const DashboardGuru = () => {
                   <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mt-2 mb-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
                     <div className="grid grid-cols-2 gap-3 sm:gap-6">
-                      <div className="overflow-hidden relative w-full py-1">
-                        <div className="flex gap-4 animate-slide-left w-max">
-                          {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`guru-photo-slide-${idx}`} className="w-32 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
-                              {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
-                              ) : (
-                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
-                                  <span className="text-lg sm:text-xl">📸</span>
-                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
-                                </div>
-                              )}
+                      <div className="overflow-hidden relative w-full aspect-video rounded-xl border-2 border-blue-100 bg-slate-900/50 shadow-inner">
+                        <div key={activePhotoIndex} className="animate-fade-in w-full h-full">
+                          {attendanceSettings[`dashboardPhoto${activePhotoIndex}`] ? (
+                            <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${activePhotoIndex}`])} alt={`Sekolah ${activePhotoIndex}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                              <span className="text-lg sm:text-xl">📸</span>
+                              <p className="text-[10px] mt-1 font-medium">Foto {activePhotoIndex}</p>
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
                       <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">

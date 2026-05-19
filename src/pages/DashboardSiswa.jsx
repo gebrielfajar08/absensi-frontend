@@ -92,6 +92,13 @@ const DashboardSiswa = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
 
+  // ✨ TAMBAHAN: State untuk media cycling (foto berkedip ganti sendiri)
+  const [activePhotoIndex, setActivePhotoIndex] = useState(1);
+  useEffect(() => {
+    const timer = setInterval(() => setActivePhotoIndex((prev) => (prev % 3) + 1), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
   // State data siswa
   const [stats, setStats] = useState({
     totalAttendance: 0,
@@ -343,7 +350,7 @@ const DashboardSiswa = () => {
     const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
     setStats({
       totalAttendance: statsData.total_pertemuan || 0,
-      presentDays: statsData.hadir || 0,
+        presentDays: (statsData.hadir || 0) + (statsData.terlambat || 0),
       lateDays: statsData.terlambat || 0,
       absentDays: statsData.absen || 0,
       izinDays: statsData.izin || 0,
@@ -380,12 +387,15 @@ const DashboardSiswa = () => {
     setScheduleLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await api.get('/siswa/schedules', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // Gunakan fetchWithRetry untuk menangani gangguan jaringan/timeout
+      const res = await fetchWithRetry(() => api.get('/siswa/schedules', {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      }));
       setSchedules(res.data || []);
     } catch (err) {
-      console.error('Gagal memuat jadwal:', err);
+      const msg = err.response?.status === 500 ? 'Server Error (Database)' : err.message;
+      console.error('❌ Gagal memuat jadwal:', msg);
       setSchedules([]);
     } finally {
       setScheduleLoading(false);
@@ -769,9 +779,9 @@ const DashboardSiswa = () => {
               {activeTab === 'ringkasan' && (
                 <div className="space-y-6">
                   {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
-                  <div className="bg-blue-50 border-2 border-blue-100 rounded-3xl p-3 sm:p-6 mb-2 shadow-sm flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-200">
+                  <div className="bg-blue-600 border-2 border-blue-400 rounded-3xl p-3 sm:p-6 mb-2 shadow-lg flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-300">
                     {/* Ornamen Dekoratif */}
-                    <div className="absolute right-0 top-0 w-32 h-full bg-blue-100/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                    <div className="absolute right-0 top-0 w-32 h-full bg-white/10 -skew-x-12 translate-x-16 pointer-events-none"></div>
                     <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
                       <span className="text-8xl">🧑‍🎓</span>
                     </div>
@@ -787,10 +797,10 @@ const DashboardSiswa = () => {
                     </div>
                     
                     <div className="text-left relative z-10">
-                      <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-blue-900 leading-tight">
+                      <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-white leading-tight">
                         Halo, {user?.name}! 👋
                       </h2>
-                      <p className="text-blue-600/80 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
+                      <p className="text-blue-100 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
                         Tetap semangat belajar ya! Jangan lupa untuk selalu disiplin dalam presensi.
                       </p>
                     </div>
@@ -872,20 +882,16 @@ const DashboardSiswa = () => {
                   <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mt-2 mb-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
                     <div className="grid grid-cols-2 gap-3 sm:gap-6">
-                      <div className="overflow-hidden relative w-full py-1">
-                        <div className="flex gap-4 animate-slide-left w-max">
-                          {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`siswa-photo-slide-${idx}`} className="w-32 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
-                              {attendanceSettings[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
-                              ) : (
-                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
-                                  <span className="text-lg sm:text-xl">📸</span>
-                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
-                                </div>
-                              )}
+                      <div className="overflow-hidden relative w-full aspect-video rounded-xl border-2 border-blue-100 bg-slate-900/50 shadow-inner">
+                        <div key={activePhotoIndex} className="animate-fade-in w-full h-full">
+                          {attendanceSettings[`dashboardPhoto${activePhotoIndex}`] ? (
+                            <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${activePhotoIndex}`])} alt={`Sekolah ${activePhotoIndex}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                              <span className="text-lg sm:text-xl">📸</span>
+                              <p className="text-[10px] mt-1 font-medium">Foto {activePhotoIndex}</p>
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
                       <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
@@ -921,36 +927,22 @@ const DashboardSiswa = () => {
                         { label: 'Sakit', value: stats.sakitDays, color: 'violet', icon: '🏥' },
                         { label: 'Absen', value: stats.absentDays, color: 'rose', icon: '✗' },
                       ].map((stat, idx) => (
-                      <div key={idx} className={`rounded-2xl p-4 md:p-5 border-2 shadow-sm md:shadow-md hover:shadow-lg transition-all group ${
-                        stat.color === 'indigo' ? 'bg-indigo-50/50 border-indigo-100' :
-                        stat.color === 'emerald' ? 'bg-emerald-50/50 border-emerald-100' :
-                        stat.color === 'amber' ? 'bg-amber-50/50 border-amber-100' :
-                        stat.color === 'sky' ? 'bg-sky-50/50 border-sky-100' :
-                        stat.color === 'violet' ? 'bg-violet-50/50 border-violet-100' :
-                        'bg-rose-50/50 border-rose-100'
+                      <div key={idx} className={`rounded-2xl p-4 md:p-5 border-2 shadow-md hover:shadow-xl transition-all group ${
+                        stat.color === 'indigo' ? 'bg-indigo-600 border-indigo-400' :
+                        stat.color === 'emerald' ? 'bg-emerald-600 border-emerald-400' :
+                        stat.color === 'amber' ? 'bg-amber-500 border-amber-300' :
+                        stat.color === 'sky' ? 'bg-sky-500 border-sky-300' :
+                        stat.color === 'violet' ? 'bg-violet-600 border-violet-400' :
+                        'bg-rose-600 border-rose-400'
                       }`}>
                         <div className="flex items-center justify-between mb-1 md:mb-3">
                           <span className="text-lg md:text-2xl group-hover:scale-110 transition-transform">{stat.icon}</span>
-                          <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
-                            stat.color === 'indigo' ? 'bg-white text-indigo-600 border-indigo-200' : 
-                            stat.color === 'emerald' ? 'bg-white text-emerald-600 border-emerald-200' : 
-                            stat.color === 'amber' ? 'bg-white text-amber-600 border-amber-200' : 
-                            stat.color === 'sky' ? 'bg-white text-sky-600 border-sky-200' : 
-                            stat.color === 'violet' ? 'bg-white text-violet-600 border-violet-200' : 
-                            'bg-white text-rose-600 border-rose-200'
-                          } border`}>
+                          <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter bg-white/20 text-white border border-white/30`}>
                             Semester Ini
                           </span>
                         </div>
-                        <p className={`text-xs md:text-3xl font-black ${
-                          stat.color === 'indigo' ? 'text-indigo-800' :
-                          stat.color === 'emerald' ? 'text-emerald-800' :
-                          stat.color === 'amber' ? 'text-amber-800' :
-                          stat.color === 'sky' ? 'text-sky-800' :
-                          stat.color === 'violet' ? 'text-violet-800' :
-                          'text-rose-800'
-                        }`}>{stat.value}</p>
-                        <p className="text-slate-500 text-[10px] md:text-sm mt-0.5 md:mt-1 truncate font-bold leading-tight">{stat.label}</p>
+                        <p className="text-xs md:text-3xl font-black text-white">{stat.value}</p>
+                        <p className="text-white/90 text-[10px] md:text-sm mt-0.5 md:mt-1 truncate font-bold leading-tight">{stat.label}</p>
                       </div>
                       ))}
                     </div>

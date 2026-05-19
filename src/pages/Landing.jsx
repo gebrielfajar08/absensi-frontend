@@ -63,10 +63,10 @@ const Landing = () => {
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
 
   const [attendanceSettings, setAttendanceSettings] = useState({
-    attendanceStartTime: '',
-    attendanceEndTime: '',
-    lateThreshold: '',
-    schoolEndTime: '',
+    attendanceStartTime: '07:00',
+    attendanceEndTime: '12:00',
+    lateThreshold: '08:00',
+    schoolEndTime: '15:30',
     schoolName: '',
     schoolLogo: null,
     limitOneScanPerDay: true,
@@ -603,14 +603,6 @@ const Landing = () => {
         return;
       }
 
-      const status = getAttendanceStatus();
-      if (status === 'belum_buka' || status === 'sudah_tutup') {
-        const msg = `❌ Pengajuan izin hanya bisa dilakukan saat jam operasional absensi (${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime})`;
-        showSubmitNotificationMessage(msg, 'error');
-        setSubmitMessage({ type: 'error', text: msg });
-        return;
-      }
-
       const token = localStorage.getItem('token');
       
       if (!izinForm.user_id.trim()) {
@@ -621,8 +613,10 @@ const Landing = () => {
       const payload = {
         name: izinForm.fullName.trim(),
         full_name: izinForm.fullName.trim(),
-        type: izinForm.type,
+        type: 'manual',
         reason: izinForm.reason,
+        notes: izinForm.reason,
+        keterangan: izinForm.reason,
         attendance_time: currentTime.toISOString(),
         status: izinForm.type,
         role: activeUserRole === 'guru' ? 'guru' : 'siswa'

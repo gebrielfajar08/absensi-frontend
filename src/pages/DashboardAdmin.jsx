@@ -159,6 +159,13 @@ const DashboardAdmin = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
+  // ✨ TAMBAHAN: State untuk media cycling (foto berkedip ganti sendiri)
+  const [activePhotoIndex, setActivePhotoIndex] = useState(1);
+  useEffect(() => {
+    const timer = setInterval(() => setActivePhotoIndex((prev) => (prev % 3) + 1), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
   // State untuk data
   const [stats, setStats] = useState({
     totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0
@@ -451,7 +458,7 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 120000
+    timeout: 10000 // Reduced to 10s for better UX on failure
   };
 
   try {
@@ -502,7 +509,7 @@ const fetchSettings = async () => {
       });
 
       if (backendSettings.dashboardVideo) {
-        setMediaVideoPreview(backendSettings.dashboardVideo);
+        setMediaVideoPreview(resolvePhotoUrl(backendSettings.dashboardVideo));
       }
 
       if (backendSettings.startSound) {
@@ -522,7 +529,9 @@ const fetchSettings = async () => {
     }
 
   } catch (err) {
-    console.error('❌ Error fetching settings:', err?.response?.data || err.message);
+    const status = err.response?.status || (err.code === 'ECONNABORTED' ? 'TIMEOUT' : 'NETWORK_ERROR');
+    const message = err.response?.data?.message || err.message;
+    console.error(`❌ Gagal mengambil pengaturan: [${status}] ${message}`);
     loadSettings(); // Gunakan data dari localStorage jika API gagal
   }
 };
@@ -1205,14 +1214,14 @@ const handleSaveSettings = async (section, e) => {
 
   try {
     setIsPromoting(true);
-
+    const data = new FormData();
+    
     const config = {
       headers: { Authorization: `Bearer ${token}` }
     };
 
-    const data = new FormData();
     const appendField = (key, value) => {
-      if (value === undefined || value === null) return;
+      if (value === undefined || value === null || value === '') return;
       data.append(key, value);
     };
 
@@ -1222,23 +1231,30 @@ const handleSaveSettings = async (section, e) => {
       return time.toString().substring(0, 5);
     };
 
-    appendField('schoolName', settingsData.schoolName);
-    appendField('schoolAddress', settingsData.schoolAddress);
-    appendField('schoolPhone', settingsData.schoolPhone);
-    appendField('schoolEmail', settingsData.schoolEmail);
-    appendField('academicYear', settingsData.academicYear);
+    // Hanya kirim data yang relevan dengan section yang sedang disimpan untuk menghindari error validasi
+    if (section === 'school') {
+      appendField('schoolName', settingsData.schoolName);
+      appendField('schoolAddress', settingsData.schoolAddress);
+      appendField('schoolPhone', settingsData.schoolPhone);
+      appendField('schoolEmail', settingsData.schoolEmail);
+      appendField('academicYear', settingsData.academicYear);
+    }
 
-    appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
-    appendField('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
-    appendField('lateThreshold', formatTime(settingsData.lateThreshold));
-    appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
-    appendField('activeDays', settingsData.activeDays);
+    if (section === 'attendance') {
+      appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
+      appendField('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
+      appendField('lateThreshold', formatTime(settingsData.lateThreshold));
+      appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
+      appendField('activeDays', settingsData.activeDays);
+      data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
+      data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
+      data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
+    }
 
-    data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
-    data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
-    data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
-    data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
-    data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
+    if (section === 'notification') {
+      data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
+      data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
+    }
 
     if (section === 'media') {
       if (logoFile instanceof File) {
@@ -1256,14 +1272,16 @@ const handleSaveSettings = async (section, e) => {
       if (mediaVideoFile instanceof File) {
         data.append('video_profile', mediaVideoFile);
       }
-    }
+    } // Tutup blok media
 
     if (section === 'sound') {
+      appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
+      appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
       if (startSoundFile instanceof File) {
-        data.append('start_sound', startSoundFile);
+        data.append('start_sound', startSoundFile); // Sesuaikan key dengan backend
       }
       if (endSoundFile instanceof File) {
-        data.append('end_sound', endSoundFile);
+        data.append('end_sound', endSoundFile); // Sesuaikan key dengan backend
       }
     }
 
@@ -2178,13 +2196,50 @@ const handleSaveSettings = async (section, e) => {
               {activeTab === 'overview' && (
                 <div className="space-y-4 animate-fade-in">
                   {/* Banner Selamat Datang */}
-                  <div className="bg-white border-2 border-blue-100 rounded-2xl p-3 sm:p-5 mx-4 lg:mx-8 shadow-sm flex flex-row items-center gap-3 sm:gap-4 relative overflow-hidden transition-all hover:border-blue-200">
-                    <div className="absolute right-0 top-0 w-32 h-full bg-blue-50/50 -skew-x-12 translate-x-16 pointer-events-none"></div>
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-xl sm:text-2xl shadow-md flex-shrink-0 relative z-10">👋</div>
+                  <div className="bg-blue-600 border-2 border-blue-400 rounded-2xl p-3 sm:p-5 mx-4 lg:mx-8 shadow-lg flex flex-row items-center gap-3 sm:gap-4 relative overflow-hidden transition-all hover:border-blue-300">
+                    <div className="absolute right-0 top-0 w-32 h-full bg-white/10 -skew-x-12 translate-x-16 pointer-events-none"></div>
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-xl flex items-center justify-center text-blue-600 text-xl sm:text-2xl shadow-md flex-shrink-0 relative z-10">👋</div>
                     <div className="text-left relative z-10">
-                      <h2 className="text-sm sm:text-lg lg:text-xl font-bold text-slate-800 leading-tight">Selamat datang, {user?.name || 'Administrator'}!</h2>
-                      <p className="text-slate-500 text-[10px] sm:text-xs lg:text-sm mt-0.5">Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.</p>
+                      <h2 className="text-sm sm:text-lg lg:text-xl font-bold text-white leading-tight">Selamat datang, {user?.name || 'Administrator'}!</h2>
+                      <p className="text-blue-100 text-[10px] sm:text-xs lg:text-sm mt-0.5">Sistem siap digunakan. Anda memiliki kontrol penuh untuk memantau aktivitas sekolah hari ini.</p>
                     </div>
+                  </div>
+
+                  {/* ✨ 3 Kotak Statistik dengan Grafik Bergerak (Soft) */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mx-4 lg:mx-8 mb-6">
+                    {[
+                      { label: 'Total Siswa', value: stats.totalSiswa, icon: '🧑‍🎓', fill: '#cbd5e1' }, // slate-300
+                      { label: 'Total Guru', value: stats.totalGuru, icon: '👨‍🏫', fill: '#cbd5e1' }, // slate-300
+                      { label: 'Total Admin', value: Math.max(0, stats.totalUsers - stats.totalGuru - stats.totalSiswa), icon: '👮', fill: '#cbd5e1' }, // slate-300
+                    ].map((item, idx) => (
+                      <div key={idx} className={`relative bg-slate-50 rounded-3xl border-2 border-slate-200 p-6 shadow-sm overflow-hidden group hover:border-slate-300 transition-all duration-500`}>
+                        <div className="relative z-10 flex items-center justify-between">
+                          <div>
+                            <p className={`text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1`}>{item.label}</p>
+                            <p className="text-3xl font-black text-slate-800">{item.value}</p>
+                          </div>
+                          <div className={`w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-3xl border border-slate-200 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-inner`}>
+                            {item.icon}
+                          </div>
+                        </div>
+                        
+                        {/* Soft Animated Wave Graph - Opacity increased for visibility */}
+                        <div className="absolute bottom-0 left-0 w-full h-16 opacity-60 pointer-events-none">
+                          <svg viewBox="0 0 100 25" preserveAspectRatio="none" className="w-full h-full">
+                            <path d="M0 25 L0 15 Q 25 5, 50 15 T 100 15 L 100 25 Z" fill={item.fill}>
+                              <animate 
+                                attributeName="d" 
+                                dur={`${4 + idx}s`} 
+                                repeatCount="indefinite"
+                                values="M0 25 L0 15 Q 25 5, 50 15 T 100 15 L 100 25 Z;
+                                        M0 25 L0 15 Q 25 25, 50 15 T 100 15 L 100 25 Z;
+                                        M0 25 L0 15 Q 25 5, 50 15 T 100 15 L 100 25 Z"
+                              />
+                            </path>
+                          </svg>
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   {/* 📅 Grid Kalender & Event (Kecil & Sama Tinggi) */}
@@ -2259,39 +2314,6 @@ const handleSaveSettings = async (section, e) => {
                     </div>
                   </div>
 
-                  {/* Seksi Media & Kegiatan Sekolah */}
-                  <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mx-4 lg:mx-8 mt-2">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
-                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
-                      <div className="overflow-hidden relative w-full py-1">
-                        <div className="flex gap-4 animate-slide-left w-max">
-                          {[1, 2, 3, 1, 2, 3].map((i, idx) => (
-                            <div key={`overview-photo-slide-${idx}`} className="w-32 sm:w-64 flex-shrink-0 rounded-xl overflow-hidden border border-blue-50 bg-slate-50 shadow-sm">
-                              {settingsData[`dashboardPhoto${i}`] ? (
-                                <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${i}`])} alt={`Sekolah ${i}`} className="w-full h-24 sm:h-40 object-cover hover:scale-110 transition-transform duration-700" />
-                              ) : (
-                                <div className="h-24 sm:h-40 flex flex-col items-center justify-center text-slate-400">
-                                  <span className="text-lg sm:text-xl">📸</span>
-                                  <p className="text-[10px] mt-1 font-medium">Foto {i}</p>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
-                        {settingsData.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-full object-contain" />
-                        ) : (
-                          <div className="h-full min-h-[100px] sm:min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                            <span className="text-lg sm:text-2xl">🎥</span>
-                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Statistik Utama */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 mx-4 lg:mx-8">
                     {[
@@ -2302,36 +2324,22 @@ const handleSaveSettings = async (section, e) => {
                       { label: 'Sakit', value: sakit, color: 'violet', icon: '🏥' },
                       { label: 'Absen', value: absen, color: 'rose', icon: '✗' },
                     ].map((stat, idx) => (
-                      <div key={idx} className={`rounded-2xl p-4 md:p-5 border-2 shadow-sm md:shadow-md hover:shadow-lg transition-all group ${
-                        stat.color === 'indigo' ? 'bg-indigo-50/50 border-indigo-100' :
-                        stat.color === 'emerald' ? 'bg-emerald-50/50 border-emerald-100' :
-                        stat.color === 'amber' ? 'bg-amber-50/50 border-amber-100' :
-                        stat.color === 'sky' ? 'bg-sky-50/50 border-sky-100' :
-                        stat.color === 'violet' ? 'bg-violet-50/50 border-violet-100' :
-                        'bg-rose-50/50 border-rose-100'
+                      <div key={idx} className={`rounded-2xl p-4 md:p-5 border-2 shadow-md hover:shadow-xl transition-all group ${
+                        stat.color === 'indigo' ? 'bg-indigo-600 border-indigo-400' :
+                        stat.color === 'emerald' ? 'bg-emerald-600 border-emerald-400' :
+                        stat.color === 'amber' ? 'bg-amber-500 border-amber-300' :
+                        stat.color === 'sky' ? 'bg-sky-500 border-sky-300' :
+                        stat.color === 'violet' ? 'bg-violet-600 border-violet-400' :
+                        'bg-rose-600 border-rose-400'
                       }`}>
                         <div className="flex items-center justify-between mb-1 md:mb-3">
                           <span className="text-xs md:text-2xl group-hover:scale-110 transition-transform">{stat.icon}</span>
-                          <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
-                            stat.color === 'indigo' ? 'bg-white text-indigo-600 border-indigo-200' : 
-                            stat.color === 'emerald' ? 'bg-white text-emerald-600 border-emerald-200' : 
-                            stat.color === 'amber' ? 'bg-white text-amber-600 border-amber-200' :
-                            stat.color === 'sky' ? 'bg-white text-sky-600 border-sky-200' :
-                            stat.color === 'violet' ? 'bg-white text-violet-600 border-violet-200' :
-                            'bg-white text-rose-600 border-rose-200'
-                          } border`}>
+                          <span className={`hidden md:block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter bg-white/20 text-white border border-white/30`}>
                             Hari Ini
                           </span>
                         </div>
-                        <p className={`text-xs md:text-3xl font-black ${
-                          stat.color === 'indigo' ? 'text-indigo-800' :
-                          stat.color === 'emerald' ? 'text-emerald-800' :
-                          stat.color === 'amber' ? 'text-amber-800' :
-                          stat.color === 'sky' ? 'text-sky-800' :
-                          stat.color === 'violet' ? 'text-violet-800' :
-                          'text-rose-800'
-                        }`}>{stat.value}</p>
-                        <p className="text-slate-500 text-[8px] md:text-sm mt-0.5 md:mt-1 truncate font-bold leading-tight">{stat.label}</p>
+                        <p className="text-xs md:text-3xl font-black text-white">{stat.value}</p>
+                        <p className="text-white/90 text-[8px] md:text-sm mt-0.5 md:mt-1 truncate font-bold leading-tight">{stat.label}</p>
                       </div>
                     ))}
                   </div>
@@ -2421,6 +2429,35 @@ const handleSaveSettings = async (section, e) => {
                           Selanjutnya
                         </button>
                       </div>    
+                    </div>
+                  </div>
+
+                  {/* Seksi Media & Kegiatan Sekolah - Dipindahkan ke bawah sendiri */}
+                  <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mx-4 lg:mx-8 mt-6">
+                    <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
+                      <div className="overflow-hidden relative w-full aspect-video rounded-xl border-2 border-blue-100 bg-slate-900/50 shadow-inner">
+                        <div key={activePhotoIndex} className="animate-fade-in w-full h-full">
+                          {settingsData[`dashboardPhoto${activePhotoIndex}`] ? (
+                            <img src={resolvePhotoUrl(settingsData[`dashboardPhoto${activePhotoIndex}`])} alt={`Sekolah ${activePhotoIndex}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                              <span className="text-lg sm:text-xl">📸</span>
+                              <p className="text-[10px] mt-1 font-medium">Foto {activePhotoIndex}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
+                        {settingsData.dashboardVideo ? (
+                          <video src={resolvePhotoUrl(settingsData.dashboardVideo)} controls className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="h-full min-h-[100px] sm:min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-lg sm:text-2xl">🎥</span>
+                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
