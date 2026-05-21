@@ -34,6 +34,7 @@ const Landing = () => {
   const [qrScanner, setQrScanner] = useState(null);
   const [cameraError, setCameraError] = useState('');
   const [logoError, setLogoError] = useState(false);
+  const [isCameraStarting, setIsCameraStarting] = useState(false); // ✨ TAMBAHAN: Status start kamera
   const [showQRNotification, setShowQRNotification] = useState(false);
   const [qrNotificationMessage, setQrNotificationMessage] = useState('');
   const [facingMode, setFacingMode] = useState('environment');
@@ -544,15 +545,20 @@ const Landing = () => {
         name: teacherForm.fullName.trim(),
         full_name: teacherForm.fullName.trim(),
         user_id: teacherForm.nip.trim(),
+        nis: teacherForm.nip.trim(),
         nip: teacherForm.nip.trim(),
+        teacher_id: teacherForm.nip.trim(),
+        student_id: teacherForm.nip.trim(),
         attendance_time: currentTime.toISOString(),
         status: status,
         role: 'guru',
         type: 'manual'
       };
 
-      await api.post('/attendance/teacher/manual', payload, { 
-        timeout: 60000 
+      // Teacher manual attendance currently needs a student_id value because the backend attendance record requires it.
+      // Do not fallback to /scan here because the scan endpoint is currently student-only and returns "Akun siswa tidak ditemukan" for teacher QR payloads.
+      await api.post('/attendance/teacher/manual', payload, {
+        timeout: 60000
       });
 
       const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
@@ -572,6 +578,10 @@ const Landing = () => {
       
       let errorMsg = responseData?.message || err.message || 'Gagal menyimpan absensi';
 
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('exceeded')) {
+        errorMsg = 'Koneksi Timeout (60 detik). Cloudflare Tunnel lambat atau sudah mati. Mohon perbarui link di file .env dan jalankan ulang tunnel!';
+      }
+
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
         errorMsg = 'Server tidak terjangkau. Periksa apakah Cloudflare Tunnel masih aktif.';
       }
@@ -579,7 +589,7 @@ const Landing = () => {
       if (responseData?.errors) {
         errorMsg = Object.entries(responseData.errors)
           .map(([key, value]) => {
-            const fieldName = key === 'user_id' || key === 'nip' ? 'NIP' : key;
+            const fieldName = key === 'user_id' || key === 'nip' || key === 'teacher_id' ? 'NIP' : key;
             return `• ${fieldName}: ${Array.isArray(value) ? value[0] : value}`;
           })
           .join('\n');
@@ -628,6 +638,7 @@ const Landing = () => {
       } else if (activeUserRole === 'guru') {
         payload.user_id = izinForm.user_id.trim();
         payload.nip = izinForm.user_id.trim();
+        payload.teacher_id = izinForm.user_id.trim();
       }
 
       // Handle file upload if attachment exists
@@ -723,12 +734,12 @@ const Landing = () => {
         qr_data: qrData,
         scan_time: currentTime.toISOString(),
         status: status,
-        type: qrData.type || 'student_qr',
-        user_id: qrData.user_id || qrData.id || qrData.student_id || '',
+        type: qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr'),
+        user_id: qrData.user_id || qrData.id || qrData.student_id || qrData.teacher_id || '',
         student_id: qrData.student_id || qrData.id || '',
-        teacher_id: qrData.teacher_id || '',
-        name: qrData.name || '',
-        role: qrData.role || ''
+        teacher_id: qrData.teacher_id || qrData.id || '',
+        name: qrData.name || qrData.full_name || '',
+        role: qrData.role || activeUserRole
       };
 
       const response = await api.post('/scan', requestData, {
@@ -795,6 +806,7 @@ const Landing = () => {
 
   const startQRScanner = async (mode = facingMode) => {
     try {
+      setIsCameraStarting(true); // ✨ Mulai loading kamera
       setCameraError('');
       const readerElement = document.getElementById(
         showStandaloneQRScanner ? 'qr-reader-standalone' : 'qr-reader-main'
@@ -820,9 +832,11 @@ const Landing = () => {
         (decodedText) => handleQRScan(decodedText),
         () => {}
       );
+      setIsCameraStarting(false); // ✨ Berhasil
     } catch (err) {
       console.error('Failed to start QR scanner:', err);
       setCameraError('Tidak dapat mengakses kamera. Pastikan izin kamera diberikan.');
+      setIsCameraStarting(false);
       showQRNotificationMessage('Gagal memulai scanner. Silakan coba lagi.', 'error');
     }
   };
@@ -838,6 +852,7 @@ const Landing = () => {
     const scanner = qrScanner;
     if (scanner) {
       setQrScanner(null);
+      setIsCameraStarting(false);
       try {
         if (scanner.isScanning) await scanner.stop();
         await scanner.clear();
@@ -1412,6 +1427,19 @@ const Landing = () => {
               {/* Content Area */}
               <div className="bg-white rounded-2xl border-2 border-slate-100 shadow-inner overflow-hidden min-h-[380px] flex flex-col justify-center transition-all duration-300">
                 <div className="p-5">
+                  {/* ✨ OVERLAY IZINKAN KAMERA (MUNCUL DI TENGAH MODAL) */}
+                  {isCameraStarting && (
+                    <div className="absolute inset-0 z-[60] bg-blue-600/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-6 text-center animate-fade-in">
+                      <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center animate-pulse mb-4">
+                        <span className="text-4xl">📸</span>
+                      </div>
+                      <h3 className="text-xl font-black mb-2 uppercase tracking-tight">Izinkan Kamera</h3>
+                      <p className="text-blue-100 text-sm leading-relaxed max-w-[250px]">
+                        Mohon klik <b>"Allow/Izinkan"</b> pada notifikasi browser untuk memulai proses absensi.
+                      </p>
+                    </div>
+                  )}
+
                   {activeMethodTab === 'scan' && (
                     <div className="animate-fade-in text-center">
                       <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-2xl mb-4 mx-auto max-w-[280px] aspect-square relative border-4 border-blue-50">

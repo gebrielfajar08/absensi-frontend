@@ -75,6 +75,26 @@ const formatDateOnly = (utcDate) => {
   return new Intl.DateTimeFormat('id-ID', options).format(date);
 };
 
+// ✨ TAMBAHAN: Helper untuk mendapatkan nama hari
+const getDayName = (dateInput) => {
+  if (!dateInput) return '-';
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', { weekday: 'long' }).format(date);
+};
+
+// ✨ TAMBAHAN: Helper untuk format tanggal saja (DD/MM/YYYY)
+const formatDateSimple = (dateInput) => {
+  if (!dateInput) return '-';
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', { 
+    day: '2-digit', 
+    month: '2-digit', 
+    year: 'numeric' 
+  }).format(date);
+};
+
 const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
   if (!photo || typeof photo !== 'string') return null;
   const trimmed = photo.trim();
@@ -153,12 +173,20 @@ const DashboardAdmin = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // ✨ TAMBAHAN: State untuk navigasi tab di Data Siswa
+  const [activeSiswaSection, setActiveSiswaSection] = useState('1');
+  // ✨ TAMBAHAN: State untuk navigasi tab di fitur lainnya
+  const [activePromotionSection, setActivePromotionSection] = useState('1');
+  const [activeWaSection, setActiveWaSection] = useState('1');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
+  // ✨ TAMBAHAN: State untuk filter rekap absensi
+  const [rekapRoleFilter, setRekapRoleFilter] = useState('all');
+
   // ✨ TAMBAHAN: State untuk media cycling (foto berkedip ganti sendiri)
   const [activePhotoIndex, setActivePhotoIndex] = useState(1);
   useEffect(() => {
@@ -175,6 +203,8 @@ const DashboardAdmin = () => {
   const [recentActivity, setRecentActivity] = useState([]);
   const [attendanceReports, setAttendanceReports] = useState([]);
   const [currentActivityPage, setCurrentActivityPage] = useState(1);
+  const [currentRekapPage, setCurrentRekapPage] = useState(1);
+  const [rekapPageSize] = useState(10);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
   const activityPageSize = 10;
@@ -378,10 +408,10 @@ const fetchClasses = async () => {
   const fetchSchedules = async () => {
     try {
       setFeatureDataLoading(true);
-      const token = localStorage.getItem('token');
-      const res = await api.get('/admin/schedules', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
+      // Mencoba rute alternatif jika rute utama 404
+      const res = await apiTryEndpoints('get', ['/admin/schedules', '/schedules', '/admin/schedule'], config);
+
       setSchedules(Array.isArray(res.data) ? res.data : (res.data.data || []));
     } catch (err) {
       console.error('Gagal mengambil data jadwal:', err);
@@ -458,7 +488,7 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 10000 // Reduced to 10s for better UX on failure
+    timeout: 60000 // Naikkan ke 60 detik untuk server lokal yang lambat
   };
 
   try {
@@ -1347,22 +1377,48 @@ const handleSaveSettings = async (section, e) => {
   };
 
   // ✨ TAMBAHAN: Handle Export Data
-  const handleExportData = async (type) => {
+  const handleExportData = async (format) => {
     try {
+      const role = rekapRoleFilter; // 'all', 'siswa', atau 'guru'
+      const isPdf = format === 'pdf';
+      addNotification(`Sedang menyiapkan file ${isPdf ? 'PDF' : 'Excel'} untuk ${role === 'all' ? 'Semua' : role}...`, 'info');
+      
       const token = localStorage.getItem('token');
-      const response = await api.get(`/admin/export/${type}`, {
+      
+      // Konstruksi tipe: 'attendance_pdf', 'siswa_excel', dll.
+      const type = role === 'all' 
+        ? (isPdf ? 'attendance_pdf' : 'attendance') 
+        : `${role}_${isPdf ? 'pdf' : 'excel'}`;
+
+      // Gunakan fetchWithRetry untuk menangani timeout pada proses export yang berat
+      const response = await fetchWithRetry(() => api.get(`/admin/export/${type}`, {
         headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+        responseType: 'blob',
+        timeout: 180000 // 3 Menit untuk ekspor data banyak
+      }));
+
+      const blobType = isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: blobType }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${type}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      const extension = isPdf ? 'pdf' : 'xlsx';
+      const fileName = `rekap_${role}_${new Date().toISOString().split('T')[0]}.${extension}`;
+      
+      link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
+      
+      // Cleanup DOM dan Memory
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+
       addNotification('Data berhasil diekspor!', 'success');
     } catch (err) {
-      addNotification('Gagal mengekspor data', 'error');
+      console.error('Export error:', err);
+      addNotification('Gagal mengekspor data. Periksa koneksi server atau apakah backend sudah mendukung fitur ini.', 'error');
     }
   };
 
@@ -1393,6 +1449,7 @@ const handleSaveSettings = async (section, e) => {
     { id: 'dataSiswa', label: 'Data Siswa', icon: '🧑‍🎓' },
     { id: 'pesanWA', label: 'Pesan WA', icon: '💬' },
     { id: 'promotion', label: 'Naik Kelas', icon: '🚀' },
+    { id: 'rekap', label: 'Rekap Absensi', icon: '📋' }, // ✨ Menu Baru
     { id: 'classes', label: 'Data Kelas', icon: '🏫' },
     { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' }, // ✨ TAMBAHAN: Menu Alumni
     { id: 'settings', label: 'Pengaturan', icon: '⚙️' },
@@ -1588,15 +1645,22 @@ const handleSaveSettings = async (section, e) => {
 
   const normalizeDateKey = (rawDate) => {
     if (!rawDate) return '';
-
-    if (rawDate instanceof Date) {
-      return getJakartaDateKey(rawDate);
-    }
-
+    
+    // Coba konversi ke objek Date terlebih dahulu untuk normalisasi zona waktu
+    let date = new Date(rawDate);
+    
+    // Jika gagal (Invalid Date), coba tangani format string manual
+    if (isNaN(date.getTime())) {
     const str = String(rawDate).trim();
-    if (!str) return '';
+      if (!str) return '';
 
-    // Handle timestamp values
+      // Jika formatnya murni tanggal YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+      // Jika formatnya timestamp
+      if (/^\d{10}$/.test(str)) return getJakartaDateKey(new Date(Number(str) * 1000));
+      if (/^\d{13}$/.test(str)) return getJakartaDateKey(new Date(Number(str)));
+
     if (/^\d{10}$/.test(str)) {
       return getJakartaDateKey(new Date(Number(str) * 1000));
     }
@@ -1621,7 +1685,10 @@ const handleSaveSettings = async (section, e) => {
     }
 
     const parts = str.split(' ');
-    return parts[0] || '';
+      return parts[0] || '';
+    }
+
+    return getJakartaDateKey(date);
   };
 
   const getTodayAttendance = () => {
@@ -1682,6 +1749,39 @@ const handleSaveSettings = async (section, e) => {
     const hadirPercent = total > 0 ? Math.round((totalHadir / total) * 100) : 0;
     
     return { total, hadir, terlambat, izin, sakit, absen, hadirPercent };
+  };
+
+  // ✨ TAMBAHAN: Logika Grouping untuk Rekap (Datang & Pulang)
+  const getGroupedRekapData = () => {
+    const groups = {};
+    attendanceReports.forEach(record => {
+      const dateKey = normalizeDateKey(record.date || record.attendance_time);
+      if (!dateKey) return;
+      const userId = record.user_id || record.user?.user_id || record.id;
+      const groupKey = `${userId}-${dateKey}`;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          user_name: record.user_name || record.name,
+          role: record.role || 'siswa',
+          rawDate: record.date || record.attendance_time,
+          arrival: record.attendance_time || record.scan_time || record.created_at,
+          departure: null,
+          mode: record.type || record.method || 'QR Code',
+          status: record.status
+        };
+      } else {
+        const currentTime = new Date(record.attendance_time || record.scan_time || record.created_at);
+        const existingArrival = new Date(groups[groupKey].arrival);
+        if (currentTime < existingArrival) {
+          groups[groupKey].departure = groups[groupKey].arrival;
+          groups[groupKey].arrival = record.attendance_time || record.scan_time || record.created_at;
+        } else if (currentTime > existingArrival) {
+          groups[groupKey].departure = record.attendance_time || record.scan_time || record.created_at;
+        }
+      }
+    });
+    return Object.values(groups).sort((a, b) => new Date(b.rawDate) - new Date(a.rawDate));
   };
 
   const getAttendanceChartData = () => {
@@ -2463,6 +2563,195 @@ const handleSaveSettings = async (section, e) => {
                 </div>
               )}
 
+              {/* ✨ TAB: Rekap Absensi (Siswa & Guru) */}
+              {activeTab === 'rekap' && (
+                <div className="animate-fade-in space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-blue-900">📋 Rekap Absensi Real-Time</h2>
+                      <p className="text-slate-500 text-sm">Data kedatangan dan kepulangan seluruh warga sekolah</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Filter Pilihan di Atas Tabel */}
+                      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-2xl shadow-inner border border-slate-200">
+                        <button 
+                          onClick={() => setRekapRoleFilter('all')}
+                          className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all uppercase tracking-tighter ${rekapRoleFilter === 'all' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                          👥 Semua
+                        </button>
+                        <button 
+                          onClick={() => setRekapRoleFilter('siswa')}
+                          className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all uppercase tracking-tighter ${rekapRoleFilter === 'siswa' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                          🧑‍🎓 Siswa
+                        </button>
+                        <button 
+                          onClick={() => setRekapRoleFilter('guru')}
+                          className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all uppercase tracking-tighter ${rekapRoleFilter === 'guru' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                          👨‍🏫 Guru
+                        </button>
+                      </div>
+
+                      {/* Tombol Export yang Mengikuti Filter Terpilih */}
+                      <div className="flex gap-2">
+                        <button onClick={() => handleExportData('pdf')} className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 transition-all flex items-center gap-2" title="Download PDF sesuai filter">
+                          <span>📄</span> PDF
+                        </button>
+                        <button onClick={() => handleExportData('excel')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-700 transition-all flex items-center gap-2" title="Download Excel sesuai filter">
+                          <span>📊</span> Excel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-blue-600 text-white">
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Hari</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Tanggal</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Nama</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Role</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Datang</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Pulang</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Mode</th>
+                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(() => {
+                            const filteredData = getGroupedRekapData().filter(item => 
+                              rekapRoleFilter === 'all' || (item.role || '').toLowerCase() === rekapRoleFilter
+                            );
+                            
+                            // ✨ Pagination logic untuk rekap absensi
+                            const totalPages = Math.max(1, Math.ceil(filteredData.length / rekapPageSize));
+                            const startIdx = (currentRekapPage - 1) * rekapPageSize;
+                            const endIdx = startIdx + rekapPageSize;
+                            const paginatedData = filteredData.slice(startIdx, endIdx);
+                            
+                            // Reset page jika melebihi total pages
+                            if (currentRekapPage > totalPages && totalPages > 0) {
+                              setCurrentRekapPage(totalPages);
+                            }
+                            
+                            return paginatedData.length > 0 ? paginatedData.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                                <td className="px-4 py-4 font-bold text-slate-700">{getDayName(item.rawDate)}</td>
+                                <td className="px-4 py-4 text-slate-600">{formatDateSimple(item.rawDate)}</td>
+                                <td className="px-4 py-4">
+                                  <div className="font-bold text-blue-900">{item.user_name}</div>
+                                </td>
+                                <td className="px-4 py-4">
+                                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border ${
+                                    item.role === 'guru' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                  }`}>
+                                    {item.role}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 font-mono font-bold text-emerald-600">
+                                  {formatTimeOnly(item.arrival)}
+                                </td>
+                                <td className="px-4 py-4 font-mono font-bold text-rose-600">
+                                  {item.departure ? formatTimeOnly(item.departure) : '--:--'}
+                                </td>
+                                <td className="px-4 py-4">
+                                  <span className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                    {item.mode}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4">
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                                    item.status === 'hadir' ? 'bg-green-100 text-green-700' : 
+                                    item.status === 'terlambat' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {item.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            )) : (
+                              <tr><td colSpan="8" className="px-4 py-12 text-center text-slate-400 italic">Tidak ada data {rekapRoleFilter !== 'all' ? rekapRoleFilter : ''} untuk ditampilkan.</td></tr>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    {/* ✨ PAGINATION CONTROLS UNTUK REKAP ABSENSI */}
+                    {(() => {
+                      const filteredData = getGroupedRekapData().filter(item => 
+                        rekapRoleFilter === 'all' || (item.role || '').toLowerCase() === rekapRoleFilter
+                      );
+                      const totalPages = Math.max(1, Math.ceil(filteredData.length / rekapPageSize));
+                      
+                      if (filteredData.length === 0) return null;
+                      
+                      return (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t border-blue-100">
+                          <div className="text-sm text-slate-600 font-medium">
+                            Menampilkan <span className="font-bold text-blue-600">{(currentRekapPage - 1) * rekapPageSize + 1}</span> - <span className="font-bold text-blue-600">{Math.min(currentRekapPage * rekapPageSize, filteredData.length)}</span> dari <span className="font-bold text-blue-600">{filteredData.length}</span> data
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setCurrentRekapPage(prev => Math.max(1, prev - 1))}
+                              disabled={currentRekapPage === 1}
+                              className="px-3 py-2 rounded-lg border-2 border-blue-200 text-blue-600 font-bold text-sm hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent flex items-center gap-1"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                              Sebelumnya
+                            </button>
+                            
+                            <div className="flex items-center gap-1">
+                              {[...Array(totalPages)].map((_, idx) => {
+                                const pageNum = idx + 1;
+                                const isActive = pageNum === currentRekapPage;
+                                const isNear = Math.abs(pageNum - currentRekapPage) <= 1;
+                                const isEdge = pageNum === 1 || pageNum === totalPages;
+                                
+                                if (totalPages <= 5 || isActive || isNear || isEdge) {
+                                  return (
+                                    <button
+                                      key={pageNum}
+                                      onClick={() => setCurrentRekapPage(pageNum)}
+                                      className={`w-8 h-8 rounded-lg font-bold text-sm transition-all ${
+                                        isActive
+                                          ? 'bg-blue-600 text-white shadow-md'
+                                          : 'border-2 border-blue-200 text-blue-600 hover:bg-blue-50'
+                                      }`}
+                                    >
+                                      {pageNum}
+                                    </button>
+                                  );
+                                } else if (pageNum === 2 || pageNum === totalPages - 1) {
+                                  return (
+                                    <span key={pageNum} className="text-slate-400 font-bold">...</span>
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                            
+                            <button
+                              onClick={() => setCurrentRekapPage(prev => Math.min(totalPages, prev + 1))}
+                              disabled={currentRekapPage === totalPages}
+                              className="px-3 py-2 rounded-lg border-2 border-blue-200 text-blue-600 font-bold text-sm hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent flex items-center gap-1"
+                            >
+                              Selanjutnya
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
               {/* TAB: Users */}
               {activeTab === 'users' && (
                 <div className="animate-fade-in">
@@ -2528,83 +2817,108 @@ const handleSaveSettings = async (section, e) => {
               {/* TAB: Data Guru */}
               {activeTab === 'dataGuru' && (
                 <div className="animate-fade-in">
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                     <div>
-                      <h2 className="text-lg font-bold text-blue-800">🎓 Data Guru</h2>
-                      <p className="text-slate-500 text-sm">Daftar semua guru dan informasi</p>
+                      <h2 className="text-2xl font-black text-blue-900 tracking-tight">🎓 Manajemen Data Guru</h2>
+                      <p className="text-slate-500 text-sm">Kelola profil tenaga pendidik, NIP, dan akses pengajaran</p>
                     </div>
+                    <button onClick={() => openCreateModal({ role: 'guru' })} className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-sm font-black hover:shadow-lg transition-all flex items-center gap-2 border-2 border-blue-400">
+                      <span>➕</span> Tambah Guru
+                    </button>
+                  </div>
+
+                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm p-4 mb-8">
                     <div className="flex items-center gap-3">
-                      <button onClick={() => openCreateModal({ role: 'guru' })} className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-medium hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 border-2 border-blue-300">
-                        <span>➕</span> Tambah Guru
-                      </button>
-                      <input
-                        type="text"
-                        placeholder="Cari..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="hidden sm:block px-4 py-2 border-2 border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
+                      <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-xl shadow-lg border-2 border-blue-400 text-white">
+                        👨‍🏫
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase text-blue-900 tracking-tighter">Daftar Tenaga Pendidik</p>
+                        <p className="text-[10px] font-medium text-slate-400">Total guru terdaftar: {guruData.length} Orang</p>
+                      </div>
+                      <div className="ml-auto relative max-w-xs w-full hidden sm:block">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+                        <input
+                          type="text"
+                          placeholder="Cari nama atau NIP..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md overflow-hidden">
+
+                  <div className="bg-white rounded-3xl border-2 border-blue-200 shadow-xl overflow-hidden">
+                    <div className="px-6 py-4 bg-blue-50 border-b-2 border-blue-100 flex justify-between items-center">
+                      <h3 className="font-black text-blue-900 uppercase tracking-wider text-xs">Informasi Guru Aktif</h3>
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-blue-50 border-b-2 border-blue-200">
+                        <thead className="bg-slate-50/50 border-b border-slate-100">
                           <tr>
-                            {['Nama', 'Email', 'NIP', 'Kode QR', 'Profil', 'Aksi'].map((h) => (
-                              <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wide">{h}</th>
+                            {['Profil Guru', 'Email', 'NIP / ID', 'Aksi'].map((h) => (
+                              <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{h}</th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-blue-50">
+                        <tbody className="divide-y divide-slate-100">
                           {guruData.length === 0 ? (
                             <tr>
-                              <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
-                                <p className="text-4xl mb-3">📭</p>
-                                <p className="font-medium">Belum ada data guru</p>
-                              </td>
+                              <td colSpan="4" className="px-6 py-16 text-center text-slate-400 italic">Belum ada data guru.</td>
                             </tr>
                           ) : (
-                            filterData(guruData, searchQuery).map((guru, index) => (
-                              <tr key={guru.id} className="hover:bg-blue-50 transition-colors">
+                            filterData(guruData, searchQuery).map((guru) => (
+                              <tr key={guru.id} className="group hover:bg-blue-50/30 transition-colors">
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shadow-sm overflow-hidden border-2 border-blue-200">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center overflow-hidden border border-blue-200 group-hover:scale-105 transition-transform">
                                       {guru.photo ? (
                                         <img src={guru.photo} alt={guru.name} className="w-full h-full object-cover" />
                                       ) : (
-                                        guru.name?.charAt(0) || 'G'
+                                        <span className="font-black text-blue-600">{guru.name?.charAt(0)}</span>
                                       )}
                                     </div>
-                                    <span className="font-medium text-blue-800 text-sm">{guru.name}</span>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-bold text-slate-800 truncate">{guru.name}</p>
+                                      <p className="text-[10px] font-medium text-blue-500 uppercase tracking-tighter">Tenaga Pendidik</p>
+                                    </div>
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 text-sm text-slate-600">{guru.email}</td>
-                                <td className="px-6 py-4 text-sm text-slate-600 font-mono">{guru.user_id || '-'}</td>
+                                <td className="px-6 py-4 text-xs font-bold text-slate-600">{guru.email}</td>
                                 <td className="px-6 py-4">
-                                  <button
-                                    onClick={() => handleShowQR(guru, 'guru')}
-                                    className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-all border border-blue-200"
-                                    title="Lihat QR Code"
-                                  >
-                                    📱 QR
-                                  </button>
+                                  <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+                                    {guru.user_id || '-'}
+                                  </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                  <button
-                                    onClick={() => {
-                                      setSelectedProfileUser(guru);
-                                      setShowProfileModal(true);
-                                    }}
-                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-all border border-indigo-200"
-                                  >
-                                    👤 Profil
-                                  </button>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="flex gap-2">
-                                    <button onClick={() => openEditModal(guru)} className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all border border-blue-200">Edit</button>
-                                    <button onClick={() => handleDeleteUser(guru.id)} className="text-red-600 hover:text-red-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all border border-red-200">Hapus</button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleShowQR(guru, 'guru')}
+                                      className="p-2 bg-white text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                      title="Lihat QR Code"
+                                    >
+                                      📱
+                                    </button>
+                                    <button 
+                                      onClick={() => { setSelectedProfileUser(guru); setShowProfileModal(true); }}
+                                      className="p-2 bg-white text-indigo-600 rounded-xl border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                                      title="Detail Profil"
+                                    >
+                                      👤
+                                    </button>
+                                    <button 
+                                      onClick={() => openEditModal(guru)}
+                                      className="p-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteUser(guru.id)}
+                                      className="p-2 bg-white text-red-600 rounded-xl border border-red-100 hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                    >
+                                      🗑️
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -2620,156 +2934,161 @@ const handleSaveSettings = async (section, e) => {
               {/* TAB: Data Siswa */}
               {activeTab === 'dataSiswa' && (
                 <div className="animate-fade-in">
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                     <div>
-                      <h2 className="text-lg font-bold text-blue-800">🧑‍🎓 Data Siswa</h2>
-                      <p className="text-slate-500 text-sm">Daftar semua siswa dan informasi</p>
+                      <h2 className="text-2xl font-black text-blue-900 tracking-tight">🧑‍🎓 Manajemen Data Siswa</h2>
+                      <p className="text-slate-500 text-sm">Kelola data profil, NIS, dan penempatan kelas siswa</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => openCreateModal({ role: 'siswa' })} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl text-sm font-medium hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 border-2 border-emerald-300">
+                      <button onClick={() => openCreateModal({ role: 'siswa' })} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl text-sm font-bold hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md flex items-center gap-2 border-2 border-emerald-300">
                         <span>➕</span> Tambah Siswa
                       </button>
-                      <input
-                        type="text"
-                        placeholder="Cari..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="hidden sm:block px-4 py-2 border-2 border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
                     </div>
                   </div>
-                  <div className="space-y-6">
-                    {['1', '2', '3'].map((kelasNomor) => {
-                      const siswaInClass = filterData(siswaData, searchQuery)
-                        .filter((siswa) => getClassGroup(siswa) === kelasNomor);
-                      return (
-                        <div key={kelasNomor} className="bg-white rounded-2xl border-2 border-blue-200 shadow-md overflow-hidden">
-                          <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
-                            <h3 className="font-semibold text-blue-800">Kelas {kelasNomor}</h3>
-                            <p className="text-xs text-slate-500">Total siswa: {siswaInClass.length}</p>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead className="bg-blue-50 border-b-2 border-blue-200">
-                                <tr>
-                              {['Nama', 'Email', 'NIP', 'Kode QR', 'Profil', 'Aksi'].map((h) => (
-                                    <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wide">{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-blue-50">
-                                {siswaInClass.length === 0 ? (
-                                  <tr>
-                                <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                                      <p className="text-sm">Belum ada siswa di kelas {kelasNomor}</p>
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  siswaInClass.map((siswa, index) => (
-                                    <tr key={`kelas-${kelasNomor}-${siswa.id}`} className="hover:bg-blue-50 transition-colors">
-                                      <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center overflow-hidden border-2 border-blue-200">
-                                            {siswa.photo ? (
-                                              <img src={siswa.photo} alt={siswa.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                              <span className="text-sm font-bold">{siswa.name?.charAt(0) || 'S'}</span>
-                                            )}
-                                          </div>
-                                          <span className="font-medium text-blue-800 text-sm">{siswa.name}</span>
-                                        </div>
-                                      </td>
-                                      <td className="px-6 py-4 text-sm text-slate-600">{siswa.email || '-'}</td>
-                                      <td className="px-6 py-4 text-sm text-slate-600 font-mono">{siswa.user_id || siswa.nis || siswa.nisn || '-'}</td>
-                                      <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                          <button
-                                            onClick={() => handleShowQR(siswa, 'siswa')}
-                                        className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-all border border-blue-200"
-                                        title="Lihat QR Code"
-                                          >
-                                        📱 QR
-                                          </button>
-                                        </div>
-                                      </td>
-                                  <td className="px-6 py-4">
-                                    <button
-                                      onClick={() => {
-                                        setSelectedProfileUser(siswa);
-                                        setShowProfileModal(true);
-                                      }}
-                                      className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-all border border-indigo-200"
-                                    >
-                                      👤 Profil
-                                    </button>
-                                  </td>
-                                      <td className="px-6 py-4">
-                                        <div className="flex gap-2">
-                                          <button onClick={() => openEditModal(siswa)} className="text-emerald-600 hover:text-emerald-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-all border border-emerald-200">Edit</button>
-                                          <button onClick={() => handleDeleteUser(siswa.id)} className="text-red-600 hover:text-red-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all border border-red-200">Hapus</button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })}
 
-                    {/* ✨ TAMBAHAN: Daftar Alumni (Setelah Lulus) */}
-                    <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-md overflow-hidden">
-                      <div className="px-6 py-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-                        <div>
-                          <h3 className="font-bold text-slate-700 text-lg">🎓 Daftar Alumni (Lulus)</h3>
-                          <p className="text-xs text-slate-500">Siswa yang sudah lulus dan tidak memiliki kelas aktif</p>
-                        </div>
-                        <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200">
-                          Total Alumni: {siswaData.filter(s => !['1', '2', '3'].includes(getClassGroup(s))).length}
+                  {/* Tab Selector (Gaya Pengaturan) */}
+                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm p-4 mb-8">
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {[
+                        { id: '1', label: 'Kelas 1', icon: '🏫', desc: 'Siswa Tingkat 1' },
+                        { id: '2', label: 'Kelas 2', icon: '🏫', desc: 'Siswa Tingkat 2' },
+                        { id: '3', label: 'Kelas 3', icon: '🏫', desc: 'Siswa Tingkat 3' },
+                        { id: 'alumni', label: 'Alumni', icon: '🎓', desc: 'Siswa Lulus' },
+                      ].map((section) => (
+                        <button
+                          key={section.id}
+                          type="button"
+                          onClick={() => setActiveSiswaSection(section.id)}
+                          className={`min-w-[160px] flex-shrink-0 group rounded-2xl border-2 p-3 transition-all text-left ${activeSiswaSection === section.id ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-50 border-transparent text-slate-600 hover:border-blue-200 hover:bg-white'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${activeSiswaSection === section.id ? 'bg-white/20' : 'bg-white shadow-sm border border-slate-100'}`}>
+                              {section.icon}
+                            </div>
+                            <div>
+                              <p className="text-xs font-black uppercase tracking-tight">{section.label}</p>
+                              <p className={`text-[10px] font-medium ${activeSiswaSection === section.id ? 'text-blue-100' : 'text-slate-400'}`}>{section.desc}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Search Bar khusus area siswa */}
+                  <div className="mb-6 relative max-w-md">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Cari nama atau NIS siswa..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Render Konten sesuai Tab yang dipilih */}
+                    <div className="bg-white rounded-3xl border-2 border-blue-200 shadow-xl overflow-hidden">
+                      <div className="px-6 py-4 bg-blue-50 border-b-2 border-blue-100 flex justify-between items-center">
+                        <h3 className="font-black text-blue-900 uppercase tracking-wider text-sm">
+                          {activeSiswaSection === 'alumni' ? '🎓 Daftar Alumni' : `🏫 Daftar Siswa Kelas ${activeSiswaSection}`}
+                        </h3>
+                        <span className="px-3 py-1 bg-white text-blue-600 rounded-full text-[10px] font-black border border-blue-200">
+                          TOTAL: {activeSiswaSection === 'alumni' 
+                            ? filterData(siswaData, searchQuery).filter(s => !['1', '2', '3'].includes(getClassGroup(s))).length 
+                            : filterData(siswaData, searchQuery).filter(s => getClassGroup(s) === activeSiswaSection).length} JIWA
                         </span>
                       </div>
+
                       <div className="overflow-x-auto">
                         <table className="w-full">
-                          <thead className="bg-slate-50 border-b border-slate-200">
+                          <thead className="bg-slate-50/50 border-b border-slate-100">
                             <tr>
-                              <th className="px-6 py-3 text-left w-10 text-xs font-bold text-slate-400">#</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Siswa</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">NIS / ID</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Status Terakhir</th>
+                              {['Nama Lengkap', 'NIS / ID', 'Kontak', 'QR Code', 'Opsi'].map((h) => (
+                                <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{h}</th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {(() => {
-                              const alumni = siswaData.filter(s => !['1', '2', '3'].includes(getClassGroup(s)));
-                              return alumni.length === 0 ? (
+                              const currentData = activeSiswaSection === 'alumni'
+                                ? filterData(siswaData, searchQuery).filter(s => !['1', '2', '3'].includes(getClassGroup(s)))
+                                : filterData(siswaData, searchQuery).filter(s => getClassGroup(s) === activeSiswaSection);
+
+                              if (currentData.length === 0) return (
                                 <tr>
-                                  <td colSpan="4" className="px-6 py-8 text-center text-slate-400 text-sm italic">
-                                    Belum ada data alumni tersimpan.
+                                  <td colSpan={4} className="px-6 py-16 text-center">
+                                    <div className="flex flex-col items-center opacity-30">
+                                      <span className="text-5xl mb-3">📂</span>
+                                      <p className="text-sm font-bold text-slate-900">Data Tidak Ditemukan</p>
+                                      <p className="text-xs">Coba sesuaikan kata kunci pencarian Anda.</p>
+                                    </div>
                                   </td>
                                 </tr>
-                              ) : (
-                                alumni.map((siswa, idx) => (
-                                  <tr key={`alumni-${siswa.id}`} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4 text-xs text-slate-400">{idx + 1}</td>
-                                    <td className="px-6 py-4">
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold border border-slate-300 overflow-hidden">
-                                          {siswa.photo ? <img src={siswa.photo} className="w-full h-full object-cover" /> : siswa.name?.charAt(0)}
-                                        </div>
-                                        <span className="font-medium text-slate-800 text-sm">{siswa.name}</span>
-                                      </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-mono">{siswa.user_id}</td>
-                                    <td className="px-6 py-4">
-                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">
-                                        ALUMNI / LULUS
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))
                               );
+
+                              return currentData.map((siswa) => (
+                                <tr key={siswa.id} className="group hover:bg-blue-50/30 transition-colors">
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 group-hover:border-blue-300 group-hover:scale-105 transition-all">
+                                        {siswa.photo ? (
+                                          <img src={siswa.photo} alt={siswa.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <span className="text-sm font-black text-slate-400">{siswa.name?.charAt(0) || 'S'}</span>
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-bold text-slate-800 truncate">{siswa.name}</p>
+                                        <p className="text-[10px] font-medium text-slate-400 truncate">{siswa.email || 'Email belum diatur'}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
+                                      {siswa.user_id || siswa.nis || '-'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-bold text-slate-600">
+                                    {siswa.phone || '-'}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <button
+                                      onClick={() => handleShowQR(siswa, 'siswa')}
+                                      className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black hover:bg-blue-600 hover:text-white transition-all border border-blue-100 flex items-center gap-1 shadow-sm"
+                                      title="Lihat QR Code Siswa"
+                                    >
+                                      <span>📱</span> QR
+                                    </button>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-2 opacity-10 lg:opacity-100 group-hover:opacity-100 transition-opacity">
+                                      <button 
+                                        onClick={() => { setSelectedProfileUser(siswa); setShowProfileModal(true); }}
+                                        className="p-2 bg-white text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                        title="Detail Profil"
+                                      >
+                                        👤
+                                      </button>
+                                      <button 
+                                        onClick={() => openEditModal(siswa)}
+                                        className="p-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                                        title="Edit Data"
+                                      >
+                                        ✏️
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteUser(siswa.id)}
+                                        className="p-2 bg-white text-red-600 rounded-xl border border-red-100 hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                        title="Hapus Siswa"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ));
                             })()}
                           </tbody>
                         </table>
@@ -2781,90 +3100,126 @@ const handleSaveSettings = async (section, e) => {
 
               {/* ✨ TAB: Naik Kelas (Promotion) */}
               {activeTab === 'promotion' && (
-                <div className="animate-fade-in">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                <div className="animate-fade-in space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-lg font-bold text-blue-800">🚀 Manajemen Naik Kelas</h2>
-                      <p className="text-slate-500 text-sm">Naikkan kelas siswa secara massal atau manual</p>
+                      <h2 className="text-2xl font-black text-blue-900 tracking-tight">🚀 Manajemen Naik Kelas</h2>
+                      <p className="text-slate-500 text-sm mt-1">Proses kenaikan tingkat siswa ke jenjang berikutnya</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => handlePromoteStudents(siswaData.map(s => s.id))}
                         disabled={siswaData.length === 0 || isPromoting}
-                        className="px-6 py-2.5 bg-indigo-100 text-indigo-700 rounded-xl text-sm font-bold border-2 border-indigo-200 hover:bg-indigo-200 transition-all shadow-sm"
+                        className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border-2 border-indigo-200 hover:bg-indigo-200 transition-all shadow-sm"
                       >
-                        Otomatis Naikkan Semua
+                        Naikkan Semua Siswa
                       </button>
                       <button
                         onClick={() => handlePromoteStudents(selectedPromoteStudents)}
                         disabled={selectedPromoteStudents.length === 0 || isPromoting}
-                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 border-2 border-blue-400"
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 border-2 border-blue-400"
                       >
-                        {isPromoting ? '⏳ Memproses...' : `🚀 Naikkan Pilihan (${selectedPromoteStudents.length})`}
+                        {isPromoting ? '⏳ Memproses...' : `🚀 Naikkan Terpilih (${selectedPromoteStudents.length})`}
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-8">
-                    {['1', '2', '3'].map((kelasNomor) => {
-                      const studentsInClass = siswaData.filter(s => getClassGroup(s) === kelasNomor);
-                      const currentClassData = classes.find(c => c.name?.includes(kelasNomor) || c.id?.toString() === kelasNomor);
+                  {/* Tab Selector untuk Naik Kelas (Sama dengan desain Data Siswa) */}
+                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm p-4">
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {[
+                        { id: '1', label: 'Kelas 1', icon: '🚀', desc: 'Promosi Tingkat 1' },
+                        { id: '2', label: 'Kelas 2', icon: '🚀', desc: 'Promosi Tingkat 2' },
+                        { id: '3', label: 'Kelas 3', icon: '🎓', desc: 'Kelulusan' },
+                      ].map((section) => (
+                        <button
+                          key={section.id}
+                          type="button"
+                          onClick={() => setActivePromotionSection(section.id)}
+                          className={`min-w-[160px] flex-shrink-0 group rounded-2xl border-2 p-3 transition-all text-left ${activePromotionSection === section.id ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-50 border-transparent text-slate-600 hover:border-blue-200 hover:bg-white'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${activePromotionSection === section.id ? 'bg-white/20' : 'bg-white shadow-sm border border-slate-100'}`}>
+                              {section.icon}
+                            </div>
+                            <div>
+                              <p className="text-xs font-black uppercase tracking-tight">{section.label}</p>
+                              <p className={`text-[10px] font-medium ${activePromotionSection === section.id ? 'text-blue-100' : 'text-slate-400'}`}>{section.desc}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    {(() => {
+                      const studentsInClass = siswaData.filter(s => getClassGroup(s) === activePromotionSection);
+                      const currentClassData = classes.find(c => c.name?.includes(activePromotionSection) || c.id?.toString() === activePromotionSection);
                       const walikelas = currentClassData?.teacher_name || '-';
                       
                       return (
-                        <div key={`promote-class-${kelasNomor}`} className="bg-white rounded-2xl border-2 border-blue-200 shadow-md overflow-hidden">
-                          <div className="px-6 py-4 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-b border-blue-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                        <div className="bg-white rounded-3xl border-2 border-blue-200 shadow-xl overflow-hidden">
+                          <div className="px-6 py-4 bg-blue-50 border-b-2 border-blue-100 flex flex-col md:flex-row md:items-center justify-between gap-2">
                             <div>
-                              <h3 className="font-bold text-blue-900 text-lg">Kelas {kelasNomor}</h3>
-                              <p className="text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 inline-block mt-1">
+                              <h3 className="font-black text-blue-900 uppercase tracking-wider text-sm">
+                                {activePromotionSection === '3' ? '🎓 Daftar Siswa Kelulusan' : `🏫 Promosi Siswa Kelas ${activePromotionSection}`}
+                              </h3>
+                              <p className="text-[10px] font-bold text-blue-600 bg-white px-3 py-1 rounded-full border border-blue-200 inline-block mt-1">
                                 👨‍🏫 Wali Kelas: {walikelas}
                               </p>
                             </div>
                             <div className="flex items-center gap-3">
                               <button 
                                 onClick={() => handleSelectAllInClass(studentsInClass)}
-                                className="text-xs font-bold text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all"
+                                className="px-4 py-2 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-tighter border border-blue-200 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                               >
-                                {studentsInClass.every(s => selectedPromoteStudents.includes(s.id)) ? 'Lepas Semua' : 'Pilih Semua'}
+                                {studentsInClass.length > 0 && studentsInClass.every(s => selectedPromoteStudents.includes(s.id)) ? 'Lepas Semua' : 'Pilih Semua Siswa'}
                               </button>
                             </div>
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full">
-                              <thead className="bg-slate-50/50 border-b border-slate-200">
+                              <thead className="bg-slate-50/50 border-b border-slate-100">
                                 <tr>
-                                  <th className="px-6 py-3 text-left w-10">
-                                    <span className="text-xs font-bold text-slate-400">#</span>
-                                  </th>
-                                  <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase">Siswa</th>
-                                  <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase">NIS / ID</th>
-                                  <th className="px-6 py-3 text-center text-xs font-semibold text-blue-700 uppercase">Status Pilih</th>
+                                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] w-16">#</th>
+                                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Siswa</th>
+                                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">NIS / ID</th>
+                                  <th className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Pilih</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
                                 {studentsInClass.length === 0 ? (
                                   <tr>
-                                    <td colSpan="4" className="px-6 py-8 text-center text-slate-400 text-sm italic">
-                                      Belum ada data siswa di kelas ini.
+                                    <td colSpan="4" className="px-6 py-16 text-center">
+                                      <div className="flex flex-col items-center opacity-30">
+                                        <span className="text-5xl mb-3">📂</span>
+                                        <p className="text-sm font-bold text-slate-900">Tidak ada siswa aktif</p>
+                                        <p className="text-xs">Data kelas {activePromotionSection} kosong.</p>
+                                      </div>
                                     </td>
                                   </tr>
                                 ) : (
                                   studentsInClass.map((siswa, idx) => (
                                     <tr 
                                       key={siswa.id} 
-                                      className={`hover:bg-blue-50/50 transition-colors cursor-pointer ${selectedPromoteStudents.includes(siswa.id) ? 'bg-blue-50/80' : ''}`}
+                                      className={`group hover:bg-blue-50/30 transition-colors cursor-pointer ${selectedPromoteStudents.includes(siswa.id) ? 'bg-blue-50/60' : ''}`}
                                       onClick={() => togglePromoteSelection(siswa.id)}
                                     >
-                                      <td className="px-6 py-4 text-xs text-slate-400">{idx + 1}</td>
+                                      <td className="px-6 py-4 text-xs font-bold text-slate-400">{idx + 1}</td>
                                       <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold border border-blue-200 overflow-hidden">
-                                            {siswa.photo ? <img src={siswa.photo} className="w-full h-full object-cover" /> : siswa.name?.charAt(0)}
+                                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 group-hover:border-blue-300 transition-all">
+                                            {siswa.photo ? <img src={siswa.photo} className="w-full h-full object-cover" /> : <span className="font-black text-slate-400">{siswa.name?.charAt(0)}</span>}
                                           </div>
-                                          <span className="font-medium text-slate-800 text-sm">{siswa.name}</span>
+                                          <span className="font-bold text-slate-800 text-sm">{siswa.name}</span>
                                         </div>
                                       </td>
-                                      <td className="px-6 py-4 text-sm text-slate-500 font-mono">{siswa.user_id}</td>
+                                      <td className="px-6 py-4">
+                                        <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
+                                          {siswa.user_id}
+                                        </span>
+                                      </td>
                                       <td className="px-6 py-4 text-center">
                                         <input 
                                           type="checkbox"
@@ -2881,7 +3236,7 @@ const handleSaveSettings = async (section, e) => {
                           </div>
                         </div>
                       );
-                    })}
+                    })()}
                   </div>
                 </div>
               )}
@@ -2889,117 +3244,103 @@ const handleSaveSettings = async (section, e) => {
               {/* ✨ TAMBAHAN: TAB: Pesan WhatsApp */}
               {activeTab === 'pesanWA' && (
                 <div className="animate-fade-in">
-                  <div className="mb-6">
-                    <h2 className="text-lg font-bold text-blue-800">💬 Pesan WhatsApp ke Orang Tua</h2>
-                    <p className="text-slate-500 text-sm">Kirim pesan langsung ke nomor telepon orang tua siswa</p>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                    <div>
+                      <h2 className="text-2xl font-black text-emerald-900 tracking-tight">💬 Komunikasi Orang Tua</h2>
+                      <p className="text-slate-500 text-sm">Kirim notifikasi atau pesan personal ke nomor WhatsApp orang tua</p>
+                    </div>
                   </div>
-                  
-                  {/* Template Pesan */}
-                  <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md p-5 mb-6">
-                    <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Template Pesan</label>
-                    <textarea
-                      value={waMessageTemplate}
-                      onChange={(e) => setWaMessageTemplate(e.target.value)}
-                      rows="2"
-                      className="w-full px-4 py-2.5 border-2 border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
-                      placeholder="Tulis pesan template..."
-                    />
-                    <p className="text-xs text-slate-500 mt-2">💡 Nama siswa akan ditambahkan otomatis di akhir pesan</p>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    <div className="lg:col-span-2 bg-white rounded-3xl border-2 border-emerald-100 p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="text-xl">📝</span>
+                        <p className="text-xs font-black uppercase text-emerald-900 tracking-widest">Template Pesan Otomatis</p>
+                      </div>
+                      <textarea
+                        value={waMessageTemplate}
+                        onChange={(e) => setWaMessageTemplate(e.target.value)}
+                        rows="3"
+                        className="w-full p-4 bg-emerald-50/30 border-2 border-emerald-100 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all resize-none"
+                        placeholder="Tulis template pesan di sini..."
+                      />
+                      <p className="mt-3 text-[10px] font-bold text-slate-400">💡 Tip: Nama siswa akan otomatis disematkan di akhir pesan untuk kemudahan personalisasi.</p>
+                    </div>
+                    <div className="bg-emerald-600 rounded-3xl p-6 text-white shadow-lg border-2 border-emerald-400 flex flex-col justify-center">
+                      <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-2xl mb-4">📱</div>
+                      <h4 className="text-lg font-black leading-tight mb-2">WhatsApp Gateway Aktif</h4>
+                      <p className="text-emerald-100 text-xs font-medium">Pastikan browser Anda memberikan izin pop-up untuk membuka jendela percakapan WhatsApp.</p>
+                    </div>
                   </div>
-                  
-                  {/* Tabel per Kelas */}
+
+                  <div className="bg-white rounded-3xl border-2 border-emerald-100 shadow-sm p-4 mb-8">
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {['1', '2', '3'].map((kelas) => (
+                        <button
+                          key={kelas}
+                          onClick={() => setActiveWaSection(kelas)}
+                          className={`min-w-[150px] flex-shrink-0 group rounded-2xl border-2 p-3 transition-all text-left ${activeWaSection === kelas ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-slate-50 border-transparent text-slate-600 hover:border-emerald-200'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${activeWaSection === kelas ? 'bg-white/20' : 'bg-white border border-slate-100 shadow-sm'}`}>🏫</div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-tight">Pilih Kelas</p>
+                              <p className={`text-xs font-bold ${activeWaSection === kelas ? 'text-emerald-100' : 'text-slate-800'}`}>Tingkat {kelas}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="space-y-6">
-                    {['1', '2', '3'].map((kelasNomor) => {
-                      const siswaInClass = filterSiswaForWA(siswaData.filter(s => getClassGroup(s) === kelasNomor), waSearchQuery);
-                      return (
-                        <div key={`wa-kelas-${kelasNomor}`} className="bg-white rounded-2xl border-2 border-blue-200 shadow-md overflow-hidden">
-                          <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-200">
-                            <h3 className="font-semibold text-green-800 flex items-center gap-2">
-                              <span>📱</span> Kelas {kelasNomor} - Kontak Orang Tua
-                            </h3>
-                            <p className="text-xs text-slate-500 mt-1">Total: {siswaInClass.length} siswa</p>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead className="bg-green-50 border-b-2 border-green-200">
-                                <tr>
-                                  {['No', 'Nama Siswa', 'Nomor Orang Tua', 'Aksi'].map((h) => (
-                                    <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-green-700 uppercase tracking-wide">{h}</th>
-                                  ))}
+                    <div className="bg-white rounded-3xl border-2 border-emerald-200 shadow-xl overflow-hidden">
+                      <div className="px-6 py-4 bg-emerald-50 border-b-2 border-emerald-100 flex justify-between items-center">
+                        <h3 className="font-black text-emerald-900 uppercase tracking-wider text-xs">Kontak Orang Tua Siswa Kelas {activeWaSection}</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-slate-50/50 border-b border-slate-100">
+                            <tr>
+                              {['Siswa', 'Nama Orang Tua', 'Nomor WhatsApp', 'Aksi'].map((h) => (
+                                <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {(() => {
+                              const currentData = filterSiswaForWA(siswaData.filter(s => getClassGroup(s) === activeWaSection), waSearchQuery);
+                              if (currentData.length === 0) return (
+                                <tr><td colSpan="4" className="px-6 py-12 text-center text-slate-400 italic">Tidak ada data siswa untuk dihubungi.</td></tr>
+                              );
+                              return currentData.map((siswa) => (
+                                <tr key={siswa.id} className="group hover:bg-emerald-50/30 transition-colors">
+                                  <td className="px-6 py-4">
+                                    <p className="text-sm font-bold text-slate-800">{siswa.name}</p>
+                                    <p className="text-[10px] font-medium text-slate-400 font-mono">NIS: {siswa.user_id}</p>
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-bold text-slate-600">{siswa.parent_name || '-'}</td>
+                                  <td className="px-6 py-4">
+                                    <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                                      {siswa.parent_phone || 'Tidak ada nomor'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <button 
+                                      onClick={() => handleSendWhatsApp(siswa.parent_phone, siswa.name)}
+                                      disabled={!siswa.parent_phone}
+                                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter hover:bg-emerald-700 transition-all shadow-md disabled:bg-slate-200 disabled:shadow-none"
+                                    >
+                                      <span>💬</span> Kirim Pesan
+                                    </button>
+                                  </td>
                                 </tr>
-                              </thead>
-                              <tbody className="divide-y divide-green-50">
-                                {siswaInClass.length === 0 ? (
-                                  <tr>
-                                    <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
-                                      <p className="text-4xl mb-3">📭</p>
-                                      <p className="font-medium">Belum ada data siswa</p>
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  siswaInClass.map((siswa, index) => (
-                                    <tr key={`wa-${kelasNomor}-${siswa.id}`} className="hover:bg-green-50 transition-colors">
-                                      <td className="px-6 py-4 text-sm text-slate-600">{index + 1}</td>
-                                      <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-9 h-9 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs font-bold shadow-sm overflow-hidden border-2 border-green-200">
-                                            {siswa.photo ? (
-                                              <img src={siswa.photo} alt={siswa.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                              <span>{siswa.name?.charAt(0) || 'S'}</span>
-                                            )}
-                                          </div>
-                                          <span className="font-medium text-green-800 text-sm">{siswa.name}</span>
-                                        </div>
-                                      </td>
-                                      <td className="px-6 py-4 text-sm text-slate-600 font-mono">
-                                        {siswa.parent_phone || siswa.phone || '-'}
-                                      </td>
-                                      <td className="px-6 py-4">
-                                        <div className="flex gap-2">
-                                          <button
-                                            onClick={() => openEditModal(siswa)}
-                                            className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all border border-blue-200"
-                                          >
-                                            Edit
-                                          </button>
-                                          <button
-                                            onClick={() => handleSendWhatsApp(siswa.parent_phone || siswa.phone, siswa.name)}
-                                            disabled={!siswa.parent_phone && !siswa.phone}
-                                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border-2 ${
-                                              siswa.parent_phone || siswa.phone
-                                                ? 'bg-green-500 hover:bg-green-600 text-white border-green-300'
-                                                : 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed'
-                                            }`}
-                                            title={!siswa.parent_phone && !siswa.phone ? 'Nomor telepon tidak tersedia' : 'Kirim via WhatsApp'}
-                                          >
-                                            <span>💬</span>
-                                            <span>Kirim</span>
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  
-                  {/* Info */}
-                  <div className="mt-6 bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-                    <h4 className="font-semibold text-blue-900 mb-2 text-sm flex items-center gap-1">
-                      <span>ℹ️</span> Cara Penggunaan
-                    </h4>
-                    <ul className="space-y-1.5 text-sm text-blue-800">
-                      <li>• Klik tombol "Kirim" untuk membuka WhatsApp Web/App</li>
-                      <li>• Pesan template akan otomatis terisi dengan nama siswa</li>
-                      <li>• Pastikan WhatsApp sudah terinstall atau login di browser</li>
-                      <li>• Nomor telepon harus format Indonesia (08xx atau +62xx)</li>
-                    </ul>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

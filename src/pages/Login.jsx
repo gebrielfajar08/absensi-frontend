@@ -145,7 +145,7 @@ const LoginUnified = () => {
       console.log('📤 Sending login request:', payload);
 
       const response = await fetchWithRetry(() => api.post('/login', payload, { 
-        timeout: 30000,
+        timeout: 60000, // Tingkatkan ke 60 detik
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
