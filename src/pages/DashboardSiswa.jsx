@@ -35,8 +35,6 @@ const formatToIndonesiaTime = (utcDate) => {
     return utcDate.toString();
   }
   const options = {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -78,6 +76,12 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
     }
   }
   throw lastError;
+};
+
+// ✨ Helper untuk waktu lokal
+const getLocalTimestamp = (date) => {
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
 const DashboardSiswa = () => {

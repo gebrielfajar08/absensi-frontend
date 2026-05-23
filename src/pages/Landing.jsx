@@ -13,6 +13,12 @@ const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
+// ✨ TAMBAHAN: Helper untuk mendapatkan waktu lokal format YYYY-MM-DD HH:mm:ss
+const getLocalTimestamp = (date) => {
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 const Landing = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeUserRole, setActiveUserRole] = useState('siswa');
@@ -382,7 +388,7 @@ const Landing = () => {
     if (attendanceSettings.disableAttendanceOnHolidays) {
       const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
       const currentDay = dayNames[currentTime.getDay()];
-      const activeDays = attendanceSettings.activeDays ? attendanceSettings.activeDays.split(',') : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const activeDays = attendanceSettings.activeDays ? attendanceSettings.activeDays.split(',').map(d => d.trim()) : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
       return !activeDays.includes(currentDay);
     }
     return false;
@@ -429,6 +435,25 @@ const Landing = () => {
     return currentTimeStr <= lateTime ? 'hadir' : 'terlambat';
   };
 
+  // ✨ Fungsi untuk mengecek sebelum membuka modal
+  const handleTryOpenAbsen = () => {
+    const status = getAttendanceStatus();
+    
+    if (status === 'libur') {
+      showSubmitNotificationMessage("❌ Hari ini adalah hari libur (sesuai pengaturan). Absensi tidak tersedia.", "error");
+      return;
+    }
+    if (status === 'belum_buka') {
+      showSubmitNotificationMessage(`❌ Absensi belum dibuka. Silakan kembali pada jam ${attendanceSettings.attendanceStartTime}.`, "warning");
+      return;
+    }
+    if (status === 'sudah_tutup') {
+      showSubmitNotificationMessage(`❌ Absensi sudah ditutup pada jam ${attendanceSettings.attendanceEndTime}.`, "error");
+      return;
+    }
+    setShowAbsenModal(true);
+  };
+
   const handleStudentSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -459,7 +484,7 @@ const Landing = () => {
         full_name: studentForm.fullName.trim(),
         user_id: studentForm.user_id.trim(),
         nis: studentForm.user_id.trim(),
-        attendance_time: currentTime.toISOString(),
+        attendance_time: getLocalTimestamp(currentTime),
         status: status,
         role: 'siswa',
         type: 'manual'
@@ -549,7 +574,7 @@ const Landing = () => {
         nip: teacherForm.nip.trim(),
         teacher_id: teacherForm.nip.trim(),
         student_id: teacherForm.nip.trim(),
-        attendance_time: currentTime.toISOString(),
+        attendance_time: getLocalTimestamp(currentTime),
         status: status,
         role: 'guru',
         type: 'manual'
@@ -627,7 +652,7 @@ const Landing = () => {
         reason: izinForm.reason,
         notes: izinForm.reason,
         keterangan: izinForm.reason,
-        attendance_time: currentTime.toISOString(),
+        attendance_time: getLocalTimestamp(currentTime),
         status: izinForm.type,
         role: activeUserRole === 'guru' ? 'guru' : 'siswa'
       };
@@ -732,7 +757,7 @@ const Landing = () => {
       
       const requestData = {
         qr_data: qrData,
-        scan_time: currentTime.toISOString(),
+        scan_time: getLocalTimestamp(currentTime),
         status: status,
         type: qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr'),
         user_id: qrData.user_id || qrData.id || qrData.student_id || qrData.teacher_id || '',
@@ -906,7 +931,6 @@ const Landing = () => {
 
   const formatTime = (date) => {
     const options = {
-      timeZone: 'Asia/Jakarta',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -917,7 +941,6 @@ const Landing = () => {
 
   const formatDate = (date) => {
     const options = {
-      timeZone: 'Asia/Jakarta',
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -1036,7 +1059,7 @@ const Landing = () => {
                   
                   <div className="flex flex-col sm:flex-row gap-3">
                     <button
-                      onClick={() => setShowAbsenModal(true)}
+                      onClick={handleTryOpenAbsen}
                       className="flex-1 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1256,7 +1279,7 @@ const Landing = () => {
                     <h3 className="text-xl font-bold mb-2">Siap untuk Absen?</h3>
                     <p className="text-blue-100 text-sm mb-4">Mulai absen sekarang dan jadilah bagian dari sekolah digital.</p>
                     <button
-                      onClick={() => setShowAbsenModal(true)}
+                      onClick={handleTryOpenAbsen}
                       className="px-6 py-3 bg-white text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

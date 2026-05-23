@@ -26,7 +26,6 @@ const formatToIndonesiaTime = (utcDate) => {
     return utcDate.toString();
   }
   const options = {
-    timeZone: 'Asia/Jakarta',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -51,7 +50,6 @@ const formatTimeOnly = (utcDate) => {
     return '-';
   }
   const options = {
-    timeZone: 'Asia/Jakarta',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false
@@ -67,7 +65,6 @@ const formatDateOnly = (utcDate) => {
     return '-';
   }
   const options = {
-    timeZone: 'Asia/Jakarta',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -152,6 +149,64 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
     }
   }
   throw lastError;
+};
+
+const normalizeBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return ['1', 'true', 'yes'].includes(value.toLowerCase());
+  return false;
+};
+
+const normalizeTimeValue = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  return String(value).substring(0, 5);
+};
+
+const normalizeSettingsResponse = (data = {}) => {
+  const getValue = (camelCaseKey, snakeCaseKey) =>
+    data[camelCaseKey] ?? data[snakeCaseKey] ?? undefined;
+
+  return {
+    schoolName: getValue('schoolName', 'school_name') ?? '',
+    schoolAddress: getValue('schoolAddress', 'school_address') ?? '',
+    schoolPhone: getValue('schoolPhone', 'school_phone') ?? '',
+    schoolEmail: getValue('schoolEmail', 'school_email') ?? '',
+    academicYear: getValue('academicYear', 'academic_year') ?? '',
+
+    attendanceStartTime: normalizeTimeValue(getValue('attendanceStartTime', 'attendance_start_time')) || '07:00',
+    attendanceEndTime: normalizeTimeValue(getValue('attendanceEndTime', 'attendance_end_time')) || '08:00',
+    lateThreshold: normalizeTimeValue(getValue('lateThreshold', 'late_threshold')) || '08:00',
+    schoolEndTime: normalizeTimeValue(getValue('schoolEndTime', 'school_end_time')) || '15:30',
+
+    enableQRCode: normalizeBoolean(getValue('enableQRCode', 'enable_qr_code')),
+    attendanceSessionOpen: normalizeBoolean(getValue('attendanceSessionOpen', 'attendance_session_open')),
+    enableNotifications: normalizeBoolean(getValue('enableNotifications', 'enable_notifications')),
+    enableEmailReports: normalizeBoolean(getValue('enableEmailReports', 'enable_email_reports')),
+    autoMarkAbsentEnabled: normalizeBoolean(getValue('autoMarkAbsentEnabled', 'auto_mark_absent_enabled')),
+    activeDays: getValue('activeDays', 'active_days') || 'Senin,Selasa,Rabu,Kamis,Jumat',
+
+    schoolLogo: getValue('schoolLogo', 'logo_url') ?? null,
+    dashboardPhoto1: getValue('dashboardPhoto1', 'photo1_url') ?? null,
+    dashboardPhoto2: getValue('dashboardPhoto2', 'photo2_url') ?? null,
+    dashboardPhoto3: getValue('dashboardPhoto3', 'photo3_url') ?? null,
+    dashboardVideo: getValue('dashboardVideo', 'video_url') ?? null,
+    startSound: getValue('startSound', 'start_sound_url') ?? null,
+    endSound: getValue('endSound', 'end_sound_url') ?? null,
+  };
+};
+
+const persistSchoolSettings = (settings) => {
+  localStorage.setItem('school_settings', JSON.stringify({
+    ...settings,
+    start_sound_url: settings.startSound ?? null,
+    end_sound_url: settings.endSound ?? null,
+    schoolLogo: settings.schoolLogo ?? null,
+    dashboardPhoto1: settings.dashboardPhoto1 ?? null,
+    dashboardPhoto2: settings.dashboardPhoto2 ?? null,
+    dashboardPhoto3: settings.dashboardPhoto3 ?? null,
+    dashboardVideo: settings.dashboardVideo ?? null,
+  }));
 };
 
 const DashboardAdmin = () => {
@@ -315,6 +370,46 @@ const DashboardAdmin = () => {
   });
 
   const [settingsSection, setSettingsSection] = useState('school');
+
+  const applySettingsToState = (settings) => {
+    setSettingsData(prev => {
+      const next = { ...prev };
+      Object.entries(settings).forEach(([key, value]) => {
+        if (value !== undefined) {
+          next[key] = value;
+        }
+      });
+      return next;
+    });
+
+    const resolvePreviewValue = (value) => {
+      if (value === undefined || value === null || value === '') return null;
+      return resolvePhotoUrl(value);
+    };
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'schoolLogo')) {
+      setLogoPreview(resolvePreviewValue(settings.schoolLogo));
+    }
+
+    setMediaPhotoPreviews(prev => ({
+      ...prev,
+      ...(Object.prototype.hasOwnProperty.call(settings, 'dashboardPhoto1') ? { 1: resolvePreviewValue(settings.dashboardPhoto1) } : {}),
+      ...(Object.prototype.hasOwnProperty.call(settings, 'dashboardPhoto2') ? { 2: resolvePreviewValue(settings.dashboardPhoto2) } : {}),
+      ...(Object.prototype.hasOwnProperty.call(settings, 'dashboardPhoto3') ? { 3: resolvePreviewValue(settings.dashboardPhoto3) } : {}),
+    }));
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'dashboardVideo')) {
+      setMediaVideoPreview(resolvePreviewValue(settings.dashboardVideo));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'startSound')) {
+      setStartSoundPreview(resolvePreviewValue(settings.startSound));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'endSound')) {
+      setEndSoundPreview(resolvePreviewValue(settings.endSound));
+    }
+  };
 
   // ✨ KONFIGURASI BACKGROUND DINAMIS (LANDING STYLE)
   const lakeBackgrounds = [
@@ -488,81 +583,24 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 60000 // Naikkan ke 60 detik untuk server lokal yang lambat
+    timeout: 60000 // Naikkan ke 60 detik karena server mungkin lambat saat proses data
   };
 
   try {
-    const res = await fetchWithRetry(() => api.get('/admin/settings', config));
+    const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/settings', '/settings'], config), 2, 2000);
 
     if (res?.data) {
-      const backendSettings = {
-        schoolName: res.data.schoolName ?? '',
-        schoolAddress: res.data.schoolAddress ?? '',
-        schoolPhone: res.data.schoolPhone ?? '',
-        schoolEmail: res.data.schoolEmail ?? '',
-        academicYear: res.data.academicYear ?? '',
-
-        attendanceStartTime: res.data.attendanceStartTime ?? '07:00',
-        attendanceEndTime: res.data.attendanceEndTime ?? '08:00',
-        lateThreshold: res.data.lateThreshold ?? '08:00',
-        schoolEndTime: res.data.schoolEndTime ?? '15:30',
-
-        enableQRCode: res.data.enableQRCode ?? true,
-        attendanceSessionOpen: res.data.attendanceSessionOpen ?? true,
-        enableNotifications: res.data.enableNotifications ?? true,
-        enableEmailReports: res.data.enableEmailReports ?? true,
-        autoMarkAbsentEnabled: res.data.autoMarkAbsentEnabled ?? true,
-        activeDays: res.data.activeDays ?? 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu',
-
-        // 🔥 ini bukan input text → boleh null
-        schoolLogo: res.data.logo_url ?? null,
-        dashboardPhoto1: res.data.photo1_url ?? null,
-        dashboardPhoto2: res.data.photo2_url ?? null,
-        dashboardPhoto3: res.data.photo3_url ?? null,
-        dashboardVideo: res.data.video_url ?? null,
-        startSound: res.data.start_sound_url ?? null,
-        endSound: res.data.end_sound_url ?? null,
-      };
-
+      const backendSettings = normalizeSettingsResponse(res.data);
       console.log('✅ Settings loaded from database:', backendSettings);
-      setSettingsData(backendSettings);
-
-      // ✅ Preview fix (WAJIB pakai URL dari backend)
-      if (backendSettings.schoolLogo) {
-        setLogoPreview(backendSettings.schoolLogo);
-      }
-
-      setMediaPhotoPreviews({
-        1: backendSettings.dashboardPhoto1,
-        2: backendSettings.dashboardPhoto2,
-        3: backendSettings.dashboardPhoto3,
-      });
-
-      if (backendSettings.dashboardVideo) {
-        setMediaVideoPreview(resolvePhotoUrl(backendSettings.dashboardVideo));
-      }
-
-      if (backendSettings.startSound) {
-        setStartSoundPreview(backendSettings.startSound);
-      }
-
-      if (backendSettings.endSound) {
-        setEndSoundPreview(backendSettings.endSound);
-      }
-
-      localStorage.setItem('school_settings', JSON.stringify({
-        ...backendSettings,
-        // Pastikan kita menyimpan URL lengkap agar saat refresh bisa langsung diputar
-        start_sound_url: backendSettings.startSound,
-        end_sound_url: backendSettings.endSound
-      }));
+      applySettingsToState(backendSettings);
+      persistSchoolSettings(backendSettings);
     }
 
   } catch (err) {
     const status = err.response?.status || (err.code === 'ECONNABORTED' ? 'TIMEOUT' : 'NETWORK_ERROR');
     const message = err.response?.data?.message || err.message;
     console.error(`❌ Gagal mengambil pengaturan: [${status}] ${message}`);
-    loadSettings(); // Gunakan data dari localStorage jika API gagal
+    loadSettings();
   }
 };
 
@@ -572,10 +610,7 @@ const fetchSettings = async () => {
     if (saved) {
       try {
         const data = JSON.parse(saved);
-        setSettingsData(prev => ({ ...prev, ...data }));
-        if (data.start_sound_url || data.startSound) setStartSoundPreview(data.start_sound_url || data.startSound);
-        if (data.end_sound_url || data.endSound) setEndSoundPreview(data.end_sound_url || data.endSound);
-        if (data.schoolLogo || data.logo_url) setLogoPreview(data.schoolLogo || data.logo_url);
+        applySettingsToState(data);
       } catch (e) {
         console.error("Gagal parse cache settings", e);
       }
@@ -1067,6 +1102,34 @@ const fetchSettings = async () => {
     });
   };
 
+  // ✨ TAMBAHAN: Fungsi untuk memproses absensi Alpa secara instan (Manual Trigger)
+  const handleProcessAutoAlpha = async () => {
+    const todayName = new Date().toLocaleDateString('id-ID', { weekday: 'long' });
+    const activeDaysList = (settingsData.activeDays || '').split(',');
+    
+    if (!activeDaysList.includes(todayName)) {
+      return addNotification(`Hari ini (${todayName}) bukan hari aktif absensi. Silakan cek pengaturan hari aktif.`, 'warning');
+    }
+
+    if (!confirm('⚠️ Proses Alpa Sekarang? Semua siswa yang belum melakukan absen hari ini akan otomatis dicatat sebagai ALPA di database.')) return;
+    
+    setIsPromoting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      // Mengirim request ke backend untuk memproses status alpa secara masal tanpa keterangan
+      await api.post('/admin/attendance/process-alpha', {}, config);
+      
+      addNotification('Berhasil! Seluruh siswa yang tidak hadir telah dicatat sebagai Alpa.', 'success');
+      await fetchAllData(); // Refresh statistik dan aktivitas terbaru untuk melihat hasilnya
+    } catch (err) {
+      addNotification(err.response?.data?.message || 'Gagal memproses alpa. Pastikan server backend mendukung fitur ini.', 'error');
+    } finally {
+      setIsPromoting(false);
+    }
+  };
+
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.user_id) {
@@ -1245,9 +1308,10 @@ const handleSaveSettings = async (section, e) => {
   try {
     setIsPromoting(true);
     const data = new FormData();
-    
+
     const config = {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 180000 // Naikkan ke 3 menit khusus untuk simpan karena ada proses auto-alpha
     };
 
     const appendField = (key, value) => {
@@ -1255,13 +1319,21 @@ const handleSaveSettings = async (section, e) => {
       data.append(key, value);
     };
 
-    // FORMAT JAM FIX
+    const appendFileWithAliases = (primaryKey, file, aliasKeys = []) => {
+      if (!(file instanceof File)) return;
+      data.append(primaryKey, file);
+      aliasKeys.forEach((aliasKey) => {
+        if (aliasKey) {
+          data.append(aliasKey, file);
+        }
+      });
+    };
+
     const formatTime = (time) => {
       if (!time) return null;
       return time.toString().substring(0, 5);
     };
 
-    // Hanya kirim data yang relevan dengan section yang sedang disimpan untuk menghindari error validasi
     if (section === 'school') {
       appendField('schoolName', settingsData.schoolName);
       appendField('schoolAddress', settingsData.schoolAddress);
@@ -1276,9 +1348,9 @@ const handleSaveSettings = async (section, e) => {
       appendField('lateThreshold', formatTime(settingsData.lateThreshold));
       appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
       appendField('activeDays', settingsData.activeDays);
-      data.append('attendance_session_open', settingsData.attendanceSessionOpen ? '1' : '0');
-      data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? '1' : '0');
-      data.append('enable_qr_code', settingsData.enableQRCode ? '1' : '0');
+      data.append('attendance_session_open', settingsData.attendanceSessionOpen || settingsData.attendance_session_open ? '1' : '0');
+      data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled || settingsData.auto_mark_absent_enabled ? '1' : '0');
+      data.append('enable_qr_code', settingsData.enableQRCode || settingsData.enable_qr_code ? '1' : '0');
     }
 
     if (section === 'notification') {
@@ -1287,50 +1359,77 @@ const handleSaveSettings = async (section, e) => {
     }
 
     if (section === 'media') {
-      if (logoFile instanceof File) {
-        data.append('logo', logoFile);
-      }
-      if (mediaPhotoFiles[1] instanceof File) {
-        data.append('photo1', mediaPhotoFiles[1]);
-      }
-      if (mediaPhotoFiles[2] instanceof File) {
-        data.append('photo2', mediaPhotoFiles[2]);
-      }
-      if (mediaPhotoFiles[3] instanceof File) {
-        data.append('photo3', mediaPhotoFiles[3]);
-      }
-      if (mediaVideoFile instanceof File) {
-        data.append('video_profile', mediaVideoFile);
-      }
-    } // Tutup blok media
+      appendFileWithAliases('logo', logoFile, ['school_logo', 'schoolLogo']);
+      appendFileWithAliases('photo1', mediaPhotoFiles[1], ['dashboard_photo_1', 'dashboardPhoto1']);
+      appendFileWithAliases('photo2', mediaPhotoFiles[2], ['dashboard_photo_2', 'dashboardPhoto2']);
+      appendFileWithAliases('photo3', mediaPhotoFiles[3], ['dashboard_photo_3', 'dashboardPhoto3']);
+      appendFileWithAliases('video_profile', mediaVideoFile, ['dashboard_video', 'dashboardVideo', 'video']);
+    }
 
     if (section === 'sound') {
       appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
       appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
-      if (startSoundFile instanceof File) {
-        data.append('start_sound', startSoundFile); // Sesuaikan key dengan backend
-      }
-      if (endSoundFile instanceof File) {
-        data.append('end_sound', endSoundFile); // Sesuaikan key dengan backend
-      }
+      appendFileWithAliases('start_sound', startSoundFile, ['start_sound_url', 'startSound']);
+      appendFileWithAliases('end_sound', endSoundFile, ['end_sound_url', 'endSound']);
     }
 
-    console.log("KIRIM DATA:");
+    console.log('KIRIM DATA:');
     for (let pair of data.entries()) {
       console.log(pair[0], pair[1]);
     }
 
-    const response = await api.post('/admin/settings', data, {
-      ...config,
-      timeout: 120000
-    });
+    let response;
+    try {
+      response = await apiTryEndpoints('post', ['/admin/settings', '/settings'], data, config);
+    } catch (postErr) {
+      const status = postErr?.response?.status;
+      if (status === 404 || status === 405) {
+        response = await apiTryEndpoints('put', ['/admin/settings', '/settings'], data, config);
+      } else {
+        throw postErr;
+      }
+    }
 
-    if (response.status === 200 || response.status === 201) {
-      await fetchSettings();
+    if (response?.status === 200 || response?.status === 201) {
+      const hasNewLogo = logoFile instanceof File;
+      const hasNewPhoto1 = mediaPhotoFiles[1] instanceof File;
+      const hasNewPhoto2 = mediaPhotoFiles[2] instanceof File;
+      const hasNewPhoto3 = mediaPhotoFiles[3] instanceof File;
+      const hasNewVideo = mediaVideoFile instanceof File;
+      const hasNewStartSound = startSoundFile instanceof File;
+      const hasNewEndSound = endSoundFile instanceof File;
+
+      const savedSettings = normalizeSettingsResponse({
+        ...settingsData,
+        attendanceStartTime: formatTime(settingsData.attendanceStartTime),
+        attendanceEndTime: formatTime(settingsData.attendanceEndTime),
+        lateThreshold: formatTime(settingsData.lateThreshold),
+        schoolEndTime: formatTime(settingsData.schoolEndTime),
+        attendanceSessionOpen: settingsData.attendanceSessionOpen,
+        autoMarkAbsentEnabled: settingsData.autoMarkAbsentEnabled,
+        enableQRCode: settingsData.enableQRCode,
+        enableNotifications: settingsData.enableNotifications,
+        enableEmailReports: settingsData.enableEmailReports,
+        schoolLogo: hasNewLogo ? logoPreview : (settingsData.schoolLogo ?? logoPreview ?? null),
+        dashboardPhoto1: hasNewPhoto1 ? mediaPhotoPreviews[1] : (settingsData.dashboardPhoto1 ?? mediaPhotoPreviews[1] ?? null),
+        dashboardPhoto2: hasNewPhoto2 ? mediaPhotoPreviews[2] : (settingsData.dashboardPhoto2 ?? mediaPhotoPreviews[2] ?? null),
+        dashboardPhoto3: hasNewPhoto3 ? mediaPhotoPreviews[3] : (settingsData.dashboardPhoto3 ?? mediaPhotoPreviews[3] ?? null),
+        dashboardVideo: hasNewVideo ? mediaVideoPreview : (settingsData.dashboardVideo ?? mediaVideoPreview ?? null),
+        startSound: hasNewStartSound ? startSoundPreview : (settingsData.startSound ?? startSoundPreview ?? null),
+        endSound: hasNewEndSound ? endSoundPreview : (settingsData.endSound ?? endSoundPreview ?? null),
+      });
+
+      applySettingsToState(savedSettings);
+      persistSchoolSettings(savedSettings);
+
+      try {
+        await fetchSettings();
+      } catch (syncErr) {
+        console.warn('⚠️ Pengaturan tersimpan, tetapi gagal menyinkronkan ulang dari server.', syncErr);
+      }
 
       setSettingsSaved(true);
       setShowSuccessNotification(true);
-
       setLogoFile(null);
       setMediaPhotoFiles({ 1: null, 2: null, 3: null });
       setMediaVideoFile(null);
@@ -1343,19 +1442,18 @@ const handleSaveSettings = async (section, e) => {
       }, 3000);
     }
 
-  }catch (err) {
-  console.log("🔥 INI ERROR ASLI DARI BACKEND:");
-  console.log(err.response?.data);
+  } catch (err) {
+    console.log('🔥 INI ERROR ASLI DARI BACKEND:');
+    console.log(err.response?.data);
+    console.error('Error saving settings:', err);
 
-  console.error('Error saving settings:', err);
-
-  const apiErr = err.response?.data;
-    let detailMsg = apiErr?.message || "Gagal menyimpan pengaturan";
+    const apiErr = err.response?.data;
+    let detailMsg = apiErr?.message || 'Gagal menyimpan pengaturan';
 
     if (apiErr?.errors) {
-      detailMsg += "\n" + Object.entries(apiErr.errors)
+      detailMsg += '\n' + Object.entries(apiErr.errors)
         .map(([key, val]) => `• ${key}: ${val}`)
-        .join("\n");
+        .join('\n');
     }
 
     addNotification(`Kesalahan Validasi: ${detailMsg}`, 'error');
@@ -3407,7 +3505,7 @@ const handleSaveSettings = async (section, e) => {
                                 </span>
                               </div>
 
-                              <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                              <div className="space-y-2 pr-2">
                                 {studentsInClass.length === 0 ? (
                                   <div className="py-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                                     <p className="text-xs text-slate-400 italic">Tidak ada siswa terdaftar</p>
@@ -3435,13 +3533,12 @@ const handleSaveSettings = async (section, e) => {
                                     <span className="text-[10px] text-slate-400 italic font-medium">Belum ada jadwal mapel</span>
                                   ) : (
                                     // Mengambil subject unik agar tidak duplikat jika ada jadwal di hari berbeda
-                                    Array.from(new Set(classSubjects.map(s => s.subject_name))).slice(0, 4).map((sub, idx) => (
+                                    Array.from(new Set(classSubjects.map(s => s.subject_name))).map((sub, idx) => (
                                       <span key={idx} className="text-[9px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md border border-indigo-100 shadow-sm">
                                         {sub}
                                       </span>
                                     ))
                                   )}
-                                  {classSubjects.length > 4 && <span className="text-[9px] text-slate-400 font-bold">+{classSubjects.length - 4} lagi</span>}
                                 </div>
                               </div>
 
