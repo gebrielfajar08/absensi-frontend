@@ -1351,6 +1351,7 @@ const handleSaveSettings = async (section, e) => {
       data.append('attendance_session_open', settingsData.attendanceSessionOpen || settingsData.attendance_session_open ? '1' : '0');
       data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled || settingsData.auto_mark_absent_enabled ? '1' : '0');
       data.append('enable_qr_code', settingsData.enableQRCode || settingsData.enable_qr_code ? '1' : '0');
+      data.append('disable_attendance_on_holidays', settingsData.disableAttendanceOnHolidays ? '1' : '0');
     }
 
     if (section === 'notification') {

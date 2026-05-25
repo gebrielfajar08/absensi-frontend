@@ -385,10 +385,18 @@ const Landing = () => {
   };
 
   const checkIsHoliday = () => {
+    console.log("--- Check Is Holiday ---");
+    console.log("disableAttendanceOnHolidays:", attendanceSettings.disableAttendanceOnHolidays);
     if (attendanceSettings.disableAttendanceOnHolidays) {
       const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
       const currentDay = dayNames[currentTime.getDay()];
+      console.log("Current Day:", currentDay);
       const activeDays = attendanceSettings.activeDays ? attendanceSettings.activeDays.split(',').map(d => d.trim()) : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      console.log("Active Days from settings (parsed):", activeDays);
+      const isHoliday = !activeDays.includes(currentDay);
+      console.log("Is current day a holiday (based on activeDays)?", isHoliday);
+      console.log("------------------------");
+      return isHoliday;
       return !activeDays.includes(currentDay);
     }
     return false;
@@ -438,6 +446,8 @@ const Landing = () => {
   // ✨ Fungsi untuk mengecek sebelum membuka modal
   const handleTryOpenAbsen = () => {
     const status = getAttendanceStatus();
+    console.log("handleTryOpenAbsen: current status calculated =", status);
+    console.log("Attendance Settings used:", attendanceSettings);
     
     if (status === 'libur') {
       showSubmitNotificationMessage("❌ Hari ini adalah hari libur (sesuai pengaturan). Absensi tidak tersedia.", "error");

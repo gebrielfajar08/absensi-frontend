@@ -36,6 +36,7 @@ const Register = () => {
   const [schoolSettings, setSchoolSettings] = useState({ name: 'UISOCIAL', logo: null });
   const [logoError, setLogoError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [classes, setClasses] = useState([]);
 
   const navigate = useNavigate();
 
@@ -71,6 +72,18 @@ const Register = () => {
     loadSettings();
     window.addEventListener('storage', loadSettings);
     return () => window.removeEventListener('storage', loadSettings);
+  }, []);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const response = await api.get('/public/classes');
+        setClasses(Array.isArray(response.data) ? response.data : response.data.data || []);
+      } catch (err) {
+        console.error("Gagal memuat kelas", err);
+      }
+    };
+    fetchClasses();
   }, []);
 
   const handleChange = (e) => {
@@ -109,11 +122,15 @@ const Register = () => {
       data.append('password_confirmation', formData.password_confirmation);
       data.append('role', formData.role);
       
+      // Cari objek kelas berdasarkan ID yang dipilih di dropdown
+      const selectedClass = classes.find(c => c.id.toString() === formData.class_name.toString());
+
       if (formData.role === 'siswa') {
         data.append('nis', formData.nis);
         data.append('user_id', formData.nis);
-        data.append('class_id', formData.class_name);
-        data.append('class_name', `Kelas ${formData.class_name}`);
+        data.append('class_id', formData.class_name); // Mengirim ID Kelas
+        // Simpan Nama Kelas asli dari database untuk sinkronisasi filtering
+        data.append('class_name', selectedClass ? selectedClass.name : (formData.class_name ? `Kelas ${formData.class_name}` : ''));
         data.append('gender', formData.gender);
         data.append('phone', formData.phone);
         data.append('parent_name', formData.parent_name);
@@ -122,7 +139,8 @@ const Register = () => {
         data.append('nip', formData.nip);
         data.append('user_id', formData.nip);
         data.append('class_id', formData.class_name);
-        data.append('class_name', `Kelas ${formData.class_name}`);
+        // Samakan logika nama kelas dengan siswa agar tidak terjadi duplikasi data di dashboard
+        data.append('class_name', selectedClass ? selectedClass.name : (formData.class_name ? `Kelas ${formData.class_name}` : ''));
         data.append('gender', formData.gender);
         data.append('phone', formData.phone);
       }
@@ -223,7 +241,10 @@ const Register = () => {
                   <>
                     <input type="text" name={formData.role === 'siswa' ? 'nis' : 'nip'} value={formData.role === 'siswa' ? formData.nis : formData.nip} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" placeholder={formData.role === 'siswa' ? "Nomor Induk Siswa (NIS) *" : "Nomor Induk Pegawai (NIP) *"} required />
                     <select name="class_name" value={formData.class_name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white" required>
-                      <option value="">Pilih Kelas *</option><option value="1">Kelas 1</option><option value="2">Kelas 2</option><option value="3">Kelas 3</option>
+                      <option value="">Pilih Kelas *</option>
+                      {classes.map((cls) => (
+                        <option key={cls.id} value={cls.id}>{cls.name}</option>
+                      ))}
                     </select>
                     <div className="grid grid-cols-2 gap-2">
                       <select name="gender" value={formData.gender} onChange={handleChange} className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white" required><option value="">Gender *</option><option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option></select>
