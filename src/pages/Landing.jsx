@@ -77,6 +77,7 @@ const Landing = () => {
     schoolName: '',
     schoolLogo: null,
     limitOneScanPerDay: true,
+    disableAttendanceOnHolidays: true,
     activeDays: 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
   });
 
@@ -385,21 +386,17 @@ const Landing = () => {
   };
 
   const checkIsHoliday = () => {
-    console.log("--- Check Is Holiday ---");
-    console.log("disableAttendanceOnHolidays:", attendanceSettings.disableAttendanceOnHolidays);
-    if (attendanceSettings.disableAttendanceOnHolidays) {
-      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-      const currentDay = dayNames[currentTime.getDay()];
-      console.log("Current Day:", currentDay);
-      const activeDays = attendanceSettings.activeDays ? attendanceSettings.activeDays.split(',').map(d => d.trim()) : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-      console.log("Active Days from settings (parsed):", activeDays);
-      const isHoliday = !activeDays.includes(currentDay);
-      console.log("Is current day a holiday (based on activeDays)?", isHoliday);
-      console.log("------------------------");
-      return isHoliday;
-      return !activeDays.includes(currentDay);
+    if (attendanceSettings.disableAttendanceOnHolidays !== true) {
+      return false;
     }
-    return false;
+
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const currentDay = dayNames[currentTime.getDay()];
+    const activeDays = attendanceSettings.activeDays
+      ? attendanceSettings.activeDays.split(',').map(d => d.trim())
+      : ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+    return !activeDays.includes(currentDay);
   };
 
   useEffect(() => {
