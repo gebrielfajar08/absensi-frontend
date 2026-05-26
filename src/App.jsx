@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // ← TAMBAHAN: Import Landing & Login terpisah per role
@@ -53,8 +54,32 @@ const ProtectedRouteWithRole = ({ children, allowedRole }) => {
 };
 
 function App() {
+    const [theme, setTheme] = useState(() => {
+        if (typeof window === 'undefined') return 'light';
+        const savedTheme = window.localStorage.getItem('theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+            return savedTheme;
+        }
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    });
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        window.localStorage.setItem('theme', theme);
+    }, [theme]);
+
     return (
-        <>
+        <div className="min-h-screen">
+            <button
+                type="button"
+                onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+                data-theme={theme}
+                className="theme-toggle-btn fixed right-4 top-4 z-[60] flex items-center justify-center rounded-full px-3 py-2 shadow-lg backdrop-blur transition-all duration-300 hover:scale-[1.02]"
+                aria-label="Toggle tema"
+            >
+                <span className="theme-toggle-icon">{theme === 'dark' ? '🌙' : '☀️'}</span>
+            </button>
+
             <CustomCursor /> {/* ✅ cursor aktif */}
 
             <BrowserRouter>
@@ -109,7 +134,7 @@ function App() {
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </BrowserRouter>
-        </>
+        </div>
     );
 }
 

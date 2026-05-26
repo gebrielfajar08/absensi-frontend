@@ -259,6 +259,7 @@ const DashboardAdmin = () => {
   const [attendanceReports, setAttendanceReports] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const [permissionDecisionLoading, setPermissionDecisionLoading] = useState(null);
   const [error, setError] = useState('');
 
   const addNotification = (message, type = 'info') => {
@@ -709,16 +710,6 @@ const fetchSettings = async () => {
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [user]);
-
-  // Poll in background every 30 detik saat tab aktif
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && user) {
-        fetchAllData();
-      }
-    }, 30000);
-    return () => clearInterval(interval);
   }, [user]);
 
   const extractRecordsFromResponse = (res) => {
@@ -1555,6 +1546,69 @@ const handleSaveSettings = async (section, e) => {
     }
   };
 
+  const handlePermissionDecision = async (request, decision) => {
+    const requestId = request?.id || request?.attendance_id || request?.record_id || request?.request_id;
+
+    if (!requestId) {
+      addNotification('❌ ID pengajuan tidak ditemukan.', 'error');
+      return;
+    }
+
+    setPermissionDecisionLoading(`${requestId}-${decision}`);
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const payload = {
+        status: request.status || (decision === 'approve' ? 'izin' : 'absen'),
+        approval_status: decision === 'approve' ? 'approved' : 'rejected',
+        is_approved: decision === 'approve',
+        approved: decision === 'approve',
+        is_pending: false,
+        pending: false,
+        reviewed_by: user?.name || user?.full_name || 'Admin',
+        approved_by: decision === 'approve' ? (user?.name || user?.full_name || 'Admin') : null,
+        approved_at: decision === 'approve' ? new Date().toISOString() : null,
+        notes: decision === 'approve'
+          ? `Pengajuan ${request.status || 'izin'} disetujui oleh admin.`
+          : `Pengajuan ${request.status || 'izin'} ditolak oleh admin.`
+      };
+
+      const attempts = [
+        { method: 'put', url: `/admin/attendances/${requestId}`, data: payload },
+        { method: 'patch', url: `/admin/attendances/${requestId}`, data: payload },
+        { method: 'put', url: `/admin/activity/${requestId}`, data: payload },
+        { method: 'patch', url: `/admin/activity/${requestId}`, data: payload },
+        { method: 'post', url: `/admin/attendances/${requestId}/approval`, data: payload },
+        { method: 'post', url: `/admin/attendances/${requestId}/reject`, data: { ...payload, approval_status: 'rejected' } }
+      ];
+
+      let lastError;
+      for (const attempt of attempts) {
+        try {
+          await api[attempt.method](attempt.url, attempt.data, { headers });
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (lastError) {
+        throw lastError;
+      }
+
+      addNotification(`✅ Pengajuan ${request.status || 'izin'} ${decision === 'approve' ? 'disetujui' : 'ditolak'}.`, 'success');
+      localStorage.setItem('attendance_updated', Date.now().toString());
+      await fetchAllData();
+    } catch (err) {
+      console.error('❌ Gagal memperbarui persetujuan:', err);
+      addNotification(`❌ ${err.response?.data?.message || 'Gagal memperbarui persetujuan'}`, 'error');
+    } finally {
+      setPermissionDecisionLoading(null);
+    }
+  };
+
   // ✨ TAMBAHAN: Handle Send WhatsApp Message
   const handleSendWhatsApp = (parentPhone, studentName) => {
     if (!parentPhone) {
@@ -1582,11 +1636,21 @@ const handleSaveSettings = async (section, e) => {
     { id: 'dataSiswa', label: 'Data Siswa', icon: '🧑‍🎓' },
     { id: 'pesanWA', label: 'Pesan WA', icon: '💬' },
     { id: 'promotion', label: 'Naik Kelas', icon: '🚀' },
-    { id: 'rekap', label: 'Rekap Absensi', icon: '📋' }, // ✨ Menu Baru
+    { id: 'rekap', label: 'Rekap Absensi', icon: '📋' },
+    { id: 'izin', label: 'Izin & Sakit', icon: '📝' },
     { id: 'classes', label: 'Data Kelas', icon: '🏫' },
-    { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' }, // ✨ TAMBAHAN: Menu Alumni
+    { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' },
     { id: 'settings', label: 'Pengaturan', icon: '⚙️' },
   ];
+
+  const pendingPermissionRequests = attendanceReports.filter((item) => {
+    const status = String(item.status || '').toLowerCase();
+    const approval = String(item.approval_status || item.review_status || '').toLowerCase();
+    const isPermission = ['izin', 'sakit'].includes(status);
+    const approved = ['approved', 'disetujui', 'diterima', 'accepted'].includes(approval) || item.is_approved === true || item.approved === true;
+    const pending = ['pending', 'requested', 'waiting', 'menunggu'].includes(approval) || item.is_pending === true || item.pending === true;
+    return isPermission && !approved && (pending || approval === '');
+  });
 
   // ✨ FIX: Normalisasi user agar NIS/NIP dan Kelas selalu tersedia
   const normalizeUser = (user) => {
@@ -1665,7 +1729,8 @@ const handleSaveSettings = async (section, e) => {
   const fetchAttendanceRecords = async (config = {}) => {
     const endpoints = [
       { url: '/admin/attendances', params: { page: 1, per_page: 1000 } },
-      { url: '/admin/activity', params: { page: 1, per_page: 1000 } }
+      { url: '/admin/activity', params: { page: 1, per_page: 1000 } },
+      { url: '/attendance/izin', params: { page: 1, per_page: 1000 } }
     ];
 
     const extractArray = (response) => {
@@ -1674,12 +1739,36 @@ const handleSaveSettings = async (section, e) => {
       if (Array.isArray(payload)) return payload;
       if (Array.isArray(payload?.data)) return payload.data;
       if (Array.isArray(payload?.results)) return payload.results;
-      if (payload && typeof payload === 'object') return Object.values(payload);
+      if (Array.isArray(payload?.items)) return payload.items;
+      if (Array.isArray(payload?.records)) return payload.records;
+      if (Array.isArray(payload?.permissions)) return payload.permissions;
+      if (Array.isArray(payload?.requests)) return payload.requests;
+
+      const nestedArrays = Object.values(payload || {}).filter(Array.isArray);
+      if (nestedArrays.length > 0) return nestedArrays[0];
+
       return [];
     };
 
+    const getRecordKey = (record) => {
+      if (!record) return '';
+      return [
+        record.id,
+        record.attendance_id,
+        record.request_id,
+        record.permission_id,
+        record.user_id,
+        record.nis,
+        record.nip,
+        record.status,
+        record.date || record.created_at || record.attendance_time,
+        record.notes || record.reason || record.keterangan
+      ].filter(Boolean).join('|');
+    };
+
+    const mergedRecords = new Map();
+
     for (const endpoint of endpoints) {
-      let allRecords = [];
       let page = 1;
       let hasMore = true;
 
@@ -1696,13 +1785,28 @@ const handleSaveSettings = async (section, e) => {
           });
 
           const records = extractArray(response);
-          allRecords = allRecords.concat(records);
+          records.forEach((record) => {
+            const key = getRecordKey(record);
+            if (key) {
+              mergedRecords.set(key, record);
+            }
+          });
 
           const payload = response.data;
           const currentPage = Number(payload?.current_page ?? page);
           const lastPage = Number(payload?.last_page ?? payload?.meta?.last_page ?? currentPage);
 
-          if (!Array.isArray(payload?.data) && !Array.isArray(payload?.results) && !Array.isArray(payload)) {
+          const isPaginatedResponse = [
+            Array.isArray(payload),
+            Array.isArray(payload?.data),
+            Array.isArray(payload?.results),
+            Array.isArray(payload?.items),
+            Array.isArray(payload?.records),
+            Array.isArray(payload?.permissions),
+            Array.isArray(payload?.requests)
+          ].some(Boolean);
+
+          if (!isPaginatedResponse) {
             hasMore = false;
           } else if (currentPage >= lastPage || !payload?.next_page_url) {
             hasMore = false;
@@ -1716,13 +1820,9 @@ const handleSaveSettings = async (section, e) => {
           break;
         }
       }
-
-      if (allRecords.length > 0) {
-        return allRecords;
-      }
     }
 
-    return [];
+    return Array.from(mergedRecords.values());
   };
 
   // ✨ TAMBAHAN: Filter data berdasarkan search
@@ -2084,10 +2184,10 @@ const handleSaveSettings = async (section, e) => {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="theme-loader-screen min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-14 w-14 border-4 border-blue-500 border-t-transparent mx-auto mb-5 shadow-lg"></div>
-          <p className="text-blue-600 font-medium">Memuat dashboard...</p>
+          <div className="theme-loader-spinner animate-spin rounded-full h-14 w-14 border-4 mx-auto mb-5 shadow-lg"></div>
+          <p className="theme-loader-text font-medium">Memuat dashboard...</p>
         </div>
       </div>
     );
@@ -2288,10 +2388,10 @@ const handleSaveSettings = async (section, e) => {
           <div className="flex-1 overflow-y-auto p-4 lg:p-8">
             <div className="max-w-7xl mx-auto w-full">
               {isSynchronizingData && (
-                <div className="fixed inset-x-0 top-[70px] bottom-0 z-40 flex items-center justify-center bg-white border-t border-blue-100">
-                  <div className="rounded-3xl border-2 border-blue-200 bg-white px-8 py-8 shadow-2xl text-center max-w-sm">
-                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-                    <p className="text-base font-bold text-blue-800">Memuat</p>
+                <div className="theme-loader-overlay fixed top-[70px] inset-x-0 bottom-0 z-30 flex items-center justify-center backdrop-blur-sm">
+                  <div className="text-center">
+                    <div className="theme-loader-spinner animate-spin rounded-full h-12 w-12 border-4 mx-auto mb-4"></div>
+                    <p className="theme-loader-text text-base font-bold">Memuat</p>
                   </div>
                 </div>
               )}
@@ -2960,6 +3060,71 @@ const handleSaveSettings = async (section, e) => {
                       );
                     })()}
                   </div>
+                </div>
+              )}
+
+              {activeTab === 'izin' && (
+                <div className="animate-fade-in space-y-6">
+                  <div className="bg-white rounded-3xl border-2 border-amber-100 shadow-xl p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-amber-900">📝 Persetujuan Izin & Sakit</h2>
+                        <p className="text-sm text-slate-500">Tinjau permintaan dari siswa atau guru dan putuskan apakah disetujui atau ditolak.</p>
+                      </div>
+                      <div className="px-4 py-2 rounded-full bg-amber-50 text-amber-700 text-xs font-black">
+                        {pendingPermissionRequests.length} menunggu
+                      </div>
+                    </div>
+                  </div>
+
+                  {pendingPermissionRequests.length === 0 ? (
+                    <div className="bg-white rounded-2xl border-2 border-slate-100 p-10 text-center text-slate-500">
+                      Tidak ada permintaan izin atau sakit yang menunggu persetujuan.
+                    </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {pendingPermissionRequests.map((request) => {
+                        const loadingKey = `${request.id || request.attendance_id || request.record_id || request.request_id}-approve`;
+                        const rejectKey = `${request.id || request.attendance_id || request.record_id || request.request_id}-reject`;
+                        return (
+                          <div key={request.id || request.attendance_id || request.record_id || request.request_id} className="bg-white rounded-2xl border-2 border-amber-100 shadow-lg p-5">
+                            <div className="flex flex-col lg:flex-row lg:justify-between gap-4">
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-xs font-black text-amber-700 uppercase tracking-wide">{request.status === 'sakit' ? 'Sakit' : 'Izin'}</p>
+                                  <h3 className="text-lg font-bold text-slate-900">{request.user_name || request.name || request.full_name || 'Pengguna'}</h3>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                                  <span className="px-2.5 py-1 rounded-full bg-slate-100">Role: {request.role || '-'}</span>
+                                  <span className="px-2.5 py-1 rounded-full bg-slate-100">Tanggal: {formatDateSimple(request.date || request.created_at || request.attendance_time)}</span>
+                                </div>
+                                <p className="text-sm text-slate-600 leading-relaxed">{request.notes || request.reason || request.keterangan || 'Tidak ada alasan tambahan.'}</p>
+                              </div>
+                              <div className="flex flex-col gap-2 lg:min-w-[220px]">
+                                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-black text-center">Menunggu Persetujuan</span>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handlePermissionDecision(request, 'approve')}
+                                    disabled={permissionDecisionLoading === loadingKey}
+                                    className="flex-1 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-60"
+                                  >
+                                    {permissionDecisionLoading === loadingKey ? 'Memproses...' : 'Setujui'}
+                                  </button>
+                                  <button
+                                    onClick={() => handlePermissionDecision(request, 'reject')}
+                                    disabled={permissionDecisionLoading === rejectKey}
+                                    className="flex-1 px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-bold disabled:opacity-60"
+                                  >
+                                    {permissionDecisionLoading === rejectKey ? 'Memproses...' : 'Tolak'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

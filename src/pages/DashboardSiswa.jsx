@@ -118,7 +118,15 @@ const DashboardSiswa = () => {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [myQRCode, setMyQRCode] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [permissionSubmitting, setPermissionSubmitting] = useState(false);
   const isSynchronizingData = loading || scheduleLoading || qrLoading;
+
+  const [permissionForm, setPermissionForm] = useState({
+    type: 'izin',
+    reason: '',
+    startDate: '',
+    endDate: ''
+  });
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     schoolName: 'SMPK DON BOSCO',
@@ -552,6 +560,8 @@ const DashboardSiswa = () => {
         return 'bg-sky-100 text-sky-700 border-sky-200';
       case 'sakit':
         return 'bg-violet-100 text-violet-700 border-violet-200';
+      case 'pending':
+        return 'bg-amber-100 text-amber-700 border-amber-200';
       default:
         return 'bg-red-100 text-red-700 border-red-200';
     }
@@ -567,11 +577,60 @@ const DashboardSiswa = () => {
         return '📋 Izin';
       case 'sakit':
         return '🏥 Sakit';
+      case 'pending':
+        return '⏳ Menunggu';
       case 'alpha':
       case 'absen':
         return '✗ Absen';
       default:
         return status || '-';
+    }
+  };
+
+  const submitPermissionRequest = async (e) => {
+    e.preventDefault();
+
+    if (!permissionForm.reason.trim()) {
+      addNotification('📝 Mohon isi alasan izin/sakit terlebih dahulu.', 'warning');
+      return;
+    }
+
+    try {
+      setPermissionSubmitting(true);
+      const token = localStorage.getItem('token');
+      const payload = {
+        name: user?.name || user?.full_name || '',
+        full_name: user?.name || user?.full_name || '',
+        type: 'manual',
+        status: permissionForm.type,
+        approval_status: 'pending',
+        is_pending: true,
+        pending: true,
+        reason: permissionForm.reason.trim(),
+        notes: permissionForm.reason.trim(),
+        keterangan: permissionForm.reason.trim(),
+        attendance_time: getLocalTimestamp(new Date()),
+        user_id: user?.nis || user?.user_id || '',
+        nis: user?.nis || user?.user_id || '',
+        role: 'siswa',
+        ...(permissionForm.startDate ? { start_date: permissionForm.startDate } : {}),
+        ...(permissionForm.endDate ? { end_date: permissionForm.endDate } : {})
+      };
+
+      await api.post('/attendance/izin', payload, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        timeout: 60000
+      });
+
+      addNotification(`✅ Pengajuan ${permissionForm.type === 'sakit' ? 'sakit' : 'izin'} berhasil dikirim ke admin.`, 'success');
+      setPermissionForm({ type: 'izin', reason: '', startDate: '', endDate: '' });
+      localStorage.setItem('attendance_updated', Date.now().toString());
+      await fetchStudentData(false);
+    } catch (err) {
+      console.error('❌ Gagal mengirim pengajuan izin/sakit:', err);
+      addNotification(`❌ ${err.response?.data?.message || 'Gagal mengirim pengajuan izin/sakit'}`, 'error');
+    } finally {
+      setPermissionSubmitting(false);
     }
   };
 
@@ -585,10 +644,10 @@ const DashboardSiswa = () => {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+      <div className="theme-loader-screen min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-600 font-medium">Memuat dashboard...</p>
+          <div className="theme-loader-spinner w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="theme-loader-text font-medium">Memuat dashboard...</p>
         </div>
       </div>
     );
@@ -775,10 +834,10 @@ const DashboardSiswa = () => {
           </header>
 
           {isSynchronizingData && (
-            <div className="fixed inset-x-0 top-[70px] bottom-0 z-40 flex items-center justify-center bg-white border-t border-blue-100">
-              <div className="rounded-3xl border-2 border-blue-200 bg-white px-8 py-8 shadow-2xl text-center max-w-sm">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-                <p className="text-base font-bold text-blue-800">Memuat</p>
+            <div className="theme-loader-overlay fixed top-[70px] inset-x-0 bottom-0 z-30 flex items-center justify-center backdrop-blur-sm">
+              <div className="text-center">
+                <div className="theme-loader-spinner animate-spin rounded-full h-12 w-12 border-4 mx-auto mb-4"></div>
+                <p className="theme-loader-text text-base font-bold">Memuat</p>
               </div>
             </div>
           )}
@@ -1101,6 +1160,71 @@ const DashboardSiswa = () => {
                         </button>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="mt-8 bg-white rounded-2xl border-2 border-blue-100 shadow-lg p-6">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
+                        <div>
+                          <h3 className="text-lg font-bold text-blue-900">📋 Ajukan Izin / Sakit</h3>
+                          <p className="text-sm text-slate-500">Pengajuan kamu akan dikirim ke admin untuk disetujui terlebih dahulu.</p>
+                        </div>
+                        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-blue-50 text-blue-700 text-xs font-bold">
+                          <span>⏳</span> Menunggu persetujuan admin
+                        </div>
+                      </div>
+
+                      <form onSubmit={submitPermissionRequest} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">Jenis Pengajuan</label>
+                          <select
+                            value={permissionForm.type}
+                            onChange={(e) => setPermissionForm(prev => ({ ...prev, type: e.target.value }))}
+                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="izin">Izin</option>
+                            <option value="sakit">Sakit</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">Tanggal Mulai</label>
+                          <input
+                            type="date"
+                            value={permissionForm.startDate}
+                            onChange={(e) => setPermissionForm(prev => ({ ...prev, startDate: e.target.value }))}
+                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">Tanggal Selesai</label>
+                          <input
+                            type="date"
+                            value={permissionForm.endDate}
+                            onChange={(e) => setPermissionForm(prev => ({ ...prev, endDate: e.target.value }))}
+                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">Alasan / Keterangan</label>
+                          <textarea
+                            required
+                            rows={4}
+                            value={permissionForm.reason}
+                            onChange={(e) => setPermissionForm(prev => ({ ...prev, reason: e.target.value }))}
+                            placeholder="Contoh: sakit kepala, mengikuti acara keluarga, atau alasan lainnya..."
+                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="md:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <p className="text-xs text-slate-500">Status pengajuan akan muncul kembali di riwayat setelah admin meninjau.</p>
+                          <button
+                            type="submit"
+                            disabled={permissionSubmitting}
+                            className="px-5 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm disabled:opacity-60"
+                          >
+                            {permissionSubmitting ? 'Mengirim...' : 'Kirim Pengajuan'}
+                          </button>
+                        </div>
+                      </form>
                     </div>
 
                     <div className="mt-8 bg-amber-50 border-2 border-amber-100 rounded-2xl p-5 flex items-start gap-4">

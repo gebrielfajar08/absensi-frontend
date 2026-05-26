@@ -100,6 +100,11 @@ const apiTryEndpoints = async (method, endpoints, ...args) => {
   throw lastError;
 };
 
+const getLocalTimestamp = (date) => {
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 const DashboardGuru = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -210,6 +215,7 @@ const DashboardGuru = () => {
     start_time: '07:00',
     end_time: '08:00'
   });
+  const [permissionNote, setPermissionNote] = useState('');
 
   // ← Cek auth & role
   useEffect(() => {
@@ -348,12 +354,6 @@ const DashboardGuru = () => {
   // ← Fetch data dari backend
   useEffect(() => {
     if (user) fetchDashboardData();
-    const syncInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchDashboardData(true);
-      }
-    }, 30000);
-    return () => clearInterval(syncInterval);
   }, [user]);
 
   // ➕ TAMBAHAN: Auto fetch jadwal saat tab aktif
@@ -433,10 +433,10 @@ const DashboardGuru = () => {
       };
     }
     if (status === 'izin') {
-      return { icon: '📋', text: 'Status izin tersimpan.', type: 'info' };
+      return { icon: '📋', text: 'Pengajuan izin dikirim dan menunggu persetujuan admin.', type: 'info' };
     }
     if (status === 'sakit') {
-      return { icon: '🏥', text: 'Status sakit tersimpan.', type: 'info' };
+      return { icon: '🏥', text: 'Pengajuan sakit dikirim dan menunggu persetujuan admin.', type: 'info' };
     }
     return {
       icon: '✅',
@@ -664,6 +664,36 @@ const DashboardGuru = () => {
         return;
       }
 
+      const student = students.find((s) => s.id === studentId || s.student_id === studentId);
+
+      if (status === 'izin' || status === 'sakit') {
+        const config = { headers: getAuthHeaders() };
+        const payload = {
+          student_id: studentId,
+          status,
+          date: selectedDate,
+          approval_status: 'pending',
+          is_pending: true,
+          pending: true,
+          reason: permissionNote.trim() || `Pengajuan ${status === 'sakit' ? 'sakit' : 'izin'} dari dashboard guru`,
+          notes: permissionNote.trim() || `Pengajuan ${status === 'sakit' ? 'sakit' : 'izin'} dari dashboard guru`,
+          keterangan: permissionNote.trim() || `Pengajuan ${status === 'sakit' ? 'sakit' : 'izin'} dari dashboard guru`,
+          attendance_time: getLocalTimestamp(new Date()),
+          role: 'guru',
+          user_id: user?.user_id || user?.nip || user?.id || '',
+          nip: user?.user_id || user?.nip || user?.id || '',
+          teacher_id: user?.user_id || user?.nip || user?.id || '',
+          full_name: user?.name || user?.full_name || '',
+          name: user?.name || user?.full_name || ''
+        };
+
+        await fetchWithRetry(() => api.post('/attendance/izin', payload, config));
+        addNotification(getAttendanceMessage(status).text, getAttendanceMessage(status).type, getAttendanceMessage(status).icon);
+        fetchDashboardData();
+        localStorage.setItem('attendance_updated', Date.now().toString());
+        return;
+      }
+
       const config = { headers: getAuthHeaders() };
       const res = await fetchWithRetry(() => apiTryEndpoints('post', ['/guru/attendance', '/attendance'], {
         student_id: studentId,
@@ -671,7 +701,6 @@ const DashboardGuru = () => {
         date: selectedDate
       }, config));
 
-      const student = students.find((s) => s.id === studentId || s.student_id === studentId);
       const wasCreated = res?.data?.was_recently_created;
 
       const messageInfo = getAttendanceMessage(status, wasCreated === false);
@@ -762,10 +791,10 @@ const DashboardGuru = () => {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+      <div className="theme-loader-screen min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-600 font-medium">Memuat dashboard...</p>
+          <div className="theme-loader-spinner w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="theme-loader-text font-medium">Memuat dashboard...</p>
           {connectionStatus === 'disconnected' && (
             <p className="text-xs text-amber-600 mt-2">⚠️ Cek koneksi backend</p>
           )}
@@ -946,10 +975,10 @@ const DashboardGuru = () => {
           </header>
 
           {isSynchronizingData && (
-            <div className="fixed inset-x-0 top-[70px] bottom-0 z-40 flex items-center justify-center bg-white border-t border-blue-100">
-              <div className="rounded-3xl border-2 border-blue-200 bg-white px-8 py-8 shadow-2xl text-center max-w-sm">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-                <p className="text-base font-bold text-blue-800">Memuat</p>
+            <div className="theme-loader-overlay fixed top-[70px] inset-x-0 bottom-0 z-30 flex items-center justify-center backdrop-blur-sm">
+              <div className="text-center">
+                <div className="theme-loader-spinner animate-spin rounded-full h-12 w-12 border-4 mx-auto mb-4"></div>
+                <p className="theme-loader-text text-base font-bold">Memuat</p>
               </div>
             </div>
           )}

@@ -2,9 +2,179 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 /* sembunyikan cursor asli */
 body {
   cursor: none;
+  background-color: #f8fafc;
+  color: #0f172a;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+html[data-theme='dark'] body {
+  background-color: #020617;
+  color: #f8fafc;
+}
+
+html[data-theme='dark'] .cursor-text span {
+  color: #e2e8f0;
+}
+
+html[data-theme='dark'] .bg-white {
+  background-color: #0b1120 !important;
+}
+
+html[data-theme='dark'] .bg-gray-50 {
+  background-color: #111827 !important;
+}
+
+html[data-theme='dark'] .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+
+html[data-theme='dark'] .bg-blue-50 {
+  background-color: #0b1120 !important;
+}
+
+html[data-theme='dark'] .border-gray-200 {
+  border-color: rgba(71, 85, 105, 0.8) !important;
+}
+
+html[data-theme='dark'] .border-slate-100 {
+  border-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+html[data-theme='dark'] .border-blue-100 {
+  border-color: rgba(30, 64, 175, 0.6) !important;
+}
+
+html[data-theme='dark'] .border-gray-100 {
+  border-color: rgba(51, 65, 85, 0.8) !important;
+}
+
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='dark'] .text-gray-900,
+html[data-theme='dark'] .text-slate-800,
+html[data-theme='dark'] .text-gray-800,
+html[data-theme='dark'] .text-slate-700,
+html[data-theme='dark'] .text-gray-700,
+html[data-theme='dark'] .text-blue-900 {
+  color: #f8fafc !important;
+}
+
+html[data-theme='dark'] .text-slate-600,
+html[data-theme='dark'] .text-gray-600,
+html[data-theme='dark'] .text-slate-500,
+html[data-theme='dark'] .text-gray-500,
+html[data-theme='dark'] .text-slate-400,
+html[data-theme='dark'] .text-gray-400,
+html[data-theme='dark'] .text-gray-300 {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme='dark'] .text-blue-800,
+html[data-theme='dark'] .text-blue-700 {
+  color: #93c5fd !important;
+}
+
+html[data-theme='dark'] .text-blue-600 {
+  color: #60a5fa !important;
+}
+
+html[data-theme='dark'] .text-blue-500 {
+  color: #93c5fd !important;
+}
+
+html[data-theme='dark'] .bg-slate-900 {
+  background-color: #0f172a !important;
+}
+
+html[data-theme='dark'] .bg-slate-950 {
+  background-color: #020617 !important;
+}
+
+html[data-theme='dark'] .bg-gradient-to-br.from-blue-50.to-blue-100 {
+  background-image: linear-gradient(to bottom right, #0f172a, #111827) !important;
+}
+
+html[data-theme='dark'] .shadow-sm {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.45) !important;
+}
+
+html[data-theme='dark'] .shadow-lg {
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.6) !important;
+}
+
+.theme-toggle-btn {
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  font-size: 1.2rem;
+}
+
+html[data-theme='dark'] .theme-toggle-btn {
+  background: rgba(15, 23, 42, 0.95);
+  color: #f8fafc;
+  border-color: rgba(71, 85, 105, 0.85);
+}
+
+.theme-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.theme-toggle-btn:hover .theme-toggle-icon {
+  transform: scale(1.08);
+}
+
+.theme-loader-screen {
+  background: linear-gradient(180deg, #f8fafc 0%, #eff6ff 100%);
+}
+
+html[data-theme='dark'] .theme-loader-screen {
+  background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+}
+
+.theme-loader-overlay {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+}
+
+html[data-theme='dark'] .theme-loader-overlay {
+  background: rgba(2, 6, 23, 0.95);
+}
+
+.theme-loader-spinner {
+  border-color: #3b82f6;
+  border-top-color: transparent;
+}
+
+html[data-theme='dark'] .theme-loader-spinner {
+  border-color: #60a5fa;
+  border-top-color: transparent;
+}
+
+.theme-loader-text {
+  color: #1d4ed8;
+}
+
+html[data-theme='dark'] .theme-loader-text {
+  color: #dbeafe;
 }
 
 /* animasi muter */
@@ -20,7 +190,7 @@ body {
   transform-origin: 0 60px;
   font-size: 10px;
   font-weight: 600;
-  color: #3b2f2f; /* coklat biar cocok logo */
+  color: #3b2f2f;
 }
 
 /* keyframes */
