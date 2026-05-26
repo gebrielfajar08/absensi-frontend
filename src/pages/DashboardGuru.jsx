@@ -50,6 +50,56 @@ const getDaysRemaining = (dateString) => {
   return Math.round(diffTime / (1000 * 60 * 60 * 24));
 };
 
+const normalizeArrayResponse = (value) => {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return [];
+
+  const candidates = [
+    value.data,
+    value.items,
+    value.results,
+    value.students,
+    value.classes,
+    value.schedules,
+    value.attendances,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+};
+
+const normalizeStatsResponse = (value = {}) => ({
+  totalClasses: Number(value.totalClasses ?? value.total_classes ?? value.totalClassesCount ?? value.classes_count ?? value.classes ?? value.class_count ?? 0) || 0,
+  totalStudents: Number(value.totalStudents ?? value.total_students ?? value.totalStudentsCount ?? value.students_count ?? value.students ?? value.student_count ?? 0) || 0,
+  todayAttendance: Number(value.todayAttendance ?? value.today_attendance ?? value.attendance_today ?? value.attendance_percentage ?? value.todayAttendanceRate ?? 0) || 0,
+});
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const apiTryEndpoints = async (method, endpoints, ...args) => {
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      return await api[method](endpoint, ...args);
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+      if (!status || [401, 403, 422].includes(status)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError;
+};
+
 const DashboardGuru = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -151,6 +201,7 @@ const DashboardGuru = () => {
   const [pendingAttendance, setPendingAttendance] = useState(0);
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const isSynchronizingData = dataLoading || scheduleLoading;
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [scheduleFormData, setScheduleFormData] = useState({
@@ -396,70 +447,51 @@ const DashboardGuru = () => {
 
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setDataLoading(true);
-    if (connectionStatus === 'disconnected' && !silent) {
-      console.warn('⚠️ Koneksi ke backend terputus.');
-      setDataLoading(false);
-      return;
-    }
+
     try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      
-      // Menggunakan allSettled agar jika satu endpoint 500, yang lain tetap jalan
+      const config = { headers: getAuthHeaders() };
       const results = await Promise.allSettled([
-        fetchWithRetry(() => api.get('/guru/stats', config)),
-        fetchWithRetry(() => api.get('/guru/classes', config)),
-        fetchWithRetry(() => api.get('/guru/activity', config)),
-        api.get('/public/events', config).catch(() => ({ data: [] }))
+        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/stats', '/admin/stats', '/stats'], config)),
+        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/classes', '/classes', '/admin/classes'], config)),
+        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/activity', '/activity', '/admin/activity'], config)),
+        apiTryEndpoints('get', ['/public/events', '/events', '/admin/events'], config).catch(() => ({ data: [] }))
       ]);
 
-      // Ambil data hanya jika request berhasil (fulfilled)
-      if (results[0].status === 'fulfilled' && results[0].value?.data) {
-        setStats(results[0].value.data);
-        localStorage.setItem('guru_stats', JSON.stringify(results[0].value.data));
-      }
-      
-      if (results[2].status === 'fulfilled' && results[2].value?.data) {
-        setRecentActivity(results[2].value.data);
-        localStorage.setItem('guru_activity', JSON.stringify(results[2].value.data));
+      const normalizedStats = normalizeStatsResponse(results[0].status === 'fulfilled' ? results[0].value?.data : {});
+      const normalizedClasses = normalizeArrayResponse(results[1].status === 'fulfilled' ? results[1].value?.data : []);
+      const normalizedActivity = normalizeArrayResponse(results[2].status === 'fulfilled' ? results[2].value?.data : []);
+      const normalizedEvents = normalizeArrayResponse(results[3].status === 'fulfilled' ? results[3].value?.data : []);
+
+      setStats(normalizedStats);
+      setClasses(normalizedClasses);
+      setRecentActivity(normalizedActivity);
+      setEvents(normalizedEvents);
+
+      localStorage.setItem('guru_stats', JSON.stringify(normalizedStats));
+      localStorage.setItem('guru_classes', JSON.stringify(normalizedClasses));
+      localStorage.setItem('guru_activity', JSON.stringify(normalizedActivity));
+
+      if (normalizedClasses.length > 0 && !selectedClass) {
+        const userClassId = [user?.class_id, user?.classroom_id, user?.kelas_id, user?.class?.id]
+          .find((value) => value !== undefined && value !== null && value !== '')
+          ?.toString();
+
+        const matchedClass = normalizedClasses.find((cls) => cls.id?.toString() === userClassId);
+        setSelectedClass(matchedClass ? matchedClass.id : normalizedClasses[0]?.id || '');
       }
 
-      if (results[3].status === 'fulfilled') {
-        const eventsData = results[3].value?.data;
-        setEvents(Array.isArray(eventsData) ? eventsData : (eventsData?.data || []));
-      }
-
-      let classList = [];
-      if (results[1].status === 'fulfilled') {
-        const classesData = results[1].value?.data;
-        classList = Array.isArray(classesData) ? classesData : (classesData?.data || []);
-        setClasses(classList);
-        localStorage.setItem('guru_classes', JSON.stringify(classList));
-      }
-
-      if (classList.length > 0 && !selectedClass) {
-        try {
-          const waliClass = classList.find(c => 
-            c.id?.toString() === user?.class_id?.toString() || 
-            c.id?.toString() === user?.kelas_id?.toString()
-          );
-          setSelectedClass(waliClass ? waliClass.id : classList[0].id);
-        } catch (e) {
-          setSelectedClass(classList[0]?.id || '');
-        }
-      }
-      
-      // 🚨 Cek jika ada error 500 untuk membantu debugging
-      const hasServerError = results.some(r => r.status === 'rejected' && r.reason?.response?.status === 500);
+      const hasServerError = results.some((result) => result.status === 'rejected' && result.reason?.response?.status === 500);
       if (hasServerError && !silent) {
         addNotification('❌ Server Error (500): Gagal mengambil data stats/kelas. Cek log Laravel.', 'error');
       }
 
       setLastSync(new Date());
-      if (connectionStatus !== 'connected') setConnectionStatus('connected');
-      
+      setConnectionStatus(results.some((result) => result.status === 'fulfilled') ? 'connected' : 'disconnected');
+
       const today = new Date().toISOString().split('T')[0];
-      setPendingAttendance(classList.filter(c => !c.attendance_submitted || c.attendance_date !== today).length);
+      setPendingAttendance(
+        normalizedClasses.filter((cls) => !cls.attendance_submitted || cls.attendance_date !== today).length
+      );
 
     } catch (err) {
       console.error('Gagal mengambil data:', err);
@@ -494,11 +526,13 @@ const DashboardGuru = () => {
 
   const fetchStudents = async (classroomId = null) => {
     try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const url = classroomId ? `/guru/students?classroom_id=${classroomId}` : '/guru/students';
-      const res = await fetchWithRetry(() => api.get(url, config));
-      setStudents(res.data);
+      const config = { headers: getAuthHeaders() };
+      const endpoints = classroomId
+        ? [`/guru/students?classroom_id=${classroomId}`, `/students?classroom_id=${classroomId}`, `/admin/students?classroom_id=${classroomId}`]
+        : ['/guru/students', '/students', '/admin/students'];
+
+      const res = await fetchWithRetry(() => apiTryEndpoints('get', endpoints, config));
+      setStudents(normalizeArrayResponse(res.data));
       if (classroomId) setSelectedClass(classroomId);
     } catch (err) {
       setStudents([]);
@@ -514,11 +548,13 @@ const DashboardGuru = () => {
     if (!classId) return;
     setScheduleLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await api.get(`/guru/schedules?class_id=${classId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSchedules(res.data || []);
+      const config = { headers: getAuthHeaders() };
+      const res = await fetchWithRetry(() => apiTryEndpoints(
+        'get',
+        [`/guru/schedules?class_id=${classId}`, `/schedules?class_id=${classId}`, `/admin/schedules?class_id=${classId}`],
+        config
+      ));
+      setSchedules(normalizeArrayResponse(res.data));
     } catch (err) {
       console.error('Gagal memuat jadwal:', err);
       setSchedules([]);
@@ -531,24 +567,22 @@ const DashboardGuru = () => {
     e.preventDefault();
     if (!selectedClass) return;
     try {
-      const token = localStorage.getItem('token');
-      
+      const config = { headers: getAuthHeaders() };
+
       if (editId) {
-        // Mode EDIT
-        await api.put(`/guru/schedules/${editId}`, {
+        await apiTryEndpoints('put', [`/guru/schedules/${editId}`, `/schedules/${editId}`], {
           ...scheduleFormData,
           class_id: selectedClass
-        }, { headers: { Authorization: `Bearer ${token}` } });
+        }, config);
         addNotification('✅ Jadwal berhasil diperbarui', 'success');
       } else {
-        // Mode TAMBAH
-        await api.post('/guru/schedules', {
+        await apiTryEndpoints('post', ['/guru/schedules', '/schedules'], {
           ...scheduleFormData,
           class_id: selectedClass
-        }, { headers: { Authorization: `Bearer ${token}` } });
+        }, config);
         addNotification('✅ Jadwal berhasil disimpan', 'success');
       }
-      
+
       setShowScheduleForm(false);
       resetScheduleForm();
       fetchSchedules(selectedClass);
@@ -568,10 +602,8 @@ const DashboardGuru = () => {
       message: 'Hapus jadwal ini?',
       onConfirm: async () => {
         try {
-          const token = localStorage.getItem('token');
-          await api.delete(`/guru/schedules/${id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const config = { headers: getAuthHeaders() };
+          await apiTryEndpoints('delete', [`/guru/schedules/${id}`, `/schedules/${id}`], config);
           addNotification('Jadwal berhasil dihapus', 'success', '🗑️');
           fetchSchedules(selectedClass);
         } catch (err) {
@@ -632,17 +664,16 @@ const DashboardGuru = () => {
         return;
       }
 
-      const token = localStorage.getItem('token');
-      const res = await fetchWithRetry(() => api.post('/guru/attendance', {
+      const config = { headers: getAuthHeaders() };
+      const res = await fetchWithRetry(() => apiTryEndpoints('post', ['/guru/attendance', '/attendance'], {
         student_id: studentId,
-        status: status,
+        status,
         date: selectedDate
-      }, { headers: { Authorization: `Bearer ${token}` } }));
-      
+      }, config));
+
       const student = students.find((s) => s.id === studentId || s.student_id === studentId);
       const wasCreated = res?.data?.was_recently_created;
 
-      // notifikasi dengan teks dan icon sesuai status
       const messageInfo = getAttendanceMessage(status, wasCreated === false);
       addNotification(messageInfo.text, messageInfo.type, messageInfo.icon);
 
@@ -668,11 +699,11 @@ const DashboardGuru = () => {
         return;
       }
 
-      const token = localStorage.getItem('token');
-      await api.post('/guru/attendance/bulk', {
-        attendances: attendances,
+      const config = { headers: getAuthHeaders() };
+      await apiTryEndpoints('post', ['/guru/attendance/bulk', '/attendance/bulk'], {
+        attendances,
         date: selectedDate
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      }, config);
       addNotification('✅ Semua absensi berhasil disimpan', 'success');
       fetchDashboardData();
       localStorage.setItem('attendance_updated', Date.now().toString());
@@ -684,11 +715,11 @@ const DashboardGuru = () => {
 
   const handleExportReport = async (type) => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetchWithRetry(() => api.get(`/guru/reports/${type}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const config = {
+        headers: getAuthHeaders(),
         responseType: 'blob'
-      }));
+      };
+      const res = await fetchWithRetry(() => apiTryEndpoints('get', [`/guru/reports/${type}`, `/reports/${type}`], config));
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -744,7 +775,7 @@ const DashboardGuru = () => {
   }
 
   return (
-    <div className={`h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100 transition-opacity duration-500 flex flex-col overflow-hidden ${isExiting ? 'opacity-0' : 'opacity-100'}`}>
+    <div className={`h-screen bg-white transition-opacity duration-500 flex flex-col overflow-hidden ${isExiting ? 'opacity-0' : 'opacity-100'}`}>
       <div className="flex flex-1 overflow-hidden">
         {/* ✨ Mobile Sidebar Overlay */}
         {sidebarOpen && (
@@ -913,6 +944,15 @@ const DashboardGuru = () => {
               </div>
             </div>
           </header>
+
+          {isSynchronizingData && (
+            <div className="fixed inset-x-0 top-[70px] bottom-0 z-40 flex items-center justify-center bg-white border-t border-blue-100">
+              <div className="rounded-3xl border-2 border-blue-200 bg-white px-8 py-8 shadow-2xl text-center max-w-sm">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                <p className="text-base font-bold text-blue-800">Memuat</p>
+              </div>
+            </div>
+          )}
 
       {/* ➕ TAMBAHAN: Banner notifikasi jika offline */}
       {connectionStatus === 'disconnected' && (

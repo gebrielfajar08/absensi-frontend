@@ -116,6 +116,9 @@ const DashboardSiswa = () => {
   const [teacherInfo, setTeacherInfo] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [myQRCode, setMyQRCode] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const isSynchronizingData = loading || scheduleLoading || qrLoading;
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     schoolName: 'SMPK DON BOSCO',
@@ -143,10 +146,6 @@ const DashboardSiswa = () => {
       setNotifications(prev => prev.filter(n => n.id !== id));
     }, 4000);
   };
-
-  // State untuk QR Code
-  const [myQRCode, setMyQRCode] = useState(null);
-  const [qrLoading, setQrLoading] = useState(false);
 
   // ✨ TAMBAHAN: State Event
   const [events, setEvents] = useState([]);
@@ -596,7 +595,7 @@ const DashboardSiswa = () => {
   }
 
   return (
-    <div className={`h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100 transition-opacity duration-500 flex flex-col overflow-hidden ${isExiting ? 'opacity-0' : 'opacity-100'}`}>
+    <div className={`h-screen bg-white transition-opacity duration-500 flex flex-col overflow-hidden ${isExiting ? 'opacity-0' : 'opacity-100'}`}>
       <div className="flex flex-1 overflow-hidden">
         {/* ✨ Mobile Sidebar Overlay */}
         {sidebarOpen && (
@@ -775,6 +774,15 @@ const DashboardSiswa = () => {
             </div>
           </header>
 
+          {isSynchronizingData && (
+            <div className="fixed inset-x-0 top-[70px] bottom-0 z-40 flex items-center justify-center bg-white border-t border-blue-100">
+              <div className="rounded-3xl border-2 border-blue-200 bg-white px-8 py-8 shadow-2xl text-center max-w-sm">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                <p className="text-base font-bold text-blue-800">Memuat</p>
+              </div>
+            </div>
+          )}
+
           {/* Page Content Area - Scrollable */}
           <div className="flex-1 overflow-y-auto p-4 lg:p-8">
             <div className="max-w-7xl mx-auto w-full">
@@ -876,35 +884,6 @@ const DashboardSiswa = () => {
                           <div className="h-full flex flex-col items-center justify-center text-slate-400">
                             <span className="text-2xl mb-1 opacity-20">📅</span>
                             <p className="text-[10px] font-bold uppercase">Belum ada agenda</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Seksi Media (Sama dengan Admin) */}
-                  <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mt-2 mb-6">
-                    <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
-                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
-                      <div className="overflow-hidden relative w-full aspect-video rounded-xl border-2 border-blue-100 bg-slate-900/50 shadow-inner">
-                        <div key={activePhotoIndex} className="animate-fade-in w-full h-full">
-                          {attendanceSettings[`dashboardPhoto${activePhotoIndex}`] ? (
-                            <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${activePhotoIndex}`])} alt={`Sekolah ${activePhotoIndex}`} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                              <span className="text-lg sm:text-xl">📸</span>
-                              <p className="text-[10px] mt-1 font-medium">Foto {activePhotoIndex}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
-                        {attendanceSettings.dashboardVideo ? (
-                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full object-contain" />
-                        ) : (
-                          <div className="h-full min-h-[100px] sm:min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                            <span className="text-lg sm:text-2xl">🎥</span>
-                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
                           </div>
                         )}
                       </div>
@@ -1033,6 +1012,35 @@ const DashboardSiswa = () => {
                           </div>
                         ))
                       )}
+                    </div>
+                  </div>
+
+                  {/* Seksi Media (Sama dengan Admin) */}
+                  <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mt-2">
+                    <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm"><span>🖼️</span> Media & Kegiatan Sekolah</h3>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
+                      <div className="overflow-hidden relative w-full aspect-video rounded-xl border-2 border-blue-100 bg-slate-900/50 shadow-inner">
+                        <div key={activePhotoIndex} className="animate-fade-in w-full h-full">
+                          {attendanceSettings[`dashboardPhoto${activePhotoIndex}`] ? (
+                            <img src={resolvePhotoUrl(attendanceSettings[`dashboardPhoto${activePhotoIndex}`])} alt={`Sekolah ${activePhotoIndex}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                              <span className="text-lg sm:text-xl">📸</span>
+                              <p className="text-[10px] mt-1 font-medium">Foto {activePhotoIndex}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border-2 border-blue-50 bg-black shadow-inner aspect-video">
+                        {attendanceSettings.dashboardVideo ? (
+                          <video src={resolvePhotoUrl(attendanceSettings.dashboardVideo)} controls className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="h-full min-h-[100px] sm:min-h-[160px] bg-slate-900 flex flex-col items-center justify-center text-slate-500">
+                            <span className="text-lg sm:text-2xl">🎥</span>
+                            <p className="text-[10px] mt-1">Belum ada video terbaru</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -257,19 +257,9 @@ const DashboardAdmin = () => {
   const [classes, setClasses] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [attendanceReports, setAttendanceReports] = useState([]);
-  const [currentActivityPage, setCurrentActivityPage] = useState(1);
-  const [currentRekapPage, setCurrentRekapPage] = useState(1);
-  const [rekapPageSize] = useState(10);
   const [dataLoading, setDataLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [error, setError] = useState('');
-  const activityPageSize = 10;
-
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(attendanceReports.length / activityPageSize));
-    if (currentActivityPage > totalPages) {
-      setCurrentActivityPage(totalPages);
-    }
-  }, [attendanceReports, currentActivityPage, activityPageSize]);
 
   const addNotification = (message, type = 'info') => {
     const id = Date.now();
@@ -444,6 +434,7 @@ const DashboardAdmin = () => {
   // Fetch Data Guru
 const fetchDataGuru = async () => {
   try {
+    setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
     const res = await api.get('/admin/users?role=guru', {
       headers: { Authorization: `Bearer ${token}` }
@@ -453,12 +444,15 @@ const fetchDataGuru = async () => {
   } catch (err) {
     console.error('Gagal mengambil data guru:', err);
     setGuruData([]);
+  } finally {
+    setFeatureDataLoading(false);
   }
 };
 
 // Fetch Data Siswa
 const fetchDataSiswa = async () => {
   try {
+    setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
     const res = await api.get('/admin/users?role=siswa', {
       headers: { Authorization: `Bearer ${token}` }
@@ -468,11 +462,14 @@ const fetchDataSiswa = async () => {
   } catch (err) {
     console.error('Gagal mengambil data siswa:', err);
     setSiswaData([]);
+  } finally {
+    setFeatureDataLoading(false);
   }
 };
 
 const fetchClasses = async () => {
   try {
+    setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
     const config = { headers: { Authorization: `Bearer ${token}` } };
     const res = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
@@ -480,6 +477,8 @@ const fetchClasses = async () => {
   } catch (err) {
     console.error('Gagal mengambil data kelas:', err);
     setClasses([]);
+  } finally {
+    setFeatureDataLoading(false);
   }
 };
 
@@ -536,13 +535,7 @@ const fetchClasses = async () => {
       setFeatureDataLoading(true);
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      let res;
-      try {
-        res = await api.get('/admin/attendances', config);
-      } catch (err) {
-        res = await api.get('/admin/activity', config);
-      }
-      const rawData = Array.isArray(res.data) ? res.data : (res.data.data || []);
+      const rawData = await fetchAttendanceRecords(config);
       const normalized = rawData.map(act => normalizeAttendanceRecord(act));
       setAttendanceReports(normalized);
       setRecentActivity(normalized);
@@ -580,6 +573,7 @@ const fetchClasses = async () => {
 
 
 const fetchSettings = async () => {
+  setSettingsLoading(true);
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
@@ -601,6 +595,8 @@ const fetchSettings = async () => {
     const message = err.response?.data?.message || err.message;
     console.error(`❌ Gagal mengambil pengaturan: [${status}] ${message}`);
     loadSettings();
+  } finally {
+    setSettingsLoading(false);
   }
 };
 
@@ -758,7 +754,7 @@ const fetchSettings = async () => {
         fetchWithRetry(() => apiTryEndpoints('get', ['/admin/stats', '/stats'], config)),
         fetchWithRetry(() => apiTryEndpoints('get', userEndpointCandidates.index, config)),
         fetchWithRetry(() => apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config)),
-        fetchWithRetry(() => api.get('/admin/attendances', config).catch(() => api.get('/admin/activity', config)))
+        fetchWithRetry(() => fetchAttendanceRecords(config))
       ]);
       
       // Process Stats - hitung dari data users jika stats endpoint tidak tersedia
@@ -821,7 +817,7 @@ const fetchSettings = async () => {
 
       // Process Attendance Reports
       if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
-        const rawActivity = extractRecordsFromResponse(attendanceRes.value);
+        const rawActivity = attendanceRes.value;
         const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
         setRecentActivity(normalizedActivity);
         setAttendanceReports(normalizedActivity);
@@ -1475,49 +1471,87 @@ const handleSaveSettings = async (section, e) => {
     }
   };
 
+  const getExportFileName = (role, isPdf) => {
+    const safeRole = role === 'all' ? 'semua' : role;
+    const extension = isPdf ? 'pdf' : 'xlsx';
+    return `rekap_${safeRole}_${new Date().toISOString().split('T')[0]}.${extension}`;
+  };
+
+  const buildExportCandidates = (role, isPdf) => {
+    const format = isPdf ? 'pdf' : 'xlsx';
+    const type = role === 'all'
+      ? (isPdf ? 'attendance_pdf' : 'attendance')
+      : `${role}_${isPdf ? 'pdf' : 'excel'}`;
+
+    return [
+      `/admin/export/${type}`,
+      `/admin/export?type=${encodeURIComponent(type)}`,
+      `/admin/export?role=${encodeURIComponent(role)}&format=${encodeURIComponent(format)}`
+    ];
+  };
+
+  const triggerDownload = (blob, fileName, contentType) => {
+    const url = window.URL.createObjectURL(new Blob([blob], { type: contentType }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+      window.URL.revokeObjectURL(url);
+    }, 100);
+  };
+
   // ✨ TAMBAHAN: Handle Export Data
   const handleExportData = async (format) => {
     try {
-      const role = rekapRoleFilter; // 'all', 'siswa', atau 'guru'
+      const role = rekapRoleFilter;
       const isPdf = format === 'pdf';
       addNotification(`Sedang menyiapkan file ${isPdf ? 'PDF' : 'Excel'} untuk ${role === 'all' ? 'Semua' : role}...`, 'info');
-      
+
       const token = localStorage.getItem('token');
-      
-      // Konstruksi tipe: 'attendance_pdf', 'siswa_excel', dll.
-      const type = role === 'all' 
-        ? (isPdf ? 'attendance_pdf' : 'attendance') 
-        : `${role}_${isPdf ? 'pdf' : 'excel'}`;
+      const headers = { Authorization: `Bearer ${token}` };
+      const fileName = getExportFileName(role, isPdf);
+      const contentType = isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-      // Gunakan fetchWithRetry untuk menangani timeout pada proses export yang berat
-      const response = await fetchWithRetry(() => api.get(`/admin/export/${type}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob',
-        timeout: 180000 // 3 Menit untuk ekspor data banyak
-      }));
+      let lastError;
 
-      const blobType = isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: blobType }));
-      const link = document.createElement('a');
-      link.href = url;
-      
-      const extension = isPdf ? 'pdf' : 'xlsx';
-      const fileName = `rekap_${role}_${new Date().toISOString().split('T')[0]}.${extension}`;
-      
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      
-      // Cleanup DOM dan Memory
-      setTimeout(() => {
-        if (document.body.contains(link)) document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }, 100);
+      for (const endpoint of buildExportCandidates(role, isPdf)) {
+        try {
+          const response = await fetchWithRetry(() => api.get(endpoint, {
+            headers,
+            responseType: 'blob',
+            timeout: 180000
+          }));
 
-      addNotification('Data berhasil diekspor!', 'success');
+          const blob = response.data instanceof Blob
+            ? response.data
+            : new Blob([response.data], { type: response.headers?.['content-type'] || contentType });
+
+          if ((blob.type || '').includes('application/json') || (blob.type || '').includes('text/html')) {
+            const text = await blob.text();
+            throw new Error(text || 'Server mengembalikan respons non-file.');
+          }
+
+          triggerDownload(blob, fileName, blob.type || contentType);
+          addNotification('Data berhasil diekspor!', 'success');
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw lastError || new Error('Tidak ada endpoint export yang berhasil dipanggil.');
     } catch (err) {
       console.error('Export error:', err);
-      addNotification('Gagal mengekspor data. Periksa koneksi server atau apakah backend sudah mendukung fitur ini.', 'error');
+      const message = err?.response?.data?.message || err?.message || 'Periksa koneksi server atau backend belum mendukung fitur export.';
+      addNotification(`Gagal mengekspor data: ${message}`, 'error');
     }
   };
 
@@ -1626,6 +1660,69 @@ const handleSaveSettings = async (section, e) => {
       role: roleValue || '',
       action: act.action || act.description || 'Absensi'
     };
+  };
+
+  const fetchAttendanceRecords = async (config = {}) => {
+    const endpoints = [
+      { url: '/admin/attendances', params: { page: 1, per_page: 1000 } },
+      { url: '/admin/activity', params: { page: 1, per_page: 1000 } }
+    ];
+
+    const extractArray = (response) => {
+      if (!response) return [];
+      const payload = response.data;
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.data)) return payload.data;
+      if (Array.isArray(payload?.results)) return payload.results;
+      if (payload && typeof payload === 'object') return Object.values(payload);
+      return [];
+    };
+
+    for (const endpoint of endpoints) {
+      let allRecords = [];
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        try {
+          const response = await api.get(endpoint.url, {
+            ...config,
+            params: {
+              ...(config.params || {}),
+              page,
+              per_page: 1000,
+              ...endpoint.params
+            }
+          });
+
+          const records = extractArray(response);
+          allRecords = allRecords.concat(records);
+
+          const payload = response.data;
+          const currentPage = Number(payload?.current_page ?? page);
+          const lastPage = Number(payload?.last_page ?? payload?.meta?.last_page ?? currentPage);
+
+          if (!Array.isArray(payload?.data) && !Array.isArray(payload?.results) && !Array.isArray(payload)) {
+            hasMore = false;
+          } else if (currentPage >= lastPage || !payload?.next_page_url) {
+            hasMore = false;
+          } else {
+            page += 1;
+          }
+        } catch (error) {
+          if (endpoint.url === '/admin/activity') {
+            throw error;
+          }
+          break;
+        }
+      }
+
+      if (allRecords.length > 0) {
+        return allRecords;
+      }
+    }
+
+    return [];
   };
 
   // ✨ TAMBAHAN: Filter data berdasarkan search
@@ -1915,6 +2012,33 @@ const handleSaveSettings = async (section, e) => {
     });
   };
 
+  // ✨ TAMBAHAN: Fungsi untuk mendapatkan tren mingguan (Senin - Minggu)
+  const getWeeklyTrendData = () => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Penyesuaian ke hari Senin
+    const monday = new Date(today);
+    monday.setDate(diff);
+    monday.setHours(0, 0, 0, 0);
+
+    const dayNames = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    return dayNames.map((name, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dKey = getJakartaDateKey(d);
+      const dayRecs = attendanceReports.filter(item => normalizeDateKey(item.date || item.created_at || item.attendance_time) === dKey);
+      return {
+        day: name,
+        total: dayRecs.length,
+        hadir: dayRecs.filter(item => ['hadir', 'tepat_waktu', 'present', 'on_time'].includes((item.status || '').toLowerCase())).length,
+        terlambat: dayRecs.filter(item => item.is_late === true || ['terlambat', 'late', 'tardy'].includes((item.status || '').toLowerCase())).length,
+        izin: dayRecs.filter(item => ['izin', 'permisi'].includes((item.status || '').toLowerCase())).length,
+        sakit: dayRecs.filter(item => ['sakit', 'sick'].includes((item.status || '').toLowerCase())).length,
+        absen: dayRecs.filter(item => ['absen', 'absent', 'tidak hadir', 'missing', 'alpha'].includes((item.status || '').toLowerCase())).length
+      };
+    });
+  };
+
   const getMonthlyAttendanceTrend = () => {
     const now = new Date();
     const monthsRef = [];
@@ -1956,10 +2080,11 @@ const handleSaveSettings = async (section, e) => {
   };
 
   const { total, hadir, terlambat, izin, sakit, absen, hadirPercent } = getAttendanceStats();
+  const isSynchronizingData = dataLoading || featureDataLoading || settingsLoading;
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-14 w-14 border-4 border-blue-500 border-t-transparent mx-auto mb-5 shadow-lg"></div>
           <p className="text-blue-600 font-medium">Memuat dashboard...</p>
@@ -1969,7 +2094,7 @@ const handleSaveSettings = async (section, e) => {
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100 transition-all duration-500 ${isExiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+    <div className={`min-h-screen bg-white transition-all duration-500 ${isExiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
       <div className="flex h-screen overflow-hidden">
         {/* ✨ Overlay untuk mobile agar navbar tidak menutupi konten */}
         {sidebarOpen && (
@@ -2162,6 +2287,15 @@ const handleSaveSettings = async (section, e) => {
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 lg:p-8">
             <div className="max-w-7xl mx-auto w-full">
+              {isSynchronizingData && (
+                <div className="fixed inset-x-0 top-[70px] bottom-0 z-40 flex items-center justify-center bg-white border-t border-blue-100">
+                  <div className="rounded-3xl border-2 border-blue-200 bg-white px-8 py-8 shadow-2xl text-center max-w-sm">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                    <p className="text-base font-bold text-blue-800">Memuat</p>
+                  </div>
+                </div>
+              )}
+
               {/* ✨ MODAL KONFIRMASI CUSTOM */}
               {confirmModal.show && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
@@ -2543,91 +2677,134 @@ const handleSaveSettings = async (section, e) => {
                     ))}
                   </div>
 
-                  {/* Progress Kehadiran */}
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg mx-4 lg:mx-8">
-                    <h3 className="font-semibold text-blue-800 mb-4">Progress Kehadiran Hari Ini</h3>
-                    <div className="flex flex-row items-center gap-4 sm:gap-8">
-                      <div className="relative w-20 h-20 sm:w-28 sm:h-28 group flex-shrink-0">
-                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
-                          <circle cx="18" cy="18" r="15.9155" fill="none" className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000`} stroke="currentColor" strokeWidth="3.5" strokeDasharray={`${hadirPercent}, 100`} strokeLinecap="round" />
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className={`text-sm sm:text-xl font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{hadirPercent}%</span>
-                          <span className="text-[8px] font-bold text-slate-400 uppercase">Hadir</span>
+                  {/* Progress Kehadiran & Weekly Trend */}
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6 mx-4 lg:mx-8">
+                    <div className="bg-white rounded-2xl border-2 border-blue-200 p-4 shadow-lg min-h-[220px] flex flex-col justify-center">
+                      <h3 className="font-semibold text-blue-800 mb-3 text-sm">Progress Kehadiran Hari Ini</h3>
+                      <div className="flex flex-row items-center gap-4 sm:gap-6">
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 group flex-shrink-0">
+                          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                            <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100" stroke="currentColor" strokeWidth="3.5" />
+                            <circle cx="18" cy="18" r="15.9155" fill="none" className={`${hadirPercent >= 80 ? 'text-emerald-500' : hadirPercent >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000`} stroke="currentColor" strokeWidth="3.5" strokeDasharray={`${hadirPercent}, 100`} strokeLinecap="round" />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className={`text-sm sm:text-lg font-black ${hadirPercent >= 80 ? 'text-emerald-600' : hadirPercent >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{hadirPercent}%</span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase">Hadir</span>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex-1 w-full">
-                        <p className="text-sm text-blue-600 mb-2">Kehadiran mencapai <span className="font-bold text-blue-600">{hadirPercent}%</span> hari ini</p>
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Hadir</span><span className="font-medium">{hadir}</span></div>
-                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Terlambat</span><span className="font-medium">{terlambat}</span></div>
-                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-sky-500 rounded-full"></span> Izin / Sakit</span><span className="font-medium">{izin + sakit}</span></div>
-                          <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-rose-500 rounded-full"></span> Absen</span><span className="font-medium">{absen}</span></div>
+                        <div className="flex-1 w-full">
+                          <p className="text-sm text-blue-600 mb-2">Kehadiran mencapai <span className="font-bold text-blue-600">{hadirPercent}%</span> hari ini</p>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Hadir</span><span className="font-medium">{hadir}</span></div>
+                            <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Terlambat</span><span className="font-medium">{terlambat}</span></div>
+                            <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-sky-500 rounded-full"></span> Izin / Sakit</span><span className="font-medium">{izin + sakit}</span></div>
+                            <div className="flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-rose-500 rounded-full"></span> Absen</span><span className="font-medium">{absen}</span></div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-md overflow-hidden mt-4 mx-4 lg:mx-8">
-                    <div className="px-5 py-4 border-b border-blue-100 flex items-center justify-between">
-                      <h3 className="font-bold text-blue-800">Aktivitas Absensi Terbaru</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-blue-50 border-b border-blue-100">
-                          <tr>
-                            <th className="px-4 py-3 text-left">Waktu</th>
-                            <th className="px-4 py-3 text-left">Siswa</th>
-                            <th className="px-4 py-3 text-left">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-blue-50">
-                          {(() => {
-                            const latestReports = [...attendanceReports].reverse();
-                            const pageStart = (currentActivityPage - 1) * activityPageSize;
-                            const paginatedReports = latestReports.slice(pageStart, pageStart + activityPageSize);
-                            return paginatedReports.length > 0 ? paginatedReports.map((item, idx) => {
-                              const dateStr = formatToIndonesiaTime(item.attendance_time || item.created_at || item.time || item.date);
-                              const status = (item.status || '').toString().toLowerCase();
-                              const statusLabel = status === 'terlambat' ? '⏰ Terlambat' : status === 'hadir' ? '✅ Hadir' : '✗ Absen';
-                              const userDisplay = item.user_name || item.name || '-';
-                              return (
-                                <tr key={idx}>
-                                  <td className="px-4 py-3 text-slate-600">{dateStr}</td>
-                                  <td className="px-4 py-3 text-blue-800 font-medium">{userDisplay}</td>
-                                  <td className="px-4 py-3 text-sm font-semibold text-slate-700">{statusLabel}</td>
-                                </tr>
-                              );
-                            }) : (
-                              <tr><td colSpan="3" className="px-4 py-8 text-center text-slate-400">Belum ada data absensi</td></tr>
-                            );
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="px-3 sm:px-5 py-4 border-t border-blue-100 bg-blue-50 flex flex-row items-center justify-between gap-2">
-                      <p className="text-[10px] sm:text-xs text-slate-500">
-                        {currentActivityPage}/{Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))} · {attendanceReports.length} total
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={currentActivityPage <= 1}
-                          onClick={() => setCurrentActivityPage(prev => Math.max(prev - 1, 1))}
-                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage <= 1 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
-                        >
-                          Sebelumnya
-                        </button>
-                        <button
-                          type="button"
-                          disabled={currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))}
-                          onClick={() => setCurrentActivityPage(prev => Math.min(prev + 1, Math.max(1, Math.ceil(attendanceReports.length / activityPageSize))))}
-                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${currentActivityPage >= Math.max(1, Math.ceil(attendanceReports.length / activityPageSize)) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
-                        >
-                          Selanjutnya
-                        </button>
-                      </div>    
+                    <div className="bg-white rounded-2xl border-2 border-blue-100 p-4 shadow-lg min-h-[220px] flex flex-col">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-black text-blue-900 tracking-tight">📈 Tren Kehadiran Mingguan</h3>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Aktivitas Senin - Minggu</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { label: 'Total', color: '#4f46e5' },
+                            { label: 'Hadir', color: '#10b981' },
+                            { label: 'Telat', color: '#f59e0b' },
+                            { label: 'Izin', color: '#0ea5e9' },
+                            { label: 'Sakit', color: '#7c3aed' },
+                            { label: 'Absen', color: '#e11d48' },
+                          ].map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
+                              <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">{item.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-h-0 w-full relative">
+                        {(() => {
+                          const weeklyData = getWeeklyTrendData();
+                          const maxVal = Math.max(...weeklyData.map(d => Math.max(d.total, d.hadir, d.terlambat, d.izin, d.sakit, d.absen, 5)));
+                          const width = 1000;
+                          const height = 180;
+
+                          const generateSmoothPath = (key) => {
+                            const points = weeklyData.map((d, i) => ({
+                              x: (i / (weeklyData.length - 1)) * width,
+                              y: height - (maxVal > 0 ? (d[key] / maxVal) * height : 0)
+                            }));
+                            let path = `M ${points[0].x},${points[0].y}`;
+                            for (let i = 0; i < points.length - 1; i++) {
+                              const p0 = points[i];
+                              const p1 = points[i + 1];
+                              const cp1x = p0.x + (p1.x - p0.x) / 2;
+                              path += ` C ${cp1x},${p0.y} ${cp1x},${p1.y} ${p1.x},${p1.y}`;
+                            }
+                            return path;
+                          };
+
+                          return (
+                            <div className="w-full h-full">
+                              <svg viewBox={`0 -20 ${width} ${height + 40}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                                {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
+                                  <line key={i} x1="0" y1={height * p} x2={width} y2={height * p} stroke="#f1f5f9" strokeWidth="2" strokeDasharray="5,5" />
+                                ))}
+
+                                <path d={generateSmoothPath('total')} fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinecap="round" className="opacity-40" />
+                                <path d={generateSmoothPath('hadir')} fill="none" stroke="#10b981" strokeWidth="3.5" strokeLinecap="round" />
+                                <path d={generateSmoothPath('terlambat')} fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" />
+                                <path d={generateSmoothPath('izin')} fill="none" stroke="#0ea5e9" strokeWidth="2.5" strokeLinecap="round" />
+                                <path d={generateSmoothPath('sakit')} fill="none" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" />
+                                <path d={generateSmoothPath('absen')} fill="none" stroke="#e11d48" strokeWidth="2.5" strokeLinecap="round" />
+
+                                {weeklyData.map((d, i) => {
+                                  const x = (i / (weeklyData.length - 1)) * width;
+                                  const yHadir = height - (maxVal > 0 ? (d.hadir / maxVal) * height : 0);
+                                  return (
+                                    <g key={i}>
+                                      <circle cx={x} y={yHadir} r="4.5" fill="white" stroke="#10b981" strokeWidth="2.5" />
+                                      {d.hadir > 0 && (
+                                        <text x={x} y={yHadir - 12} textAnchor="middle" className="text-[12px] font-black fill-emerald-600">{d.hadir}</text>
+                                      )}
+                                    </g>
+                                  );
+                                })}
+                              </svg>
+
+                              <div className="flex justify-between mt-2">
+                                {weeklyData.map((d, i) => (
+                                  <div key={i} className="text-center">
+                                    <p className="text-[10px] font-black text-blue-900 uppercase tracking-tighter">{d.day}</p>
+                                    <div className="mt-1 flex flex-col gap-0.5">
+                                      {d.total > 0 ? (
+                                        <>
+                                          <span className="text-[8px] font-bold text-emerald-500">{d.hadir}H</span>
+                                          <span className="text-[8px] font-bold text-rose-500">{d.absen}A</span>
+                                        </>
+                                      ) : (
+                                        <span className="text-[8px] font-bold text-slate-300">-</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-blue-50 flex items-center justify-center text-xs">💡</div>
+                        <p className="text-[9px] font-bold text-slate-400 italic leading-relaxed">
+                          Grafik ini menarik data riwayat absensi secara real-time.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -2725,19 +2902,8 @@ const handleSaveSettings = async (section, e) => {
                             const filteredData = getGroupedRekapData().filter(item => 
                               rekapRoleFilter === 'all' || (item.role || '').toLowerCase() === rekapRoleFilter
                             );
-                            
-                            // ✨ Pagination logic untuk rekap absensi
-                            const totalPages = Math.max(1, Math.ceil(filteredData.length / rekapPageSize));
-                            const startIdx = (currentRekapPage - 1) * rekapPageSize;
-                            const endIdx = startIdx + rekapPageSize;
-                            const paginatedData = filteredData.slice(startIdx, endIdx);
-                            
-                            // Reset page jika melebihi total pages
-                            if (currentRekapPage > totalPages && totalPages > 0) {
-                              setCurrentRekapPage(totalPages);
-                            }
-                            
-                            return paginatedData.length > 0 ? paginatedData.map((item, idx) => (
+
+                            return filteredData.length > 0 ? filteredData.map((item, idx) => (
                               <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
                                 <td className="px-4 py-4 font-bold text-slate-700">{getDayName(item.rawDate)}</td>
                                 <td className="px-4 py-4 text-slate-600">{formatDateSimple(item.rawDate)}</td>
@@ -2779,71 +2945,17 @@ const handleSaveSettings = async (section, e) => {
                         </tbody>
                       </table>
                     </div>
-                    
-                    {/* ✨ PAGINATION CONTROLS UNTUK REKAP ABSENSI */}
+
                     {(() => {
                       const filteredData = getGroupedRekapData().filter(item => 
                         rekapRoleFilter === 'all' || (item.role || '').toLowerCase() === rekapRoleFilter
                       );
-                      const totalPages = Math.max(1, Math.ceil(filteredData.length / rekapPageSize));
-                      
+
                       if (filteredData.length === 0) return null;
-                      
+
                       return (
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t border-blue-100">
-                          <div className="text-sm text-slate-600 font-medium">
-                            Menampilkan <span className="font-bold text-blue-600">{(currentRekapPage - 1) * rekapPageSize + 1}</span> - <span className="font-bold text-blue-600">{Math.min(currentRekapPage * rekapPageSize, filteredData.length)}</span> dari <span className="font-bold text-blue-600">{filteredData.length}</span> data
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setCurrentRekapPage(prev => Math.max(1, prev - 1))}
-                              disabled={currentRekapPage === 1}
-                              className="px-3 py-2 rounded-lg border-2 border-blue-200 text-blue-600 font-bold text-sm hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent flex items-center gap-1"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                              Sebelumnya
-                            </button>
-                            
-                            <div className="flex items-center gap-1">
-                              {[...Array(totalPages)].map((_, idx) => {
-                                const pageNum = idx + 1;
-                                const isActive = pageNum === currentRekapPage;
-                                const isNear = Math.abs(pageNum - currentRekapPage) <= 1;
-                                const isEdge = pageNum === 1 || pageNum === totalPages;
-                                
-                                if (totalPages <= 5 || isActive || isNear || isEdge) {
-                                  return (
-                                    <button
-                                      key={pageNum}
-                                      onClick={() => setCurrentRekapPage(pageNum)}
-                                      className={`w-8 h-8 rounded-lg font-bold text-sm transition-all ${
-                                        isActive
-                                          ? 'bg-blue-600 text-white shadow-md'
-                                          : 'border-2 border-blue-200 text-blue-600 hover:bg-blue-50'
-                                      }`}
-                                    >
-                                      {pageNum}
-                                    </button>
-                                  );
-                                } else if (pageNum === 2 || pageNum === totalPages - 1) {
-                                  return (
-                                    <span key={pageNum} className="text-slate-400 font-bold">...</span>
-                                  );
-                                }
-                                return null;
-                              })}
-                            </div>
-                            
-                            <button
-                              onClick={() => setCurrentRekapPage(prev => Math.min(totalPages, prev + 1))}
-                              disabled={currentRekapPage === totalPages}
-                              className="px-3 py-2 rounded-lg border-2 border-blue-200 text-blue-600 font-bold text-sm hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent flex items-center gap-1"
-                            >
-                              Selanjutnya
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                            </button>
-                          </div>
+                        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t border-blue-100 text-sm text-slate-600 font-medium">
+                          Menampilkan <span className="font-bold text-blue-600">{filteredData.length}</span> data dari seluruh database tanpa pembatasan.
                         </div>
                       );
                     })()}
