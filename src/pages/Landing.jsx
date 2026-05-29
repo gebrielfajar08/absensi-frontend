@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -51,6 +51,9 @@ const Landing = () => {
   const [submitNotificationType, setSubmitNotificationType] = useState('error');
 
   const [showStandaloneQRScanner, setShowStandaloneQRScanner] = useState(false);
+  const [isLandingLoading, setIsLandingLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [landingProgress, setLandingProgress] = useState(4);
 
   const [studentForm, setStudentForm] = useState({ user_id: '', fullName: '' });
   const [teacherForm, setTeacherForm] = useState({ nip: '', fullName: '' });
@@ -300,8 +303,13 @@ const Landing = () => {
   };
 
   useEffect(() => {
-    loadSettings();
-    fetchStats();
+    const initLanding = async () => {
+      setIsLandingLoading(true);
+      await Promise.allSettled([loadSettings(), fetchStats()]);
+      setIsLandingLoading(false);
+    };
+
+    initLanding();
 
     const syncInterval = setInterval(fetchStats, 30000);
 
@@ -332,6 +340,11 @@ const Landing = () => {
       stopQRScanner();
     }
   }, [showAbsenModal, activeMethodTab]);
+
+  const handleNavigate = (path) => {
+    setIsNavigating(true);
+    navigate(path);
+  };
 
   const playSound = (type) => {
     try {
@@ -969,9 +982,55 @@ const Landing = () => {
     return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
+  const isPageLoading = isLandingLoading || isNavigating;
+
+  useEffect(() => {
+    let interval;
+    if (isPageLoading) {
+      setLandingProgress(8);
+      interval = setInterval(() => {
+        setLandingProgress((prev) => {
+          if (prev >= 96) return 96;
+          return Math.min(96, prev + Math.random() * 12);
+        });
+      }, 220);
+    } else {
+      setLandingProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [isPageLoading]);
+
+  useEffect(() => {
+    if (!isPageLoading && landingProgress < 100) {
+      const finishTimer = setTimeout(() => setLandingProgress(100), 150);
+      return () => clearTimeout(finishTimer);
+    }
+    return undefined;
+  }, [isPageLoading, landingProgress]);
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      
+    <div className="min-h-screen bg-slate-50 font-sans relative overflow-hidden">
+      {isPageLoading && (
+        <div className="landing-loader-backdrop fixed inset-0 z-[80] flex items-center justify-center p-6">
+          <div className="landing-loader-card border rounded-3xl shadow-2xl p-6 w-full max-w-xl text-center">
+            <div className="landing-loader-headline mb-4 text-lg font-semibold">Loading...</div>
+            <div className="landing-loader-track mb-4 relative">
+              <div className="landing-loader-progress" style={{ width: `${landingProgress}%` }} />
+              <div className="landing-runner" style={{ left: `calc(${landingProgress}% - 20px)` }}>
+                <div className="runner-head" />
+                <div className="runner-body" />
+                <div className="runner-arm runner-arm-front" />
+                <div className="runner-arm runner-arm-back" />
+                <div className="runner-leg runner-leg-front" />
+                <div className="runner-leg runner-leg-back" />
+              </div>
+            </div>
+            <div className="landing-loader-description text-sm font-medium mb-2">Sedang menyambungkan ke server...</div>
+            <div className="landing-loader-percent text-xs uppercase tracking-[0.18em]">{Math.floor(landingProgress)}% terhubung</div>
+          </div>
+        </div>
+      )}
+
       {/* ========== NAVBAR ========== */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled 
@@ -987,8 +1046,11 @@ const Landing = () => {
                     src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
                     alt="Logo" 
                     className="w-full h-full object-contain"
-                    onError={() => setLogoError(true)}
-                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/40x40/2563eb/ffffff?text=S'; }}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = 'https://placehold.co/40x40/2563eb/ffffff?text=S';
+                      setLogoError(true);
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
@@ -1007,24 +1069,26 @@ const Landing = () => {
             </div>
             
             <div className="flex items-center gap-2">
-              <Link 
-                to="/register" 
+              <button
+                type="button"
+                onClick={() => handleNavigate('/register')}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                 </svg>
                 Register
-              </Link>
-              <Link 
-                to="/login" 
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate('/login')}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
                 </svg>
                 Login
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -1075,15 +1139,16 @@ const Landing = () => {
                       Absen Sekarang
                     </button>
                     
-                    <Link 
-                      to="/login"
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate('/login')}
                       className="flex-1 px-6 py-3 bg-white hover:bg-blue-50 text-blue-900 font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                       </svg>
                       Login Dashboard
-                    </Link>
+                    </button>
                   </div>
                 </div>
               </div>

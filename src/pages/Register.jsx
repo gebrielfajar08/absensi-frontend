@@ -183,7 +183,7 @@ const Register = () => {
     };
 
     return (
-        <div className="min-h-screen relative flex items-center justify-center p-3 sm:p-4 overflow-hidden bg-gray-50">
+        <div className="auth-shell min-h-screen relative flex items-center justify-center p-3 sm:p-4 overflow-hidden bg-gray-50">
             {/* Background Mobile */}
             <div className="absolute inset-0 z-0 lg:hidden">
                 {backgroundImages.map((img, index) => (
@@ -202,7 +202,7 @@ const Register = () => {
                 <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent" />
             </div>
 
-            <div className={`bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg w-full max-w-md sm:max-w-4xl flex flex-col lg:flex-row overflow-hidden relative z-10 transition-all duration-500 ${
+            <div className={`auth-card bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg w-full max-w-md sm:max-w-4xl flex flex-col lg:flex-row overflow-hidden relative z-10 transition-all duration-500 ${
                 !isMounted ? 'opacity-0 scale-95' : isExiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
             }`} style={{ minHeight: 'auto', maxHeight: '95vh' }}>
                 
@@ -241,19 +241,27 @@ const Register = () => {
                 {/* Right Side - Register Form (Scrollable) */}
                 <div className="w-full lg:w-7/12 p-4 sm:p-6 flex flex-col">
                     <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center space-x-2">
-                            <div className="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-sm">{schoolSettings.name.charAt(0).toUpperCase()}</span>
-                            </div>
-                            <span className="text-base font-bold text-gray-900">{schoolSettings.name}</span>
+                    <button
+                        type="button"
+                        onClick={(e) => handleNavigateWithAnimation('/', e)}
+                        className="auth-back-button inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all"
+                    >
+                        <span>←</span>
+                        <span>Kembali</span>
+                    </button>
+                    <div className="flex items-center space-x-2">
+                        <div className="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">{schoolSettings.name.charAt(0).toUpperCase()}</span>
                         </div>
+                        <span className="text-base font-bold text-gray-900 auth-heading">{schoolSettings.name}</span>
+                    </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto pr-1">
                         <div className="max-w-sm w-full mx-auto">
                             <div className="mb-4">
-                                <h1 className="text-xl font-bold text-gray-900 mb-1">Buat Akun</h1>
-                                <p className="text-gray-500 text-xs">Lengkapi data untuk mendaftar di {schoolSettings.name}</p>
+                                <h1 className="text-xl font-bold text-gray-900 mb-1 auth-heading">Buat Akun</h1>
+                                <p className="text-gray-500 text-xs auth-text">Lengkapi data untuk mendaftar di {schoolSettings.name}</p>
                             </div>
 
                             {error && (
@@ -300,26 +308,26 @@ const Register = () => {
 
                                 {/* Nama */}
                                 <input type="text" name="name" value={formData.name} onChange={handleChange}
-                                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                     placeholder="Nama Lengkap *" required />
 
                                 {/* Email */}
                                 <input type="email" name="email" value={formData.email} onChange={handleChange}
-                                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                     placeholder="Email *" required />
 
                                 {/* NIS/NIP */}
                                 {(formData.role === 'siswa' || formData.role === 'guru') && (
                                     <input type="text" name={formData.role === 'siswa' ? 'nis' : 'nip'} 
                                         value={formData.role === 'siswa' ? formData.nis : formData.nip} onChange={handleChange}
-                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                        className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                         placeholder={`${formData.role === 'siswa' ? 'NIS' : 'NIP'} *`} required />
                                 )}
 
                                 {/* Kelas */}
                                 {(formData.role === 'siswa' || formData.role === 'guru') && (
                                     <select name="class_name" value={formData.class_name} onChange={handleChange}
-                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white" required>
+                                        className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" required>
                                         <option value="">Pilih Kelas *</option>
                                         <option value="1">Kelas 1</option>
                                         <option value="2">Kelas 2</option>
@@ -331,7 +339,7 @@ const Register = () => {
                                 {(formData.role === 'siswa' || formData.role === 'guru') && (
                                     <div className="grid grid-cols-2 gap-3">
                                         <select name="gender" value={formData.gender} onChange={handleChange}
-                                            className="px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white" required>
+                                            className="auth-input px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" required>
                                             <option value="">Jenis Kelamin *</option>
                                             <option value="Laki-laki">Laki-laki</option>
                                             <option value="Perempuan">Perempuan</option>
@@ -346,10 +354,10 @@ const Register = () => {
                                 {formData.role === 'siswa' && (
                                     <>
                                         <input type="text" name="parent_name" value={formData.parent_name} onChange={handleChange}
-                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                            className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                             placeholder="Nama Orang Tua *" required />
                                         <input type="tel" name="parent_phone" value={formData.parent_phone} onChange={handleChange}
-                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                            className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                             placeholder="No. Telepon Orang Tua *" required />
                                     </>
                                 )}
@@ -357,7 +365,7 @@ const Register = () => {
                                 {/* Password */}
                                 <div className="relative">
                                     <input type={showPassword ? 'text' : 'password'} name="password" value={formData.password} onChange={handleChange}
-                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-10"
+                                        className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-10"
                                         placeholder="Kata Sandi *" required minLength={8} />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{showPassword ? '🙈' : '👁️'}</button>
@@ -366,7 +374,7 @@ const Register = () => {
                                 {/* Confirm Password */}
                                 <div className="relative">
                                     <input type={showConfirmPassword ? 'text' : 'password'} name="password_confirmation" value={formData.password_confirmation} onChange={handleChange}
-                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-10"
+                                        className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-10"
                                         placeholder="Konfirmasi Kata Sandi *" required />
                                     <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{showConfirmPassword ? '🙈' : '👁️'}</button>

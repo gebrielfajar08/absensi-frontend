@@ -12,9 +12,10 @@ const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
-const checkBackendConnection = async () => {
+const checkBackendConnection = async (baseApiUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api') => {
   try {
-    const response = await api.get('/health');
+    const target = `${baseApiUrl.replace(/\/api\/?$/, '')}/health`;
+    const response = await api.get(target);
     return response.data?.status === 'ok' || response.status === 200;
   } catch (error) {
     return false;
@@ -452,9 +453,9 @@ const DashboardGuru = () => {
       const config = { headers: getAuthHeaders() };
       const results = await Promise.allSettled([
         fetchWithRetry(() => apiTryEndpoints('get', ['/guru/stats', '/admin/stats', '/stats'], config)),
-        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/classes', '/classes', '/admin/classes'], config)),
-        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/activity', '/activity', '/admin/activity'], config)),
-        apiTryEndpoints('get', ['/public/events', '/events', '/admin/events'], config).catch(() => ({ data: [] }))
+        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/classes', '/admin/classes', '/classes'], config)),
+        fetchWithRetry(() => apiTryEndpoints('get', ['/guru/activity', '/admin/activity', '/activity'], config)),
+        apiTryEndpoints('get', ['/public/events', '/admin/events', '/events'], config).catch(() => ({ data: [] }))
       ]);
 
       const normalizedStats = normalizeStatsResponse(results[0].status === 'fulfilled' ? results[0].value?.data : {});
@@ -528,8 +529,8 @@ const DashboardGuru = () => {
     try {
       const config = { headers: getAuthHeaders() };
       const endpoints = classroomId
-        ? [`/guru/students?classroom_id=${classroomId}`, `/students?classroom_id=${classroomId}`, `/admin/students?classroom_id=${classroomId}`]
-        : ['/guru/students', '/students', '/admin/students'];
+        ? [`/guru/students?classroom_id=${classroomId}`, `/admin/students?classroom_id=${classroomId}`, `/students?classroom_id=${classroomId}`]
+        : ['/guru/students', '/admin/students', '/students'];
 
       const res = await fetchWithRetry(() => apiTryEndpoints('get', endpoints, config));
       setStudents(normalizeArrayResponse(res.data));
@@ -551,7 +552,7 @@ const DashboardGuru = () => {
       const config = { headers: getAuthHeaders() };
       const res = await fetchWithRetry(() => apiTryEndpoints(
         'get',
-        [`/guru/schedules?class_id=${classId}`, `/schedules?class_id=${classId}`, `/admin/schedules?class_id=${classId}`],
+        [`/guru/schedules?class_id=${classId}`, `/admin/schedules?class_id=${classId}`, `/schedules?class_id=${classId}`],
         config
       ));
       setSchedules(normalizeArrayResponse(res.data));

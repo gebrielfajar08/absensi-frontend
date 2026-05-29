@@ -219,7 +219,7 @@ const LoginUnified = () => {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-3 sm:p-4 overflow-hidden bg-gray-50">
+    <div className="auth-shell min-h-screen relative flex items-center justify-center p-3 sm:p-4 overflow-hidden bg-gray-50">
       {/* Background untuk mobile */}
       <div className="absolute inset-0 z-0 lg:hidden">
         {backgroundImages.map((img, index) => (
@@ -257,7 +257,7 @@ const LoginUnified = () => {
       </div>
 
       <div 
-        className={`bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg w-full max-w-md sm:max-w-4xl flex flex-col lg:flex-row overflow-hidden relative z-10 transition-all duration-500 ease-in-out ${
+        className={`auth-card bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg w-full max-w-md sm:max-w-4xl flex flex-col lg:flex-row overflow-hidden relative z-10 transition-all duration-500 ease-in-out ${
           !isMounted ? 'opacity-0 scale-95' : isExiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
         }`} 
         style={{ minHeight: 'auto', maxHeight: '95vh' }}
@@ -312,18 +312,26 @@ const LoginUnified = () => {
         {/* Right Side - Login Form (Responsive) */}
         <div className="w-full lg:w-7/12 p-5 sm:p-8 flex flex-col">
           <div className="flex justify-between items-center mb-4 sm:mb-6">
+            <button
+              type="button"
+              onClick={(e) => handleNavigateWithAnimation('/', e)}
+              className="auth-back-button inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all"
+            >
+              <span>←</span>
+              <span>Kembali</span>
+            </button>
             <div className="flex items-center space-x-2">
               <div className="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">{schoolSettings.name.charAt(0).toUpperCase()}</span>
               </div>
-              <span className="text-base sm:text-lg font-bold text-gray-900">{schoolSettings.name}</span>
+              <span className="text-base sm:text-lg font-bold text-gray-900 auth-heading">{schoolSettings.name}</span>
             </div>
           </div>
 
           <div className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto">
             <div className="mb-4 sm:mb-6">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Selamat Datang</h1>
-              <p className="text-gray-500 text-xs sm:text-sm">Masuk ke akun {getRoleDisplayName(selectedRole)} Anda</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1 auth-heading">Selamat Datang</h1>
+              <p className="text-gray-500 text-xs sm:text-sm auth-text">Masuk ke akun {getRoleDisplayName(selectedRole)} Anda</p>
             </div>
 
             {error && (
@@ -367,7 +375,7 @@ const LoginUnified = () => {
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
+                  className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                   placeholder={selectedRole === 'siswa' ? 'Masukkan NIS atau Email' : selectedRole === 'guru' ? 'Masukkan NIP atau Email' : 'Masukkan Username atau Email'}
                   required
                   autoComplete="username"
@@ -380,7 +388,7 @@ const LoginUnified = () => {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
+                  className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                   placeholder="Masukkan kata sandi"
                   required
                   autoComplete="current-password"
