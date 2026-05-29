@@ -13,7 +13,7 @@ const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
-// ✨ TAMBAHAN: Helper untuk mendapatkan waktu lokal format YYYY-MM-DD HH:mm:ss
+// Helper untuk mendapatkan waktu lokal format YYYY-MM-DD HH:mm:ss
 const getLocalTimestamp = (date) => {
   const pad = (n) => n.toString().padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
@@ -22,25 +22,23 @@ const getLocalTimestamp = (date) => {
 const Landing = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeUserRole, setActiveUserRole] = useState('siswa');
+  const [activeAttendanceAction, setActiveAttendanceAction] = useState('datang');
   const [activeMethodTab, setActiveMethodTab] = useState('scan');
   const [showAbsenModal, setShowAbsenModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [currentBgIndex, setCurrentBgIndex] = useState(0);
   const navigate = useNavigate();
 
   const schoolBackgrounds = [
     'https://images.unsplash.com/photo-1562774053-701939374585?w=1920&q=80',
     'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80',
-    'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1920&q=80',
-    'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=1920&q=80',
-    'https://images.unsplash.com/photo-1505409627970-843228aebff4?w=1920&q=80'
+    'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1920&q=80'
   ];
 
   const qrScannerRef = useRef(null);
   const [qrScanner, setQrScanner] = useState(null);
   const [cameraError, setCameraError] = useState('');
   const [logoError, setLogoError] = useState(false);
-  const [isCameraStarting, setIsCameraStarting] = useState(false); // ✨ TAMBAHAN: Status start kamera
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [showQRNotification, setShowQRNotification] = useState(false);
   const [qrNotificationMessage, setQrNotificationMessage] = useState('');
   const [facingMode, setFacingMode] = useState('environment');
@@ -53,14 +51,13 @@ const Landing = () => {
   const [showStandaloneQRScanner, setShowStandaloneQRScanner] = useState(false);
   const [isLandingLoading, setIsLandingLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [landingProgress, setLandingProgress] = useState(4);
 
   const [studentForm, setStudentForm] = useState({ user_id: '', fullName: '' });
   const [teacherForm, setTeacherForm] = useState({ nip: '', fullName: '' });
   const [izinForm, setIzinForm] = useState({
     fullName: '',
     user_id: '',
-    type: 'izin', // 'izin' or 'sakit'
+    type: 'izin',
     reason: '',
     attachment: null,
     parent_phone: ''
@@ -99,16 +96,6 @@ const Landing = () => {
       console.warn('Gagal normalisasi tanggal:', err, date);
       return '';
     }
-  };
-
-  // ✨ Helper hitung mundur hari (Normalisasi ke Midnight)
-  const getDaysRemaining = (dateString) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const target = new Date(dateString);
-    target.setHours(0, 0, 0, 0);
-    const diffTime = target - today;
-    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const normalizeDateKey = (rawDate) => {
@@ -161,73 +148,7 @@ const Landing = () => {
     return counter;
   };
 
-  const lakeBackgrounds = [
-    'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?w=1280&q=80',
-    'https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1280&q=80',
-    'https://images.unsplash.com/photo-1476610182048-b716b8518aae?w=1280&q=80',
-    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1280&q=80'
-  ];
-
-  const holidayBackgrounds = {
-    '01-01': {
-      name: 'Tahun Baru Masehi',
-      image: 'https://images.unsplash.com/photo-1483721310020-03333e577078?w=1280&q=80'
-    },
-    '05-01': {
-      name: 'Hari Buruh Internasional',
-      image: 'https://images.unsplash.com/photo-1514474959185-08fb602660ef?w=1280&q=80'
-    },
-    '06-01': {
-      name: 'Hari Lahir Pancasila',
-      image: 'https://images.unsplash.com/photo-1520923302269-6990cb8d0a23?w=1280&q=80'
-    },
-    '08-17': {
-      name: 'Hari Kemerdekaan RI',
-      image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=1280&q=80'
-    },
-    '11-10': {
-      name: 'Hari Pahlawan',
-      image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1280&q=80'
-    },
-    '12-25': {
-      name: 'Hari Raya Natal',
-      image: 'https://images.unsplash.com/photo-1511993226959-0f2ecb18f6a5?w=1280&q=80'
-    }
-  };
-
-  const getHolidayInfo = (date) => {
-    if (!date) return null;
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return holidayBackgrounds[`${month}-${day}`] || null;
-  };
-
-  const getSectionBackground = (date) => {
-    const holiday = getHolidayInfo(date);
-    if (holiday) {
-      return {
-        image: holiday.image,
-        label: holiday.name,
-        isHoliday: true
-      };
-    }
-
-    const selectedLake = lakeBackgrounds[date.getDate() % lakeBackgrounds.length];
-    return {
-      image: selectedLake,
-      label: 'Hari Biasa',
-      isHoliday: false
-    };
-  };
-
   const audioContextRef = useRef(null);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentBgIndex((prev) => (prev + 1) % schoolBackgrounds.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const loadSettings = async () => {
     try {
@@ -436,41 +357,51 @@ const Landing = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const getAttendanceStatus = () => {
+  const getAttendanceStatus = (action = 'datang') => {
     const now = currentTime;
     const hours = now.getHours().toString().padStart(2, '0');
     const minutes = now.getMinutes().toString().padStart(2, '0');
     const currentTimeStr = `${hours}:${minutes}`;
-    
+
     const openTime = (attendanceSettings.attendanceStartTime || "07:00").substring(0, 5);
     const closeTime = (attendanceSettings.attendanceEndTime || "12:00").substring(0, 5);
     const lateTime = (attendanceSettings.lateThreshold || "08:00").substring(0, 5);
+    const pulangTime = (attendanceSettings.schoolEndTime || "15:30").substring(0, 5);
 
     if (checkIsHoliday()) return 'libur';
+    if (action === 'pulang') {
+      if (currentTimeStr < pulangTime) return 'belum_pulang';
+      return 'pulang';
+    }
     if (currentTimeStr < openTime) return 'belum_buka';
     if (currentTimeStr > closeTime) return 'sudah_tutup';
 
     return currentTimeStr <= lateTime ? 'hadir' : 'terlambat';
   };
 
-  // ✨ Fungsi untuk mengecek sebelum membuka modal
-  const handleTryOpenAbsen = () => {
-    const status = getAttendanceStatus();
-    console.log("handleTryOpenAbsen: current status calculated =", status);
-    console.log("Attendance Settings used:", attendanceSettings);
+  const handleTryOpenAbsen = (action = 'datang') => {
+    const status = getAttendanceStatus(action);
     
     if (status === 'libur') {
       showSubmitNotificationMessage("❌ Hari ini adalah hari libur (sesuai pengaturan). Absensi tidak tersedia.", "error");
       return;
     }
-    if (status === 'belum_buka') {
-      showSubmitNotificationMessage(`❌ Absensi belum dibuka. Silakan kembali pada jam ${attendanceSettings.attendanceStartTime}.`, "warning");
+    if (action === 'datang') {
+      if (status === 'belum_buka') {
+        showSubmitNotificationMessage(`❌ Absensi belum dibuka. Silakan kembali pada jam ${attendanceSettings.attendanceStartTime}.`, "warning");
+        return;
+      }
+      if (status === 'sudah_tutup') {
+        showSubmitNotificationMessage(`❌ Absensi sudah ditutup pada jam ${attendanceSettings.attendanceEndTime}.`, "error");
+        return;
+      }
+    }
+    if (action === 'pulang' && status === 'belum_pulang') {
+      showSubmitNotificationMessage(`❌ Belum jam pulang. Silakan kembali pada jam ${attendanceSettings.schoolEndTime}.`, "warning");
       return;
     }
-    if (status === 'sudah_tutup') {
-      showSubmitNotificationMessage(`❌ Absensi sudah ditutup pada jam ${attendanceSettings.attendanceEndTime}.`, "error");
-      return;
-    }
+
+    setActiveAttendanceAction(action);
     setShowAbsenModal(true);
   };
 
@@ -484,17 +415,25 @@ const Landing = () => {
         return;
       }
 
-      const status = getAttendanceStatus();
+      const status = getAttendanceStatus(activeAttendanceAction);
 
-      if (status === 'belum_buka') {
-        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
-        showSubmitNotificationMessage(msg, 'error');
-        setSubmitMessage({ type: 'error', text: msg });
-        return;
+      if (activeAttendanceAction === 'datang') {
+        if (status === 'belum_buka') {
+          const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
+          showSubmitNotificationMessage(msg, 'error');
+          setSubmitMessage({ type: 'error', text: msg });
+          return;
+        }
+        if (status === 'sudah_tutup') {
+          const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
+          showSubmitNotificationMessage(msg, 'error');
+          setSubmitMessage({ type: 'error', text: msg });
+          return;
+        }
       }
-      if (status === 'sudah_tutup') {
-        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
-        showSubmitNotificationMessage(msg, 'error');
+      if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
+        const msg = `❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.schoolEndTime}`;
+        showSubmitNotificationMessage(msg, 'warning');
         setSubmitMessage({ type: 'error', text: msg });
         return;
       }
@@ -505,21 +444,25 @@ const Landing = () => {
         user_id: studentForm.user_id.trim(),
         nis: studentForm.user_id.trim(),
         attendance_time: getLocalTimestamp(currentTime),
-        status: status,
+        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
         role: 'siswa',
-        type: 'manual'
+        type: activeAttendanceAction === 'pulang' ? 'pulang' : 'manual',
+        action: activeAttendanceAction
       };
 
       await api.post('/attendance/student/manual', payload, { 
         timeout: 60000 
       });
 
-      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
+      const statusText = activeAttendanceAction === 'pulang'
+        ? '✅ Pulang tercatat' 
+        : status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       const successMsg = `Absensi siswa berhasil! ${statusText}`;
       showSubmitNotificationMessage(successMsg, 'success');
       setSubmitMessage({ type: 'success', text: successMsg });
       
-      if (status === 'hadir') playSound('success');
+      if (activeAttendanceAction === 'pulang') playSound('success');
+      else if (status === 'hadir') playSound('success');
       else playSound('late');
 
       setStudentForm({ user_id: '', fullName: '' });
@@ -571,17 +514,25 @@ const Landing = () => {
         return;
       }
 
-      const status = getAttendanceStatus();
+      const status = getAttendanceStatus(activeAttendanceAction);
 
-      if (status === 'belum_buka') {
-        const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
-        showSubmitNotificationMessage(msg, 'error');
-        setSubmitMessage({ type: 'error', text: msg });
-        return;
+      if (activeAttendanceAction === 'datang') {
+        if (status === 'belum_buka') {
+          const msg = `❌ Absen belum dibuka! Silakan absen mulai jam ${attendanceSettings.attendanceStartTime}`;
+          showSubmitNotificationMessage(msg, 'error');
+          setSubmitMessage({ type: 'error', text: msg });
+          return;
+        }
+        if (status === 'sudah_tutup') {
+          const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
+          showSubmitNotificationMessage(msg, 'error');
+          setSubmitMessage({ type: 'error', text: msg });
+          return;
+        }
       }
-      if (status === 'sudah_tutup') {
-        const msg = `❌ Absen sudah ditutup! Batas akhir jam ${attendanceSettings.attendanceEndTime}`;
-        showSubmitNotificationMessage(msg, 'error');
+      if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
+        const msg = `❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.schoolEndTime}`;
+        showSubmitNotificationMessage(msg, 'warning');
         setSubmitMessage({ type: 'error', text: msg });
         return;
       }
@@ -595,23 +546,25 @@ const Landing = () => {
         teacher_id: teacherForm.nip.trim(),
         student_id: teacherForm.nip.trim(),
         attendance_time: getLocalTimestamp(currentTime),
-        status: status,
+        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
         role: 'guru',
-        type: 'manual'
+        type: activeAttendanceAction === 'pulang' ? 'pulang' : 'manual',
+        action: activeAttendanceAction
       };
 
-      // Teacher manual attendance currently needs a student_id value because the backend attendance record requires it.
-      // Do not fallback to /scan here because the scan endpoint is currently student-only and returns "Akun siswa tidak ditemukan" for teacher QR payloads.
       await api.post('/attendance/teacher/manual', payload, {
         timeout: 60000
       });
 
-      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
+      const statusText = activeAttendanceAction === 'pulang'
+        ? '✅ Pulang tercatat'
+        : status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       const successMsg = `Absensi guru berhasil! ${statusText}`;
       showSubmitNotificationMessage(successMsg, 'success');
       setSubmitMessage({ type: 'success', text: successMsg });
       
-      if (status === 'hadir') playSound('success');
+      if (activeAttendanceAction === 'pulang') playSound('success');
+      else if (status === 'hadir') playSound('success');
       else playSound('late');
 
       setTeacherForm({ nip: '', fullName: '' });
@@ -686,7 +639,6 @@ const Landing = () => {
         payload.teacher_id = izinForm.user_id.trim();
       }
 
-      // Handle file upload if attachment exists
       if (izinForm.attachment) {
         const formData = new FormData();
         Object.keys(payload).forEach(key => formData.append(key, payload[key]));
@@ -695,7 +647,6 @@ const Landing = () => {
         await api.post('/attendance/izin', formData, {
           timeout: 60000,
           headers: {
-            // Biarkan Axios mengatur Content-Type secara otomatis untuk FormData
             ...(token ? { Authorization: `Bearer ${token}` } : {})
           }
         });
@@ -773,18 +724,23 @@ const Landing = () => {
         return;
       }
 
-      const status = getAttendanceStatus();
+      const status = getAttendanceStatus(activeAttendanceAction);
+      if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
+        showQRNotificationMessage(`❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.schoolEndTime}`, 'warning');
+        return;
+      }
       
       const requestData = {
         qr_data: qrData,
         scan_time: getLocalTimestamp(currentTime),
-        status: status,
-        type: qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr'),
+        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
+        type: activeAttendanceAction === 'pulang' ? 'pulang' : (qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr')),
         user_id: qrData.user_id || qrData.id || qrData.student_id || qrData.teacher_id || '',
         student_id: qrData.student_id || qrData.id || '',
         teacher_id: qrData.teacher_id || qrData.id || '',
         name: qrData.name || qrData.full_name || '',
-        role: qrData.role || activeUserRole
+        role: qrData.role || activeUserRole,
+        action: activeAttendanceAction
       };
 
       const response = await api.post('/scan', requestData, {
@@ -805,7 +761,9 @@ const Landing = () => {
         return;
       }
 
-      const statusText = status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
+      const statusText = activeAttendanceAction === 'pulang'
+        ? '✅ Pulang tercatat'
+        : status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       playSound('success');
       showQRNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
       showSubmitNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
@@ -851,7 +809,7 @@ const Landing = () => {
 
   const startQRScanner = async (mode = facingMode) => {
     try {
-      setIsCameraStarting(true); // ✨ Mulai loading kamera
+      setIsCameraStarting(true);
       setCameraError('');
       const readerElement = document.getElementById(
         showStandaloneQRScanner ? 'qr-reader-standalone' : 'qr-reader-main'
@@ -877,7 +835,7 @@ const Landing = () => {
         (decodedText) => handleQRScan(decodedText),
         () => {}
       );
-      setIsCameraStarting(false); // ✨ Berhasil
+      setIsCameraStarting(false);
     } catch (err) {
       console.error('Failed to start QR scanner:', err);
       setCameraError('Tidak dapat mengakses kamera. Pastikan izin kamera diberikan.');
@@ -984,109 +942,280 @@ const Landing = () => {
 
   const isPageLoading = isLandingLoading || isNavigating;
 
-  useEffect(() => {
-    let interval;
-    if (isPageLoading) {
-      setLandingProgress(8);
-      interval = setInterval(() => {
-        setLandingProgress((prev) => {
-          if (prev >= 96) return 96;
-          return Math.min(96, prev + Math.random() * 12);
-        });
-      }, 220);
-    } else {
-      setLandingProgress(100);
-    }
-    return () => clearInterval(interval);
-  }, [isPageLoading]);
-
-  useEffect(() => {
-    if (!isPageLoading && landingProgress < 100) {
-      const finishTimer = setTimeout(() => setLandingProgress(100), 150);
-      return () => clearTimeout(finishTimer);
-    }
-    return undefined;
-  }, [isPageLoading, landingProgress]);
-
-  return (
-    <div className="min-h-screen bg-slate-50 font-sans relative overflow-hidden">
-      {isPageLoading && (
-        <div className="landing-loader-backdrop fixed inset-0 z-[80] flex items-center justify-center p-6">
-          <div className="landing-loader-card border rounded-3xl shadow-2xl p-6 w-full max-w-xl text-center">
-            <div className="landing-loader-headline mb-4 text-lg font-semibold">Loading...</div>
-            <div className="landing-loader-track mb-4 relative">
-              <div className="landing-loader-progress" style={{ width: `${landingProgress}%` }} />
-              <div className="landing-runner" style={{ left: `calc(${landingProgress}% - 20px)` }}>
-                <div className="runner-head" />
-                <div className="runner-body" />
-                <div className="runner-arm runner-arm-front" />
-                <div className="runner-arm runner-arm-back" />
-                <div className="runner-leg runner-leg-front" />
-                <div className="runner-leg runner-leg-back" />
-              </div>
+  // Mobile Layout
+  const MobileLayout = () => (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 pb-20">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 px-4 pt-12 pb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+              {attendanceSettings.schoolLogo && !logoError ? (
+                <img 
+                  src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
+                  alt="Logo" 
+                  className="w-10 h-10 object-contain rounded-full"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              )}
             </div>
-            <div className="landing-loader-description text-sm font-medium mb-2">Sedang menyambungkan ke server...</div>
-            <div className="landing-loader-percent text-xs uppercase tracking-[0.18em]">{Math.floor(landingProgress)}% terhubung</div>
+            <div>
+              <h1 className="text-white font-bold text-lg">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
+              <p className="text-blue-200 text-xs">Mobile</p>
+            </div>
+          </div>
+          <button className="relative p-2">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+        </div>
+        
+        <div className="text-center py-6">
+          <p className="text-blue-200 text-sm mb-1">Halo, Selamat Datang!</p>
+          <h2 className="text-white text-2xl font-bold mb-2">{attendanceSettings.schoolName || 'Sistem Absensi'}</h2>
+          <p className="text-blue-100 text-xs">Gunakan sistem absensi ini untuk memonitor kehadiran</p>
+        </div>
+
+        {/* Welcome Illustration */}
+        <div className="flex justify-center items-end gap-2 h-32 mb-4">
+          <div className="w-20 h-24 bg-gradient-to-t from-pink-500 to-red-400 rounded-t-3xl flex items-center justify-center">
+            <div className="text-white text-4xl">👨</div>
+          </div>
+          <div className="w-16 h-16 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-3xl flex items-center justify-center -mb-2">
+            <div className="text-white text-3xl">👩</div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ========== NAVBAR ========== */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled 
-          ? 'bg-white shadow-md' 
-          : 'bg-white'
-      }`}>
-        <div className="max-w-7xl mx-auto px-4 py-3">
+      {/* Main Content - White Background */}
+      <div className="bg-white rounded-t-3xl -mt-6 min-h-screen px-4 pt-6">
+        {/* Balance Card */}
+        <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 text-white mb-6 shadow-lg">
+          <p className="text-blue-200 text-xs mb-1">Total Hadir Hari Ini</p>
+          <h3 className="text-3xl font-bold mb-3">{attendanceStats.totalHadir}</h3>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => handleTryOpenAbsen('datang')}
+              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-2 text-xs font-semibold hover:bg-white/30 transition"
+            >
+              Absen Datang
+            </button>
+            <button 
+              onClick={() => handleTryOpenAbsen('pulang')}
+              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-2 text-xs font-semibold hover:bg-white/30 transition"
+            >
+              Absen Pulang
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Actions Grid */}
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          <button 
+            onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 transition"
+          >
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+            </div>
+            <span className="text-xs font-medium text-slate-700 text-center">Scan QR</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('siswa'); setShowAbsenModal(true); }}
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 transition"
+          >
+            <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <span className="text-xs font-medium text-slate-700 text-center">Siswa</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('guru'); setShowAbsenModal(true); }}
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-purple-50 hover:bg-purple-100 transition"
+          >
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <span className="text-xs font-medium text-slate-700 text-center">Guru</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveMethodTab('izin'); setShowAbsenModal(true); }}
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 transition"
+          >
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <span className="text-xs font-medium text-slate-700 text-center">Izin</span>
+          </button>
+        </div>
+
+        {/* Stats Section */}
+        <div className="mb-6">
+          <h3 className="text-slate-800 font-bold mb-3 text-sm">Catatan Kehadiran</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-xs text-emerald-700 font-medium">Hadir</span>
+              </div>
+              <p className="text-2xl font-bold text-emerald-700">{attendanceStats.totalHadir}</p>
+              <p className="text-xs text-emerald-600 mt-1">Orang</p>
+            </div>
+
+            <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <span className="text-xs text-orange-700 font-medium">Terlambat</span>
+              </div>
+              <p className="text-2xl font-bold text-orange-700">{attendanceStats.keterlambatan}</p>
+              <p className="text-xs text-orange-600 mt-1">Orang</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Time Info */}
+        <div className="bg-slate-50 rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-slate-500">Waktu Sekarang</span>
+            <span className="text-xs font-bold text-blue-600">{formatTimeShort(currentTime)}</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600">Buka</span>
+              <span className="font-semibold text-slate-800">{attendanceSettings.attendanceStartTime}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600">Tutup</span>
+              <span className="font-semibold text-slate-800">{attendanceSettings.attendanceEndTime}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-3 mb-6">
+          <button 
+            onClick={() => handleNavigate('/login')}
+            className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-semibold text-sm hover:bg-slate-800 transition shadow-lg"
+          >
+            Login
+          </button>
+          <button 
+            onClick={() => handleNavigate('/register')}
+            className="w-full bg-blue-100 text-blue-700 py-3.5 rounded-2xl font-semibold text-sm hover:bg-blue-200 transition"
+          >
+            Register
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3 flex justify-between items-center">
+        <button className="flex flex-col items-center gap-1 text-blue-600">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          <span className="text-[10px] font-medium">Home</span>
+        </button>
+        
+        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <span className="text-[10px] font-medium">Absensi</span>
+        </button>
+
+        <button 
+          onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
+          className="flex flex-col items-center -mt-8"
+        >
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center shadow-lg border-4 border-white">
+            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+          </div>
+        </button>
+
+        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span className="text-[10px] font-medium">Notif</span>
+        </button>
+
+        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span className="text-[10px] font-medium">Akun</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // Desktop/Laptop Layout
+  const DesktopLayout = () => (
+    <div className="min-h-screen bg-slate-50">
+      {/* Top Navigation */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white shadow-md' : 'bg-white'}`}>
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm flex-shrink-0 overflow-hidden">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
                 {attendanceSettings.schoolLogo && !logoError ? (
                   <img 
                     src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
                     alt="Logo" 
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = 'https://placehold.co/40x40/2563eb/ffffff?text=S';
-                      setLogoError(true);
-                    }}
+                    className="w-10 h-10 object-contain rounded-full"
+                    onError={() => setLogoError(true)}
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                  </div>
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
                 )}
               </div>
-              <div className="flex flex-col">
-                <h1 className="text-sm font-bold text-slate-900 leading-tight">
-                  {attendanceSettings.schoolName || 'AbsensiPro'}
-                </h1>
-                <p className="text-xs text-slate-500">Absensi Digital Sekolah</p>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
+                <p className="text-xs text-slate-500">Sistem Absensi Digital</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button
-                type="button"
                 onClick={() => handleNavigate('/register')}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md hover:shadow-lg"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
                 Register
               </button>
               <button
-                type="button"
                 onClick={() => handleNavigate('/login')}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all shadow-md hover:shadow-lg"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                </svg>
                 Login
               </button>
             </div>
@@ -1094,297 +1223,235 @@ const Landing = () => {
         </div>
       </nav>
 
-      {/* ========== MAIN CONTENT ========== */}
-      <div className="pt-20 pb-8">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-6">
+      {/* Main Content */}
+      <div className="pt-24 pb-12 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-8">
             
-            {/* ========== LEFT COLUMN ========== */}
-            <div className="space-y-4">
-              
-              {/* Hero Section */}
-              <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white shadow-xl">
-                <div className="absolute inset-0">
-                  {schoolBackgrounds.map((bg, index) => (
-                    <div
-                      key={index}
-                      className={`absolute inset-0 transition-opacity duration-1000 ${
-                        index === currentBgIndex ? 'opacity-30' : 'opacity-0'
-                      }`}
-                      style={{
-                        backgroundImage: `url(${bg})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="relative p-6 md:p-8">
-                  <h2 className="text-2xl md:text-3xl font-bold mb-2">
-                    Absensi Sekolah<br />
-                    <span className="text-blue-200">Lebih Cerdas & Efisien</span>
-                  </h2>
-                  <p className="text-sm md:text-base text-blue-100 mb-6 leading-relaxed">
-                    Sistem absensi digital berbasis QR Code untuk mempermudah pencatatan kehadiran secara cepat, akurat, dan real-time.
-                  </p>
+            {/* Left Column - Welcome & Quick Actions */}
+            <div className="space-y-6">
+              {/* Welcome Card */}
+              <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-400/20 rounded-full -ml-24 -mb-24 blur-2xl"></div>
+                
+                <div className="relative z-10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-200">Live System</span>
+                  </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <button
-                      onClick={handleTryOpenAbsen}
-                      className="flex-1 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                  <h2 className="text-3xl font-bold mb-3">Halo, Selamat Datang!</h2>
+                  <p className="text-blue-100 mb-8 leading-relaxed">Gunakan sistem absensi digital ini untuk memonitor kehadiran siswa dan guru dengan lebih mudah dan efisien.</p>
+                  
+                  {/* Illustration */}
+                  <div className="flex justify-center items-end gap-4 h-40 mb-8">
+                    <div className="w-28 h-32 bg-gradient-to-t from-pink-500 to-red-400 rounded-t-3xl flex items-center justify-center shadow-xl">
+                      <div className="text-white text-5xl">👨</div>
+                    </div>
+                    <div className="w-24 h-24 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-3xl flex items-center justify-center shadow-xl -mb-4">
+                      <div className="text-white text-4xl">👩</div>
+                    </div>
+                  </div>
+
+                  {/* Quick Action Buttons */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
+                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                      </svg>
-                      Absen Sekarang
+                      <div className="w-12 h-12 bg-white/30 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                        </svg>
+                      </div>
+                      <span className="font-semibold text-sm">Scan QR Code</span>
                     </button>
-                    
-                    <button
-                      type="button"
-                      onClick={() => handleNavigate('/login')}
-                      className="flex-1 px-6 py-3 bg-white hover:bg-blue-50 text-blue-900 font-medium rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+
+                    <button 
+                      onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('siswa'); setShowAbsenModal(true); }}
+                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                      </svg>
-                      Login Dashboard
+                      <div className="w-12 h-12 bg-white/30 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <span className="font-semibold text-sm">Absen Manual</span>
+                    </button>
+
+                    <button 
+                      onClick={() => { setActiveMethodTab('izin'); setShowAbsenModal(true); }}
+                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group"
+                    >
+                      <div className="w-12 h-12 bg-white/30 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <span className="font-semibold text-sm">Izin/Sakit</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleNavigate('/login')}
+                      className="bg-white hover:bg-slate-50 rounded-2xl p-4 text-left transition-all group"
+                    >
+                      <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                        </svg>
+                      </div>
+                      <span className="font-semibold text-sm text-slate-900">Login Akun</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Status Absensi Hari Ini - Connected to Database */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-slate-900">Status Absensi Hari Ini</h3>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                    <span className="text-xs font-medium text-blue-600">Live</span>
+              {/* Stats Cards */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                      <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-slate-600 font-medium">Total Hadir</span>
                   </div>
+                  <p className="text-3xl font-bold text-slate-900">{attendanceStats.totalHadir}</p>
+                  <p className="text-xs text-slate-500 mt-1">Hari ini</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-xs text-slate-500">Waktu Sekarang</span>
-                    </div>
-                    <p className="text-2xl font-bold text-blue-600">{formatTimeShort(currentTime)}</p>
-                    <p className="text-xs text-slate-500 mt-1">{formatDateShort(currentTime)}</p>
-                  </div>
-
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <span className="text-xs text-slate-500">Status Absensi</span>
-                    </div>
-                    {(() => {
-                      const status = getAttendanceStatus();
-                      const isUpcoming = status === 'belum_buka';
-                      const isClosed = status === 'sudah_tutup';
-                      const isHoliday = status === 'libur';
-                      const isEmerald = status === 'hadir'; // ✅ FIX: Added missing variable
-                      
-                      return (
-                        <>
-                          <p className={`text-lg font-bold ${isHoliday ? 'text-red-700' : isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : isEmerald ? 'text-emerald-600' : 'text-emerald-600'}`}>
-                            {isHoliday ? 'HARI LIBUR' : isUpcoming ? 'BELUM DIBUKA' : isClosed ? 'DITUTUP' : 'DIBUKA'}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-1">{isHoliday ? 'Sekolah Libur' : `${attendanceSettings.attendanceStartTime} - ${attendanceSettings.attendanceEndTime}`}</p>
-                          <span className={`inline-flex items-center gap-1 mt-2 text-xs font-medium ${isHoliday ? 'text-red-700' : isUpcoming ? 'text-amber-600' : isClosed ? 'text-red-600' : 'text-emerald-600'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isHoliday ? 'bg-red-700' : isUpcoming ? 'bg-amber-500' : isClosed ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></span>
-                            {isHoliday ? 'Libur' : isUpcoming ? 'Menunggu' : isClosed ? 'Selesai' : 'Berlangsung'}
-                          </span>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                      <span className="text-xs text-slate-600">Total Hadir Hari Ini</span>
-                    </div>
-                    <p className="text-3xl font-bold text-slate-900">{attendanceStats.totalHadir}</p>
-                    <p className="text-xs text-slate-500 mt-1">Siswa & Guru</p>
-                  </div>
-                  <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
-                    <div className="flex items-center gap-2 mb-2">
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
                       <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="text-xs text-slate-600">Keterlambatan</span>
                     </div>
-                    <p className="text-3xl font-bold text-slate-900">{attendanceStats.keterlambatan}</p>
-                    <p className="text-xs text-slate-500 mt-1">Orang</p>
+                    <span className="text-sm text-slate-600 font-medium">Terlambat</span>
                   </div>
+                  <p className="text-3xl font-bold text-slate-900">{attendanceStats.keterlambatan}</p>
+                  <p className="text-xs text-slate-500 mt-1">Hari ini</p>
                 </div>
               </div>
-
-              <div className="bg-gradient-to-br from-blue-100 via-white to-blue-50 rounded-2xl p-6 border border-blue-200">
-                <div className="flex items-center justify-center gap-4">
-                  <div className="relative">
-                    <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center">
-                      <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1">
-                    <div className="w-24 h-16 bg-blue-200 rounded-lg mb-2"></div>
-                    <div className="w-16 h-4 bg-blue-200 rounded mx-auto"></div>
-                  </div>
-
-                  <div className="relative">
-                    <div className="w-20 h-20 bg-white rounded-full shadow-lg flex items-center justify-center">
-                      <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
             </div>
 
-            {/* ========== RIGHT COLUMN ========== */}
-            <div className="space-y-4">
-              
-              {/* Hari / Tanggal Dinamis */}
-              {(() => {
-                const sectionBg = getSectionBackground(currentTime);
-                return (
-                  <div
-                    className="relative overflow-hidden rounded-2xl border border-blue-100 p-6 text-white"
-                    style={{
-                      backgroundImage: `linear-gradient(rgba(15,23,42,0.7), rgba(15,23,42,0.7)), url(${sectionBg.image})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center'
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900/60 to-slate-900/30"></div>
-                    <div className="relative">
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-200/80 mb-3">
-                        {sectionBg.isHoliday ? `Hari Besar: ${sectionBg.label}` : sectionBg.label}
-                      </p>
-                      <h3 className="text-2xl md:text-3xl font-bold mb-2">{formatDate(currentTime)}</h3>
-                      <p className="text-sm text-slate-200/80 mb-6">
-                        Tanggal hari ini ditampilkan otomatis sesuai zona waktu Jakarta.
-                      </p>
-                      <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-lg shadow-slate-900/20">
-                        <span>{currentTime.getFullYear()}</span>
-                        <span className="inline-block h-1 w-1 rounded-full bg-slate-200/70" />
-                        <span>{currentTime.getDate()} {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(currentTime)}</span>
-                      </div>
-                    </div>
+            {/* Right Column - Info & Details */}
+            <div className="space-y-6">
+              {/* Main Balance Card */}
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <p className="text-blue-200 text-sm mb-1">Statistik Kehadiran</p>
+                    <h3 className="text-4xl font-bold">{attendanceStats.totalHadir} Hadir</h3>
                   </div>
-                );
-              })()}
-
-              {/* Jam Operasional - Connected to Database */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <h3 className="font-bold text-slate-900">Jam Operasional Absensi</h3>
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
                 </div>
                 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => handleTryOpenAbsen('datang')}
+                    className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl py-3 text-sm font-semibold transition"
+                  >
+                    Absen Datang
+                  </button>
+                  <button 
+                    onClick={() => handleTryOpenAbsen('pulang')}
+                    className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl py-3 text-sm font-semibold transition"
+                  >
+                    Absen Pulang
+                  </button>
+                </div>
+              </div>
+
+              {/* Time Info Card */}
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-bold text-slate-900 text-lg">Jam Operasional</h3>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
                       <span className="text-sm text-slate-600">Absen Dibuka</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceStartTime || '-'} WIB</span>
+                    <span className="text-sm font-bold text-slate-900">{attendanceSettings.attendanceStartTime} WIB</span>
                   </div>
-                  
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                       <span className="text-sm text-slate-600">Absen Ditutup</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.attendanceEndTime || '-'} WIB</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                      <span className="text-sm text-slate-600">Batas Terlambat Absensi</span>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.lateThreshold || '-'} WIB</span>
+                    <span className="text-sm font-bold text-slate-900">{attendanceSettings.attendanceEndTime} WIB</span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
-                      <span className="text-sm text-slate-600">Jam Pulang (Auto Alpha)</span>
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                      <span className="text-sm text-slate-600">Batas Terlambat</span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-900">{attendanceSettings.schoolEndTime || '-'} WIB</span>
+                    <span className="text-sm font-bold text-slate-900">{attendanceSettings.lateThreshold} WIB</span>
                   </div>
+
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                      <span className="text-sm text-slate-600">Jam Pulang</span>
+                    </div>
+                    <span className="text-sm font-bold text-slate-900">{attendanceSettings.schoolEndTime} WIB</span>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-600">Waktu Sekarang</span>
+                    <span className="text-lg font-bold text-blue-600">{formatTimeShort(currentTime)}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">{formatDateShort(currentTime)}</p>
                 </div>
               </div>
 
-              {/* CTA Section */}
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-xl">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold mb-2">Siap untuk Absen?</h3>
-                    <p className="text-blue-100 text-sm mb-4">Mulai absen sekarang dan jadilah bagian dari sekolah digital.</p>
-                    <button
-                      onClick={handleTryOpenAbsen}
-                      className="px-6 py-3 bg-white text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                      </svg>
-                      Absen Sekarang
-                    </button>
-                  </div>
-                  <div className="w-24 h-24 bg-white rounded-xl p-2 shadow-lg">
-                    <div className="w-full h-full bg-slate-900 rounded-lg flex items-center justify-center">
-                      <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
+              {/* CTA Card */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl">
+                <h3 className="text-xl font-bold mb-2">Siap untuk Absen?</h3>
+                <p className="text-slate-300 text-sm mb-4">Mulai absen sekarang dan jadilah bagian dari sekolah digital.</p>
+                <button 
+                  onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
+                  className="w-full bg-white text-slate-900 py-3 rounded-xl font-semibold hover:bg-slate-100 transition flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                  </svg>
+                  Mulai Absensi
+                </button>
               </div>
-
             </div>
           </div>
         </div>
       </div>
 
-      {/* ========== FOOTER ========== */}
-      <footer className="bg-slate-900 text-slate-400 py-4 mt-8">
-        <div className="max-w-7xl mx-auto px-4 text-center">
+      {/* Footer */}
+      <footer className="bg-slate-900 text-slate-400 py-6">
+        <div className="max-w-7xl mx-auto px-6 text-center">
           <div className="flex items-center justify-center gap-2 mb-3">
             <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
               {attendanceSettings.schoolLogo && !logoError ? (
                 <img 
                   src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
                   alt="Logo" 
-                  className="w-6 h-6 object-contain"
+                  className="w-6 h-6 object-contain rounded-full"
                   onError={() => setLogoError(true)}
                 />
               ) : (
@@ -1398,6 +1465,18 @@ const Landing = () => {
           <p className="text-xs">© 2026 {attendanceSettings.schoolName || 'AbsensiPro'}. All rights reserved.</p>
         </div>
       </footer>
+    </div>
+  );
+
+  return (
+    <div className="font-sans">
+      {/* Responsive: Mobile untuk layar < 1024px, Desktop untuk >= 1024px */}
+      <div className="lg:hidden">
+        <MobileLayout />
+      </div>
+      <div className="hidden lg:block">
+        <DesktopLayout />
+      </div>
 
       {/* ========== NOTIFICATIONS ========== */}
       {[
@@ -1474,7 +1553,7 @@ const Landing = () => {
             
             <div className="p-6">
               {/* Role Tabs */}
-              <div className="flex justify-center mb-6">
+              <div className="flex justify-center mb-6 space-x-2 flex-wrap">
                 <div className="inline-flex bg-slate-100 rounded-xl p-1">
                   {['siswa', 'guru'].map((role) => (
                     <button
@@ -1486,24 +1565,20 @@ const Landing = () => {
                           : 'text-slate-600 hover:text-slate-800'
                       }`}
                     >
-                      {role === 'siswa' ? '🧑‍🎓' : '👨‍'} {role === 'siswa' ? 'Siswa' : 'Guru'}
+                      {role === 'siswa' ? '🧑‍🎓' : '👨‍🏫'} {role === 'siswa' ? 'Siswa' : 'Guru'}
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Method Tabs */}
-              <div className="flex justify-center mb-5">
-                <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full">
-                  {(activeUserRole === 'guru' ? [
+              <div className="flex justify-center mb-5 space-x-3 flex-wrap">
+                <div className="inline-flex bg-slate-50 rounded-2xl p-1 border border-slate-200 w-full md:w-auto">
+                  {[
                     { id: 'scan', label: 'Scan QR', icon: '📷' },
                     { id: 'manual', label: 'Manual', icon: '✍️' },
                     { id: 'izin', label: 'Izin', icon: '📝' }
-                  ] : [
-                    { id: 'scan', label: 'Scan QR', icon: '📷' },
-                    { id: 'manual', label: 'Manual', icon: '✍️' },
-                    { id: 'izin', label: 'Izin', icon: '📝' }
-                  ]).map((tab) => (
+                  ].map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveMethodTab(tab.id)}
@@ -1522,7 +1597,37 @@ const Landing = () => {
               {/* Content Area */}
               <div className="bg-white rounded-2xl border-2 border-slate-100 shadow-inner overflow-hidden min-h-[380px] flex flex-col justify-center transition-all duration-300">
                 <div className="p-5">
-                  {/* ✨ OVERLAY IZINKAN KAMERA (MUNCUL DI TENGAH MODAL) */}
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400 mb-1">Aksi Absensi</p>
+                      <h3 className="text-lg font-semibold text-slate-900">
+                        {activeMethodTab === 'izin'
+                          ? 'Pengajuan Izin'
+                          : activeAttendanceAction === 'pulang'
+                            ? 'Absensi Pulang'
+                            : 'Absensi Datang'}
+                      </h3>
+                    </div>
+                    {activeMethodTab !== 'izin' && (
+                      <div className="inline-flex rounded-full bg-slate-100 p-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600">
+                        <button
+                          type="button"
+                          onClick={() => setActiveAttendanceAction('datang')}
+                          className={`px-3 py-2 rounded-full transition ${activeAttendanceAction === 'datang' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                        >
+                          Datang
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveAttendanceAction('pulang')}
+                          className={`px-3 py-2 rounded-full transition ${activeAttendanceAction === 'pulang' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                        >
+                          Pulang
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {isCameraStarting && (
                     <div className="absolute inset-0 z-[60] bg-blue-600/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-6 text-center animate-fade-in">
                       <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center animate-pulse mb-4">
@@ -1660,7 +1765,6 @@ const Landing = () => {
                       </button>
                     </form>
                   )}
-
 
                   {activeMethodTab === 'izin' && (
                     <form onSubmit={handleIzinSubmit} className="space-y-4">
