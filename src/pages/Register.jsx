@@ -183,7 +183,7 @@ const Register = () => {
     };
 
     return (
-        <div className="auth-shell min-h-screen relative flex items-center justify-center p-3 sm:p-4 overflow-hidden bg-gray-50">
+        <div className="auth-shell min-h-screen relative flex items-center justify-center p-3 sm:p-4 overflow-hidden bg-white dark:bg-slate-950 transition-colors duration-500">
             {/* Background Mobile */}
             <div className="absolute inset-0 z-0 lg:hidden">
                 {backgroundImages.map((img, index) => (
@@ -202,7 +202,7 @@ const Register = () => {
                 <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent" />
             </div>
 
-            <div className={`auth-card bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg w-full max-w-md sm:max-w-4xl flex flex-col lg:flex-row overflow-hidden relative z-10 transition-all duration-500 ${
+            <div className={`auth-card bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-2xl shadow-lg w-full max-w-md sm:max-w-4xl flex flex-col lg:flex-row overflow-hidden relative z-10 border border-transparent dark:border-slate-800 transition-all duration-500 ${
                 !isMounted ? 'opacity-0 scale-95' : isExiting ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
             }`} style={{ minHeight: 'auto', maxHeight: '95vh' }}>
                 
@@ -244,14 +244,14 @@ const Register = () => {
                     <button
                         type="button"
                         onClick={(e) => handleNavigateWithAnimation('/', e)}
-                        className="auth-back-button inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all"
+                        className="auth-back-button inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600"
                     >
-                        <span>←</span>
-                        <span>Kembali</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                        <span className="uppercase tracking-tighter">Beranda</span>
                     </button>
                     <div className="flex items-center space-x-2">
-                        <div className="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">{schoolSettings.name.charAt(0).toUpperCase()}</span>
+                        <div className="w-7 h-7 bg-slate-900 dark:bg-blue-600 rounded-lg flex items-center justify-center shadow-lg transition-colors">
+                            <span className="text-white font-black text-sm">{schoolSettings.name.charAt(0).toUpperCase()}</span>
                         </div>
                         <span className="text-base font-bold text-gray-900 auth-heading">{schoolSettings.name}</span>
                     </div>
@@ -260,8 +260,8 @@ const Register = () => {
                     <div className="flex-1 overflow-y-auto pr-1">
                         <div className="max-w-sm w-full mx-auto">
                             <div className="mb-4">
-                                <h1 className="text-xl font-bold text-gray-900 mb-1 auth-heading">Buat Akun</h1>
-                                <p className="text-gray-500 text-xs auth-text">Lengkapi data untuk mendaftar di {schoolSettings.name}</p>
+                                <h1 className="text-xl font-black text-slate-900 dark:text-white mb-1 auth-heading uppercase tracking-tighter">Buat Akun</h1>
+                                <p className="text-slate-500 dark:text-slate-400 text-xs auth-text font-bold">Lengkapi data untuk mendaftar di {schoolSettings.name}</p>
                             </div>
 
                             {error && (
@@ -273,12 +273,12 @@ const Register = () => {
                             <form onSubmit={handleRegister} className="space-y-3">
                                 {/* Role Selection */}
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Daftar Sebagai</label>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5">Daftar Sebagai</label>
                                     <div className="grid grid-cols-3 gap-2">
                                         {SUPPORTED_ROLES.map((role) => (
                                             <button key={role} type="button" onClick={() => setFormData(prev => ({ ...prev, role }))}
                                                 className={`px-2 py-2 rounded-lg text-xs font-medium transition-all border ${
-                                                    formData.role === role ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                                    formData.role === role ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
                                                 }`}>
                                                 {role === 'siswa' ? '🧑‍🎓' : role === 'guru' ? '👨‍🏫' : '👨‍💼'} {role.charAt(0).toUpperCase() + role.slice(1)}
                                             </button>
@@ -288,11 +288,11 @@ const Register = () => {
 
                                 {/* Input Foto Profil */}
                                 <div className="mb-4">
-                                    <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
                                         Foto Profil (Opsional)
                                     </label>
-                                    <div className="flex items-center gap-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-                                        <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-blue-200 shadow-sm flex-shrink-0">
+                                    <div className="flex items-center gap-4 p-3 bg-blue-50/50 dark:bg-slate-800/50 rounded-xl border border-blue-100 dark:border-slate-700">
+                                        <div className="w-16 h-16 rounded-full bg-white dark:bg-slate-900 flex items-center justify-center overflow-hidden border-2 border-blue-200 dark:border-slate-700 shadow-sm flex-shrink-0">
                                             {photoPreview ? (
                                                 <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                                             ) : (
@@ -308,7 +308,7 @@ const Register = () => {
 
                                 {/* Nama */}
                                 <input type="text" name="name" value={formData.name} onChange={handleChange}
-                                    className="auth-input w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    className="auth-input w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                     placeholder="Nama Lengkap *" required />
 
                                 {/* Email */}

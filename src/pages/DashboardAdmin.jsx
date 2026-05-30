@@ -177,6 +177,8 @@ const normalizeSettingsResponse = (data = {}) => {
     attendanceStartTime: normalizeTimeValue(getValue('attendanceStartTime', 'attendance_start_time')) || '07:00',
     attendanceEndTime: normalizeTimeValue(getValue('attendanceEndTime', 'attendance_end_time')) || '08:00',
     lateThreshold: normalizeTimeValue(getValue('lateThreshold', 'late_threshold')) || '08:00',
+    pulangStartTime: normalizeTimeValue(getValue('pulangStartTime', 'pulang_start_time')) || '15:00',
+    pulangEndTime: normalizeTimeValue(getValue('pulangEndTime', 'pulang_end_time')) || '16:00',
     schoolEndTime: normalizeTimeValue(getValue('schoolEndTime', 'school_end_time')) || '15:30',
 
     enableQRCode: normalizeBoolean(getValue('enableQRCode', 'enable_qr_code')),
@@ -206,20 +208,12 @@ const persistSchoolSettings = (settings) => {
     dashboardPhoto2: settings.dashboardPhoto2 ?? null,
     dashboardPhoto3: settings.dashboardPhoto3 ?? null,
     dashboardVideo: settings.dashboardVideo ?? null,
+    pulangStartTime: settings.pulangStartTime ?? null,
+    pulangEndTime: settings.pulangEndTime ?? null,
   }));
 };
 
 const DashboardAdmin = () => {
-
-  const handleSettingsChange = (e) => {
-  const { name, value, type, checked } = e.target;
-
-  setSettingsData(prev => ({
-    ...prev,
-    [name]: type === 'checkbox' ? checked : value
-  }));
-};
-
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -338,10 +332,10 @@ const DashboardAdmin = () => {
     academicYear: '',
     schoolLogo: null,
     attendanceStartTime: '',
-    attendanceOpenTime: '',
-    attendanceCloseTime: '',
     attendanceEndTime: '',
     lateThreshold: '',
+    pulangStartTime: '',
+    pulangEndTime: '',
     enableNotifications: true,
     enableEmailReports: true,
     enableQRCode: true,
@@ -400,6 +394,14 @@ const DashboardAdmin = () => {
     if (Object.prototype.hasOwnProperty.call(settings, 'endSound')) {
       setEndSoundPreview(resolvePreviewValue(settings.endSound));
     }
+  };
+
+  const handleSettingsChange = (event) => {
+    const { name, type, value, checked } = event.target;
+    setSettingsData((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   // ✨ KONFIGURASI BACKGROUND DINAMIS (LANDING STYLE)
@@ -578,11 +580,11 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 60000 // Naikkan ke 60 detik karena server mungkin lambat saat proses data
+    timeout: 10000 // Timeout 10 detik, lebih singkat untuk fail fast
   };
 
   try {
-    const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/settings', '/settings'], config), 2, 2000);
+    const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/settings', '/settings'], config), 1, 1000);
 
     if (res?.data) {
       const backendSettings = normalizeSettingsResponse(res.data);
@@ -738,7 +740,7 @@ const fetchSettings = async () => {
     try {
       setError('');
       const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
+      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 };
       
       // Ambil semua data secara paralel
       const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
@@ -1333,6 +1335,10 @@ const handleSaveSettings = async (section, e) => {
       appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
       appendField('attendanceEndTime', formatTime(settingsData.attendanceEndTime));
       appendField('lateThreshold', formatTime(settingsData.lateThreshold));
+      appendField('pulangStartTime', formatTime(settingsData.pulangStartTime));
+      appendField('pulang_start_time', formatTime(settingsData.pulangStartTime));
+      appendField('pulang_end_time', formatTime(settingsData.pulangEndTime));
+      appendField('pulangEndTime', formatTime(settingsData.pulangEndTime));
       appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
       appendField('activeDays', settingsData.activeDays);
       data.append('attendance_session_open', settingsData.attendanceSessionOpen || settingsData.attendance_session_open ? '1' : '0');
@@ -1392,6 +1398,8 @@ const handleSaveSettings = async (section, e) => {
         attendanceStartTime: formatTime(settingsData.attendanceStartTime),
         attendanceEndTime: formatTime(settingsData.attendanceEndTime),
         lateThreshold: formatTime(settingsData.lateThreshold),
+        pulangStartTime: formatTime(settingsData.pulangStartTime),
+        pulangEndTime: formatTime(settingsData.pulangEndTime),
         schoolEndTime: formatTime(settingsData.schoolEndTime),
         attendanceSessionOpen: settingsData.attendanceSessionOpen,
         autoMarkAbsentEnabled: settingsData.autoMarkAbsentEnabled,
@@ -4520,41 +4528,73 @@ const handleSaveSettings = async (section, e) => {
                         {settingsSection === 'attendance' && (
                           <form onSubmit={(e) => handleSaveSettings('attendance', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
                             <h3 className="text-base font-bold text-blue-800">⏰ Pengaturan Absensi</h3>
-                            <div className="space-y-3">
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi</label>
-                                  <input
-                                    type="time"
-                                    name="attendanceStartTime"
-                                    value={settingsData.attendanceStartTime}
-                                    onChange={handleSettingsChange}
-                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  />
+                            <div className="space-y-4">
+                              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                                <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Absensi Datang</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi Datang</label>
+                                    <input
+                                      type="time"
+                                      name="attendanceStartTime"
+                                      value={settingsData.attendanceStartTime}
+                                      onChange={handleSettingsChange}
+                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi Datang</label>
+                                    <input
+                                      type="time"
+                                      name="attendanceEndTime"
+                                      value={settingsData.attendanceEndTime}
+                                      onChange={handleSettingsChange}
+                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi</label>
+                                <div className="mt-3">
+                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Batas Keterlambatan Datang</label>
                                   <input
                                     type="time"
-                                    name="attendanceEndTime"
-                                    value={settingsData.attendanceEndTime}
+                                    name="lateThreshold"
+                                    value={settingsData.lateThreshold}
                                     onChange={handleSettingsChange}
                                     className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   />
                                 </div>
                               </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Batas Keterlambatan</label>
-                                <input
-                                  type="time"
-                                  name="lateThreshold"
-                                  value={settingsData.lateThreshold}
-                                  onChange={handleSettingsChange}
-                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
+
+                              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                                <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Absensi Pulang</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Mulai Absensi Pulang</label>
+                                    <input
+                                      type="time"
+                                      name="pulangStartTime"
+                                      value={settingsData.pulangStartTime}
+                                      onChange={handleSettingsChange}
+                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi Pulang</label>
+                                    <input
+                                      type="time"
+                                      name="pulangEndTime"
+                                      value={settingsData.pulangEndTime}
+                                      onChange={handleSettingsChange}
+                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                  </div>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2">Setelah jam ini, siswa yang belum absen pulang dapat ditandai absen/alpha secara otomatis oleh sistem.</p>
                               </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah (auto absen alfha)</label>
+
+                              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                                <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Informasi Pulang Sekolah</h4>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah</label>
                                 <input
                                   type="time"
                                   name="schoolEndTime"
@@ -4562,7 +4602,7 @@ const handleSaveSettings = async (section, e) => {
                                   onChange={handleSettingsChange}
                                   className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 />
-                                <p className="text-xs text-slate-500 mt-1">Setelah jam ini, scheduler bisa menandai siswa tanpa absen sebagai alpha/absen (jalankan `php artisan schedule:work` atau cron).</p>
+                                <p className="text-xs text-slate-500 mt-1">Jam resmi berakhir sekolah, dipakai untuk informasi dan notifikasi bel pulang.</p>
                               </div>
                               <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-200">
                                 <div>

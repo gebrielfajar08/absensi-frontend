@@ -26,7 +26,26 @@ const Landing = () => {
   const [activeMethodTab, setActiveMethodTab] = useState('scan');
   const [showAbsenModal, setShowAbsenModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [showAttendanceListModal, setShowAttendanceListModal] = useState(false); // New state for the modal
   const navigate = useNavigate();
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isLandingLoading, setIsLandingLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  useEffect(() => {
+    let interval;
+    if (isLandingLoading) {
+      interval = setInterval(() => {
+        setLoadingProgress((prev) => {
+          if (prev >= 99) return 99;
+          return prev + 1;
+        });
+      }, 20);
+    } else {
+      setLoadingProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [isLandingLoading]);
 
   const schoolBackgrounds = [
     'https://images.unsplash.com/photo-1562774053-701939374585?w=1920&q=80',
@@ -49,8 +68,6 @@ const Landing = () => {
   const [submitNotificationType, setSubmitNotificationType] = useState('error');
 
   const [showStandaloneQRScanner, setShowStandaloneQRScanner] = useState(false);
-  const [isLandingLoading, setIsLandingLoading] = useState(true);
-  const [isNavigating, setIsNavigating] = useState(false);
 
   const [studentForm, setStudentForm] = useState({ user_id: '', fullName: '' });
   const [teacherForm, setTeacherForm] = useState({ nip: '', fullName: '' });
@@ -73,6 +90,8 @@ const Landing = () => {
     attendanceStartTime: '07:00',
     attendanceEndTime: '12:00',
     lateThreshold: '08:00',
+    pulangStartTime: '15:00',
+    pulangEndTime: '16:00',
     schoolEndTime: '15:30',
     schoolName: '',
     schoolLogo: null,
@@ -85,6 +104,9 @@ const Landing = () => {
     totalHadir: 0,
     keterlambatan: 0
   });
+  const [todayAttendanceRecords, setTodayAttendanceRecords] = useState([]); // New state to store individual records
+  const [showLandingNotification, setShowLandingNotification] = useState(false);
+  const [landingNotificationMessage, setSubmitLandingNotificationMessage] = useState('');
 
   const getJakartaDateKey = (date) => {
     if (!date) return '';
@@ -121,7 +143,8 @@ const Landing = () => {
   const countTodayAttendance = (records = []) => {
     const todayKey = getJakartaDateKey(new Date());
     const counter = { total: 0, hadir: 0, terlambat: 0, absen: 0 };
-    if (!Array.isArray(records)) return counter;
+    if (!Array.isArray(records)) return { counter, todayRecords: [] };
+    const todayRecords = []; // To store filtered records
 
     records.forEach((item) => {
       const dateKey = normalizeDateKey(item.date || item.attendance_time || item.created_at || item.time || item.scan_time);
@@ -131,21 +154,31 @@ const Landing = () => {
       const isPresent = ['hadir', 'tepat_waktu', 'present', 'on_time', 'on time'].some((flag) => status.includes(flag));
       const isAbsent = ['absen', 'absent', 'tidak hadir', 'missing', 'alpha'].some((flag) => status.includes(flag));
 
+      let displayStatus = 'lain-lain';
       if (isLate) {
         counter.terlambat += 1;
-        counter.total += 1;
+        displayStatus = 'terlambat';
       } else if (isPresent) {
         counter.hadir += 1;
-        counter.total += 1;
+        displayStatus = 'hadir';
       } else if (isAbsent) {
         counter.absen += 1;
-        counter.total += 1;
+        displayStatus = 'absen';
       } else {
-        counter.total += 1;
+        displayStatus = status;
       }
+      
+      counter.total += 1;
+      todayRecords.push({
+        ...item,
+        displayStatus,
+        userName: item.user_name || item.name || item.full_name || 'Unknown',
+        scanTime: item.scan_time || item.attendance_time || item.created_at || item.time,
+        role: item.role || 'Unknown'
+      });
     });
 
-    return counter;
+    return { counter, todayRecords };
   };
 
   const audioContextRef = useRef(null);
@@ -159,6 +192,8 @@ const Landing = () => {
         attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '',
         attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '',
         lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '',
+        pulangStartTime: settings.pulangStartTime || settings.pulang_start_time || settings.jam_pulang_mulai || '',
+        pulangEndTime: settings.pulangEndTime || settings.pulang_end_time || settings.jam_pulang_akhir || '',
         schoolEndTime: settings.schoolEndTime || settings.jam_pulang || '',
         schoolName: settings.schoolName || settings.nama_sekolah || '',
         schoolLogo: settings.schoolLogo || settings.logo || null,
@@ -185,38 +220,36 @@ const Landing = () => {
       const res = await api.get('/public/stats');
       if (res && res.data != null) {
         const data = res.data;
-        let stats = {
-          totalAbsensi: 0,
-          hadir: 0,
-          terlambat: 0,
-          tidakHadir: 0,
-          hadirPercent: 0
-        };
+        let statsSummary = { totalHadir: 0, keterlambatan: 0 };
+        let recordsForToday = [];
 
         if (Array.isArray(data)) {
-          const counts = countTodayAttendance(data);
-          stats = {
-            totalHadir: counts.hadir + counts.terlambat,
-            keterlambatan: counts.terlambat
+          const result = countTodayAttendance(data);
+          statsSummary = {
+            totalHadir: result.counter.hadir + result.counter.terlambat,
+            keterlambatan: result.counter.terlambat
           };
+          recordsForToday = result.todayRecords;
         } else if (Array.isArray(data.data)) {
-          const counts = countTodayAttendance(data.data);
-          stats = {
-            totalHadir: counts.hadir + counts.terlambat,
-            keterlambatan: counts.terlambat
+          const result = countTodayAttendance(data.data);
+          statsSummary = {
+            totalHadir: result.counter.hadir + result.counter.terlambat,
+            keterlambatan: result.counter.terlambat
           };
+          recordsForToday = result.todayRecords;
         } else {
           const hadirCount = data.total_hadir ?? data.hadir ?? 0;
           const terlambatCount = data.terlambat ?? data.total_terlambat ?? 0;
-          const totalHadirCount = data.total_hadir ?? data.hadir ?? hadirCount + terlambatCount;
 
-          stats = {
-            totalHadir: totalHadirCount,
+          statsSummary = {
+            totalHadir: hadirCount + terlambatCount,
             keterlambatan: terlambatCount
           };
+          recordsForToday = data.records || data.data_records || [];
         }
 
-        setAttendanceStats(stats);
+        setTodayAttendanceRecords(recordsForToday); // Set the new state
+        setAttendanceStats(statsSummary);
       }
     } catch (err) {
       console.warn('Gagal mengambil data statistik landing dari database:', err.message);
@@ -366,11 +399,13 @@ const Landing = () => {
     const openTime = (attendanceSettings.attendanceStartTime || "07:00").substring(0, 5);
     const closeTime = (attendanceSettings.attendanceEndTime || "12:00").substring(0, 5);
     const lateTime = (attendanceSettings.lateThreshold || "08:00").substring(0, 5);
-    const pulangTime = (attendanceSettings.schoolEndTime || "15:30").substring(0, 5);
+    const pulangOpenTime = (attendanceSettings.pulangStartTime || "15:00").substring(0, 5);
+    const pulangCloseTime = (attendanceSettings.pulangEndTime || "16:00").substring(0, 5);
 
     if (checkIsHoliday()) return 'libur';
     if (action === 'pulang') {
-      if (currentTimeStr < pulangTime) return 'belum_pulang';
+      if (currentTimeStr < pulangOpenTime) return 'belum_pulang';
+      if (currentTimeStr > pulangCloseTime) return 'sudah_tutup_pulang';
       return 'pulang';
     }
     if (currentTimeStr < openTime) return 'belum_buka';
@@ -397,7 +432,11 @@ const Landing = () => {
       }
     }
     if (action === 'pulang' && status === 'belum_pulang') {
-      showSubmitNotificationMessage(`❌ Belum jam pulang. Silakan kembali pada jam ${attendanceSettings.schoolEndTime}.`, "warning");
+      showSubmitNotificationMessage(`❌ Belum jam pulang. Silakan kembali pada jam ${attendanceSettings.pulangStartTime || attendanceSettings.schoolEndTime}.`, "warning");
+      return;
+    }
+    if (action === 'pulang' && status === 'sudah_tutup_pulang') {
+      showSubmitNotificationMessage(`❌ Absensi pulang sudah ditutup pada jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}.`, "error");
       return;
     }
 
@@ -432,8 +471,14 @@ const Landing = () => {
         }
       }
       if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
-        const msg = `❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.schoolEndTime}`;
+        const msg = `❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.pulangStartTime || attendanceSettings.schoolEndTime}`;
         showSubmitNotificationMessage(msg, 'warning');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+      if (activeAttendanceAction === 'pulang' && status === 'sudah_tutup_pulang') {
+        const msg = `❌ Absensi pulang sudah ditutup! Batas akhir jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}`;
+        showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
       }
@@ -444,7 +489,8 @@ const Landing = () => {
         user_id: studentForm.user_id.trim(),
         nis: studentForm.user_id.trim(),
         attendance_time: getLocalTimestamp(currentTime),
-        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
+        scan_time: getLocalTimestamp(currentTime),
+        status: activeAttendanceAction === 'pulang' ? 'hadir' : status,
         role: 'siswa',
         type: activeAttendanceAction === 'pulang' ? 'pulang' : 'manual',
         action: activeAttendanceAction
@@ -531,8 +577,14 @@ const Landing = () => {
         }
       }
       if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
-        const msg = `❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.schoolEndTime}`;
+        const msg = `❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.pulangStartTime || attendanceSettings.schoolEndTime}`;
         showSubmitNotificationMessage(msg, 'warning');
+        setSubmitMessage({ type: 'error', text: msg });
+        return;
+      }
+      if (activeAttendanceAction === 'pulang' && status === 'sudah_tutup_pulang') {
+        const msg = `❌ Absensi pulang sudah ditutup! Batas akhir jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}`;
+        showSubmitNotificationMessage(msg, 'error');
         setSubmitMessage({ type: 'error', text: msg });
         return;
       }
@@ -546,7 +598,8 @@ const Landing = () => {
         teacher_id: teacherForm.nip.trim(),
         student_id: teacherForm.nip.trim(),
         attendance_time: getLocalTimestamp(currentTime),
-        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
+        scan_time: getLocalTimestamp(currentTime),
+        status: activeAttendanceAction === 'pulang' ? 'hadir' : status,
         role: 'guru',
         type: activeAttendanceAction === 'pulang' ? 'pulang' : 'manual',
         action: activeAttendanceAction
@@ -726,14 +779,18 @@ const Landing = () => {
 
       const status = getAttendanceStatus(activeAttendanceAction);
       if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
-        showQRNotificationMessage(`❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.schoolEndTime}`, 'warning');
+        showQRNotificationMessage(`❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.pulangStartTime || attendanceSettings.schoolEndTime}`, 'warning');
+        return;
+      }
+      if (activeAttendanceAction === 'pulang' && status === 'sudah_tutup_pulang') {
+        showQRNotificationMessage(`❌ Absensi pulang sudah ditutup pada jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}`, 'error');
         return;
       }
       
       const requestData = {
         qr_data: qrData,
         scan_time: getLocalTimestamp(currentTime),
-        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
+        status: activeAttendanceAction === 'pulang' ? 'hadir' : status,
         type: activeAttendanceAction === 'pulang' ? 'pulang' : (qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr')),
         user_id: qrData.user_id || qrData.id || qrData.student_id || qrData.teacher_id || '',
         student_id: qrData.student_id || qrData.id || '',
@@ -940,8 +997,34 @@ const Landing = () => {
     return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
-  const isPageLoading = isLandingLoading || isNavigating;
+  const isPageLoading = (isLandingLoading || loadingProgress < 100) || isNavigating;
 
+  if (isPageLoading && !isNavigating) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white dark:bg-slate-900 transition-colors duration-500 px-6">
+        <div className="w-full max-w-[280px] sm:max-w-xs">
+          <div className="flex justify-center mb-8">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/20 animate-bounce">
+              <span className="text-3xl">⚡</span>
+            </div>
+          </div>
+          <div className="relative h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
+            <div 
+              className="absolute top-0 left-0 h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${loadingProgress}%` }}
+            ></div>
+          </div>
+          <div className="flex justify-between items-center px-1">
+            <div>
+              <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest opacity-80">Loading</h2>
+              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tighter">Synchronizing...</p>
+            </div>
+            <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tighter">{loadingProgress}%</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
   // Mobile Layout
   const MobileLayout = () => (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 pb-20">
@@ -965,14 +1048,13 @@ const Landing = () => {
             </div>
             <div>
               <h1 className="text-white font-bold text-lg">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
-              <p className="text-blue-200 text-xs">Mobile</p>
+              <p className="text-blue-200 text-xs">Mobile Presence</p>
             </div>
           </div>
           <button className="relative p-2">
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>
         </div>
         
@@ -982,7 +1064,7 @@ const Landing = () => {
           <p className="text-blue-100 text-xs">Gunakan sistem absensi ini untuk memonitor kehadiran</p>
         </div>
 
-        {/* Welcome Illustration */}
+        {/* Welcome Illustration - Restored */}
         <div className="flex justify-center items-end gap-2 h-32 mb-4">
           <div className="w-20 h-24 bg-gradient-to-t from-pink-500 to-red-400 rounded-t-3xl flex items-center justify-center">
             <div className="text-white text-4xl">👨</div>
@@ -996,19 +1078,31 @@ const Landing = () => {
       {/* Main Content - White Background */}
       <div className="bg-white rounded-t-3xl -mt-6 min-h-screen px-4 pt-6">
         {/* Balance Card */}
-        <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 text-white mb-6 shadow-lg">
-          <p className="text-blue-200 text-xs mb-1">Total Hadir Hari Ini</p>
-          <h3 className="text-3xl font-bold mb-3">{attendanceStats.totalHadir}</h3>
-          <div className="flex gap-2">
+        <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white mb-6 shadow-xl text-center relative overflow-hidden">
+          <h3 className="text-4xl font-black tracking-tighter mb-1 relative z-10">{formatTimeShort(currentTime)}</h3>
+          <p className="text-blue-100 text-[10px] font-bold uppercase tracking-widest mb-6 relative z-10">{formatDateShort(currentTime)}</p>
+          
+          <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-5 mb-6 relative z-10">
+            <div className="border-r border-white/10">
+              <p className="text-blue-200 text-[10px] uppercase font-black tracking-widest mb-1">Total Hadir</p>
+              <p className="text-2xl font-black">{attendanceStats.totalHadir}</p>
+            </div>
+            <div>
+              <p className="text-blue-200 text-[10px] uppercase font-black tracking-widest mb-1">Terlambat</p>
+              <p className="text-2xl font-black">{attendanceStats.keterlambatan}</p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 relative z-10">
             <button 
               onClick={() => handleTryOpenAbsen('datang')}
-              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-2 text-xs font-semibold hover:bg-white/30 transition"
+              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-white/30 transition"
             >
               Absen Datang
             </button>
             <button 
               onClick={() => handleTryOpenAbsen('pulang')}
-              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-2 text-xs font-semibold hover:bg-white/30 transition"
+              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-white/30 transition"
             >
               Absen Pulang
             </button>
@@ -1067,8 +1161,8 @@ const Landing = () => {
         </div>
 
         {/* Stats Section */}
-        <div className="mb-6">
-          <h3 className="text-slate-800 font-bold mb-3 text-sm">Catatan Kehadiran</h3>
+        <div className="mb-8">
+          <h3 className="text-slate-900 font-black mb-4 text-xs uppercase tracking-widest">Catatan Kehadiran</h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
               <div className="flex items-center gap-2 mb-2">
@@ -1099,10 +1193,10 @@ const Landing = () => {
         </div>
 
         {/* Time Info */}
-        <div className="bg-slate-50 rounded-2xl p-4 mb-6">
+        <div className="bg-slate-50 rounded-[24px] p-6 mb-8 border border-slate-100">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs text-slate-500">Waktu Sekarang</span>
-            <span className="text-xs font-bold text-blue-600">{formatTimeShort(currentTime)}</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Waktu Sekarang</span>
+            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{formatTimeShort(currentTime)}</span>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
@@ -1113,11 +1207,19 @@ const Landing = () => {
               <span className="text-slate-600">Tutup</span>
               <span className="font-semibold text-slate-800">{attendanceSettings.attendanceEndTime}</span>
             </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600">Pulang Dibuka</span>
+              <span className="font-semibold text-slate-800">{attendanceSettings.pulangStartTime}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600">Pulang Ditutup</span>
+              <span className="font-semibold text-slate-800">{attendanceSettings.pulangEndTime}</span>
+            </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-3 mb-6">
+        <div className="space-y-3 mb-10">
           <button 
             onClick={() => handleNavigate('/login')}
             className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-semibold text-sm hover:bg-slate-800 transition shadow-lg"
@@ -1142,7 +1244,11 @@ const Landing = () => {
           <span className="text-[10px] font-medium">Home</span>
         </button>
         
-        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
+        <button 
+          onClick={() => setShowAttendanceListModal(true)}
+          className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
+        >
+          {/* This is the "Absensi" button the user wants to modify */}
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
@@ -1160,14 +1266,23 @@ const Landing = () => {
           </div>
         </button>
 
-        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
+        <button 
+          onClick={() => {
+            setSubmitLandingNotificationMessage(`🔔 Info Kehadiran Hari Ini:\n- Total Hadir: ${attendanceStats.totalHadir}\n- Terlambat: ${attendanceStats.keterlambatan}\n\nData diperbarui secara real-time.`);
+            setShowLandingNotification(true);
+          }}
+          className={`flex flex-col items-center gap-1 transition-colors ${showLandingNotification ? 'text-blue-600' : 'text-slate-400'}`}
+        >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
           <span className="text-[10px] font-medium">Notif</span>
         </button>
 
-        <button className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600">
+        <button 
+          onClick={() => handleNavigate('/login')}
+          className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
+        >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
           </svg>
@@ -1481,19 +1596,20 @@ const Landing = () => {
       {/* ========== NOTIFICATIONS ========== */}
       {[
         { show: showQRNotification, message: qrNotificationMessage, type: qrNotificationType, onClose: () => setShowQRNotification(false) },
-        { show: showSubmitNotification, message: submitNotificationMessage, type: submitNotificationType, onClose: () => setShowSubmitNotification(false) }
+        { show: showSubmitNotification, message: submitNotificationMessage, type: submitNotificationType, onClose: () => setShowSubmitNotification(false) },
+        { show: showLandingNotification, message: showLandingNotification ? landingNotificationMessage : '', type: 'info', onClose: () => setShowLandingNotification(false) }
       ].map((notif, idx) => notif.show && (
         <div key={idx} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className={`bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full transform transition-all animate-fade-in border-t-4 ${
-            notif.type === 'success' ? 'border-emerald-500' : notif.type === 'warning' ? 'border-amber-500' : 'border-red-500'
+            notif.type === 'success' ? 'border-emerald-500' : notif.type === 'warning' ? 'border-amber-500' : notif.type === 'info' ? 'border-blue-500' : 'border-red-500'
           }`}>
             <div className="text-center">
               <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
-                notif.type === 'success' ? 'bg-emerald-50' : notif.type === 'warning' ? 'bg-amber-50' : 'bg-red-50'
+                notif.type === 'success' ? 'bg-emerald-50' : notif.type === 'warning' ? 'bg-amber-50' : notif.type === 'info' ? 'bg-blue-50' : 'bg-red-50'
               }`}>
-                {notif.type === 'success' ? (
+                {notif.type === 'success' || notif.type === 'info' ? (
                   <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={notif.type === 'success' ? "M5 13l4 4L19 7" : "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"} />
                   </svg>
                 ) : notif.type === 'warning' ? (
                   <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1501,20 +1617,20 @@ const Landing = () => {
                   </svg>
                 ) : (
                   <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 )}
               </div>
               <h3 className={`text-lg font-semibold mb-2 ${
-                notif.type === 'success' ? 'text-emerald-700' : notif.type === 'warning' ? 'text-amber-700' : 'text-red-700'
+                notif.type === 'success' ? 'text-emerald-700' : notif.type === 'warning' ? 'text-amber-700' : notif.type === 'info' ? 'text-blue-700' : 'text-red-700'
               }`}>
-                {notif.type === 'success' ? 'Berhasil!' : notif.type === 'warning' ? 'Perhatian' : 'Terjadi Kesalahan'}
+                {notif.type === 'success' ? 'Berhasil!' : notif.type === 'warning' ? 'Perhatian' : notif.type === 'info' ? 'Informasi' : 'Terjadi Kesalahan'}
               </h3>
               <p className="text-slate-600 mb-5 text-sm whitespace-pre-line">{notif.message}</p>
               <button
                 onClick={notif.onClose}
                 className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
-                  notif.type === 'success'
+                  notif.type === 'success' || notif.type === 'info'
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : notif.type === 'warning'
                     ? 'bg-amber-600 hover:bg-amber-700 text-white'
@@ -1879,6 +1995,75 @@ const Landing = () => {
                   <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
                 </ul>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== ATTENDANCE LIST MODAL ========== */}
+      {showAttendanceListModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-md my-auto shadow-2xl relative overflow-hidden flex flex-col">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
+              <h3 className="text-base font-semibold text-slate-800">Daftar Absensi Hari Ini</h3>
+              <button
+                onClick={() => setShowAttendanceListModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
+              {todayAttendanceRecords.length === 0 ? (
+                <div className="text-center py-10 text-slate-500">
+                  <p className="text-4xl mb-3">📭</p>
+                  <p className="font-medium">Belum ada absensi tercatat hari ini.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {todayAttendanceRecords.map((record, index) => (
+                    <div key={index} className="bg-slate-50 rounded-xl p-4 border border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                          record.displayStatus === 'hadir' ? 'bg-emerald-500' :
+                          record.displayStatus === 'terlambat' ? 'bg-amber-500' :
+                          record.displayStatus === 'absen' ? 'bg-red-500' : 'bg-blue-500'
+                        }`}>
+                          {record.userName?.charAt(0) || 'U'}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800">{record.userName}</p>
+                          <p className="text-xs text-slate-500 capitalize">{record.role}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-slate-900">{formatTimeShort(new Date(record.scanTime))}</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          record.displayStatus === 'hadir' ? 'bg-emerald-100 text-emerald-700' :
+                          record.displayStatus === 'terlambat' ? 'bg-amber-100 text-amber-700' :
+                          record.displayStatus === 'absen' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {record.displayStatus === 'hadir' ? 'Hadir' :
+                           record.displayStatus === 'terlambat' ? 'Terlambat' :
+                           record.displayStatus === 'absen' ? 'Absen' :
+                           record.displayStatus === 'izin' ? 'Izin' :
+                           record.displayStatus === 'sakit' ? 'Sakit' : 'Lain-lain'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-slate-200">
+              <button
+                onClick={() => setShowAttendanceListModal(false)}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

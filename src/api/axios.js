@@ -3,6 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
   withCredentials: false,
+  timeout: 10000, // Default 10 detik timeout untuk semua requests
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
