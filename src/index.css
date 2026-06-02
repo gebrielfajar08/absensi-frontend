@@ -469,3 +469,9 @@ html[data-theme='dark'] .auth-button-secondary {
     transform: translateY(0);
   }
 }
+
+/* Responsive helpers for dashboards */
+img { max-width:100%; height:auto; display:block; }
+.responsive-table { width:100%; overflow-x:auto; -webkit-overflow-scrolling: touch; }
+.responsive-container { padding-left:1rem; padding-right:1rem; }
+@media (min-width:1024px) { .responsive-container { padding-left:2rem; padding-right:2rem; } }

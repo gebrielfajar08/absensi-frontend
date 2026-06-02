@@ -1,0 +1,1 @@
+const fs=require('fs'); const s=fs.readFileSync('src/pages/Landing.jsx','utf8'); const open=(s.match(/\{/g)||[]).length; const close=(s.match(/\}/g)||[]).length; console.log('{',open,'}',close,'diff',open-close);

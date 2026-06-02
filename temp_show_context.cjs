@@ -1,0 +1,2 @@
+const fs=require('fs'); const s=fs.readFileSync('src/pages/Landing.jsx','utf8'); const idxOpen=43747, idxClose=44520; function show(idx){ const start=Math.max(0,idx-200); const end=Math.min(s.length, idx+200); const snippet=s.slice(start,end); const before=s.slice(start,idx); const after=s.slice(idx, end); const line = s.slice(0,idx).split(/\r?\n/).length; console.log('index',idx,'line',line); console.log('---snippet---'); console.log(snippet); }
+show(idxOpen); console.log('\n--- CLOSE ---\n'); show(idxClose);

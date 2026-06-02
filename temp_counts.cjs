@@ -1,0 +1,10 @@
+const fs = require('fs');
+const s = fs.readFileSync('src/pages/Landing.jsx','utf8');
+const backticks = (s.match(/`/g) || []).length;
+const openExprs = (s.match(/\{`/g) || []).length;
+const closeExprs = (s.match(/`\}/g) || []).length;
+console.log('backticks:', backticks);
+console.log('{` count:', openExprs);
+console.log('`} count:', closeExprs);
+const dollarBrace = (s.match(/\$\{/g)||[]).length;
+console.log('${ occurrences:', dollarBrace);

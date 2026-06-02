@@ -580,11 +580,11 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 10000 // Timeout 10 detik, lebih singkat untuk fail fast
+    timeout: 30000 // Timeout 30 detik untuk backend yang lambat
   };
 
   try {
-    const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/settings', '/settings'], config), 1, 1000);
+    const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/settings', '/settings'], config), 3, 1500);
 
     if (res?.data) {
       const backendSettings = normalizeSettingsResponse(res.data);
@@ -596,7 +596,7 @@ const fetchSettings = async () => {
   } catch (err) {
     const status = err.response?.status || (err.code === 'ECONNABORTED' ? 'TIMEOUT' : 'NETWORK_ERROR');
     const message = err.response?.data?.message || err.message;
-    console.error(`❌ Gagal mengambil pengaturan: [${status}] ${message}`);
+    console.warn(`⚠️ Gagal mengambil pengaturan: [${status}] ${message}. Menggunakan pengaturan cache lokal.`);
     loadSettings();
   } finally {
     setSettingsLoading(false);
@@ -851,13 +851,12 @@ const fetchSettings = async () => {
   const fetchEvents = async () => {
     try {
       const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 30000 };
       // ✨ Mencoba beberapa kemungkinan endpoint jika salah satu 404
-      const res = await apiTryEndpoints('get', ['/admin/events', '/events', '/public/events'], config);
+      const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/events', '/events', '/public/events'], config), 3, 1500);
       setEvents(Array.isArray(res.data) ? res.data : (res.data.data || []));
     } catch (err) {
-      console.error('Gagal mengambil data event:', err);
-      // Fallback data dummy jika API belum siap
+      console.warn('⚠️ Gagal mengambil data event, gunakan fallback kosong:', err.message || err);
       setEvents([]);
     }
   };
@@ -2393,7 +2392,7 @@ const handleSaveSettings = async (section, e) => {
           )}
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-4 lg:p-8">
+          <div className="flex-1 overflow-y-auto p-4 lg:p-8 responsive-container">
             <div className="max-w-7xl mx-auto w-full">
               {isSynchronizingData && (
                 <div className="theme-loader-overlay fixed top-[70px] inset-x-0 bottom-0 z-30 flex items-center justify-center backdrop-blur-sm">

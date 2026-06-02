@@ -765,7 +765,7 @@ const DashboardSiswa = () => {
         {/* Main UI Column - UNTOUCHED */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* ✨ TOAST NOTIFICATION CONTAINER (RIGHT TOP) */}
-          <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 w-72 pointer-events-none">
+          <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 w-[calc(100%-2rem)] sm:w-72 max-w-[18rem] pointer-events-none">
             {notifications.map((n) => (
               <div key={n.id} className={`pointer-events-auto flex items-center p-4 rounded-xl shadow-2xl border-l-4 transform transition-all duration-300 animate-slide-in-right ${
                 n.type === 'success' ? 'bg-white border-emerald-500 text-emerald-800' :
@@ -843,7 +843,7 @@ const DashboardSiswa = () => {
           )}
 
           {/* Page Content Area - Scrollable */}
-          <div className="flex-1 overflow-y-auto p-4 lg:p-8">
+          <div className="flex-1 overflow-y-auto p-4 lg:p-8 responsive-container">
             <div className="max-w-7xl mx-auto w-full">
             <div className="animate-fade-in">
               {/* TAB: Ringkasan */}
