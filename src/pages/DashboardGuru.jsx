@@ -106,7 +106,7 @@ const getLocalTimestamp = (date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
-const DashboardGuru = () => {
+const DashboardGuru = ({ theme, toggleTheme }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ringkasan');
@@ -963,6 +963,14 @@ const DashboardGuru = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all"
+                    aria-label="Toggle tema"
+                  >
+                    {theme === 'dark' ? '🌙' : '☀️'}
+                  </button>
                   <button
                     onClick={() => setShowNotifications(!showNotifications)}
                     className="relative p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

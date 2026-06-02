@@ -64,33 +64,28 @@ function App() {
     });
 
     useEffect(() => {
+            const root = document.documentElement;
             if (theme === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-                document.documentElement.style.colorScheme = 'dark';
+                root.setAttribute('data-theme', 'dark');
+                root.classList.add('dark');
+                root.style.colorScheme = 'dark';
             } else {
-                document.documentElement.removeAttribute('data-theme');
-                document.documentElement.style.colorScheme = 'light';
+                root.removeAttribute('data-theme');
+                root.classList.remove('dark');
+                root.style.colorScheme = 'light';
             }
             window.localStorage.setItem('theme', theme);
     }, [theme]);
 
+    const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
     return (
         <div className="min-h-screen">
-            <button
-                type="button"
-                onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-                data-theme={theme}
-                className="theme-toggle-btn fixed right-5 top-5 z-[70] flex items-center justify-center rounded-full px-3 py-2 shadow-lg backdrop-blur transition-all duration-300 hover:scale-[1.02]"
-                aria-label="Toggle tema"
-            >
-                <span className="theme-toggle-icon">{theme === 'dark' ? '🌙' : '☀️'}</span>
-            </button>
-
             <CustomCursor /> {/* ✅ cursor aktif */}
 
             <BrowserRouter>
                 <Routes>
-                    <Route path="/" element={<Landing />} />
+                    <Route path="/" element={<Landing theme={theme} toggleTheme={toggleTheme} />} />
 
                     <Route path="/login" element={<LoginUnified />} />
                     <Route path="/login/guru" element={<LoginGuru />} />
@@ -105,7 +100,7 @@ function App() {
                         path="/dashboard/guru" 
                         element={
                             <ProtectedRouteWithRole allowedRole="guru">
-                                <DashboardGuru />
+                                <DashboardGuru theme={theme} toggleTheme={toggleTheme} />
                             </ProtectedRouteWithRole>
                         } 
                     />
@@ -114,7 +109,7 @@ function App() {
                         path="/dashboard/siswa" 
                         element={
                             <ProtectedRouteWithRole allowedRole="siswa">
-                                <DashboardSiswa />
+                                <DashboardSiswa theme={theme} toggleTheme={toggleTheme} />
                             </ProtectedRouteWithRole>
                         } 
                     />
@@ -123,7 +118,7 @@ function App() {
                         path="/dashboard/admin" 
                         element={
                             <ProtectedRouteWithRole allowedRole="admin">
-                                <DashboardAdmin />
+                                <DashboardAdmin theme={theme} toggleTheme={toggleTheme} />
                             </ProtectedRouteWithRole>
                         } 
                     />

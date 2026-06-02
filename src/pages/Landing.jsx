@@ -19,7 +19,7 @@ const getLocalTimestamp = (date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
-const Landing = () => {
+const Landing = ({ theme, toggleTheme }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeUserRole, setActiveUserRole] = useState('siswa');
   const [activeAttendanceAction, setActiveAttendanceAction] = useState('datang');
@@ -60,13 +60,14 @@ const Landing = () => {
   const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [showQRNotification, setShowQRNotification] = useState(false);
   const [qrNotificationMessage, setQrNotificationMessage] = useState('');
-  const [facingMode, setFacingMode] = useState('environment');
   const [qrNotificationType, setQrNotificationType] = useState('error');
-
   const [showSubmitNotification, setShowSubmitNotification] = useState(false);
   const [submitNotificationMessage, setSubmitNotificationMessage] = useState('');
   const [submitNotificationType, setSubmitNotificationType] = useState('error');
-
+  const isSubmittingRef = useRef(false);
+  const lastScannedDataRef = useRef(null);
+  const lastScannedAtRef = useRef(0);
+  const [facingMode, setFacingMode] = useState('environment');
   const [showStandaloneQRScanner, setShowStandaloneQRScanner] = useState(false);
 
   const [studentForm, setStudentForm] = useState({ user_id: '', fullName: '' });
@@ -83,7 +84,6 @@ const Landing = () => {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [qrResult, setQrResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
 
   const [attendanceSettings, setAttendanceSettings] = useState({
@@ -736,6 +736,13 @@ const Landing = () => {
 
   const handleQRScan = async (decodedText) => {
     try {
+      const now = Date.now();
+      if (decodedText === lastScannedDataRef.current && now - lastScannedAtRef.current < 2500) {
+        return;
+      }
+      lastScannedDataRef.current = decodedText;
+      lastScannedAtRef.current = now;
+
       const qrData = JSON.parse(decodedText);
       setQrResult(qrData);
       
@@ -753,16 +760,22 @@ const Landing = () => {
       }
 
       if (isSubmittingRef.current) return;
+      isSubmittingRef.current = true;
 
       setShowSubmitNotification(false);
       setSubmitNotificationType('error');
       setSubmitNotificationMessage('');
 
+      await stopQRScanner();
       await submitQRAttendance(qrData);
     } catch (err) {
       console.error('QR Parse Error:', err);
       playSound('failed');
       showQRNotificationMessage('❌ Format QR Code tidak dikenali!', 'error');
+    } finally {
+      if (!isSubmittingRef.current) {
+        isSubmittingRef.current = false;
+      }
     }
   };
 
@@ -1027,9 +1040,9 @@ const Landing = () => {
   }
   // Mobile Layout
   const MobileLayout = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 pb-28">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-28">
       {/* Header */}
-      <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 px-4 pt-12 pb-6">
+      <div className="bg-gradient-to-br from-slate-100 via-slate-200 to-blue-100 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 px-4 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
@@ -1047,21 +1060,25 @@ const Landing = () => {
               )}
             </div>
             <div>
-              <h1 className="text-white font-bold text-lg">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
-              <p className="text-blue-200 text-xs">Mobile Presence</p>
+              <h1 className="text-slate-900 dark:text-white font-bold text-lg">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
+              <p className="text-slate-500 dark:text-blue-200 text-xs">Mobile Presence</p>
             </div>
           </div>
-          <button className="relative p-2">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-all"
+            aria-label="Toggle tema"
+          >
+            <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
+            <span className="hidden sm:inline">{theme === 'dark' ? 'Gelap' : 'Terang'}</span>
           </button>
         </div>
         
         <div className="text-center py-6">
           <p className="text-blue-200 text-sm mb-1">Halo, Selamat Datang!</p>
-          <h2 className="text-white text-2xl font-bold mb-2">{attendanceSettings.schoolName || 'Sistem Absensi'}</h2>
-          <p className="text-blue-100 text-xs">Gunakan sistem absensi ini untuk memonitor kehadiran</p>
+          <h2 className="text-slate-900 dark:text-white text-2xl font-bold mb-2">{attendanceSettings.schoolName || 'Sistem Absensi'}</h2>
+          <p className="text-slate-600 dark:text-blue-100 text-xs">Gunakan sistem absensi ini untuk memonitor kehadiran</p>
         </div>
 
         {/* Welcome Illustration - Restored */}
@@ -1075,12 +1092,12 @@ const Landing = () => {
         </div>
       </div>
 
-      {/* Main Content - White Background */}
-      <div className="bg-white rounded-t-3xl -mt-6 min-h-screen px-4 pt-6">
+      {/* Main Content - adapts to light/dark theme */}
+      <div className="bg-white dark:bg-slate-950 rounded-t-3xl -mt-6 min-h-screen px-4 pt-6">
         {/* Balance Card */}
-        <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white mb-6 shadow-xl text-center relative overflow-hidden">
-          <h3 className="text-4xl font-black tracking-tighter mb-1 relative z-10">{formatTimeShort(currentTime)}</h3>
-          <p className="text-blue-100 text-[10px] font-bold uppercase tracking-widest mb-6 relative z-10">{formatDateShort(currentTime)}</p>
+        <div className="bg-slate-100 dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 rounded-2xl p-6 mb-6 shadow-xl text-center relative overflow-hidden">
+          <h3 className="text-4xl font-black tracking-tighter mb-1 relative z-10 text-slate-900 dark:text-white">{formatTimeShort(currentTime)}</h3>
+          <p className="text-slate-500 dark:text-blue-100 text-[10px] font-bold uppercase tracking-widest mb-6 relative z-10">{formatDateShort(currentTime)}</p>
           
           <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-5 mb-6 relative z-10">
             <div className="border-r border-white/10">
@@ -1096,13 +1113,13 @@ const Landing = () => {
           <div className="flex gap-2 relative z-10">
             <button 
               onClick={() => handleTryOpenAbsen('datang')}
-              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-white/30 transition"
+              className="flex-1 bg-slate-100/80 dark:bg-white/10 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/20 transition text-slate-900 dark:text-white"
             >
               Absen Datang
             </button>
             <button 
               onClick={() => handleTryOpenAbsen('pulang')}
-              className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-white/30 transition"
+              className="flex-1 bg-slate-100/80 dark:bg-white/10 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/20 transition text-slate-900 dark:text-white"
             >
               Absen Pulang
             </button>
@@ -1164,7 +1181,7 @@ const Landing = () => {
         <div className="mb-8">
           <h3 className="text-slate-900 font-black mb-4 text-xs uppercase tracking-widest">Catatan Kehadiran</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+            <div className="bg-emerald-50 dark:bg-slate-900 rounded-2xl p-4 border border-emerald-100 dark:border-slate-800">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1177,7 +1194,7 @@ const Landing = () => {
               <p className="text-xs text-emerald-600 mt-1">Orang</p>
             </div>
 
-            <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
+            <div className="bg-orange-50 dark:bg-slate-900 rounded-2xl p-4 border border-orange-100 dark:border-slate-800">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1193,7 +1210,7 @@ const Landing = () => {
         </div>
 
         {/* Time Info */}
-        <div className="bg-slate-50 rounded-[24px] p-6 mb-8 border border-slate-100">
+        <div className="bg-slate-50 dark:bg-slate-900 rounded-[24px] p-6 mb-8 border border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Waktu Sekarang</span>
             <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{formatTimeShort(currentTime)}</span>
@@ -1294,9 +1311,9 @@ const Landing = () => {
 
   // Desktop/Laptop Layout
   const DesktopLayout = () => (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Top Navigation */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white shadow-md' : 'bg-white'}`}>
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white shadow-md dark:bg-slate-900 dark:shadow-slate-950/20' : 'bg-white dark:bg-slate-900'}`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -1322,6 +1339,15 @@ const Landing = () => {
             
             <div className="flex items-center gap-3">
               <button
+                type="button"
+                onClick={toggleTheme}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-all"
+                aria-label="Toggle tema"
+              >
+                <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
+                <span className="hidden sm:inline">{theme === 'dark' ? 'Gelap' : 'Terang'}</span>
+              </button>
+              <button
                 onClick={() => handleNavigate('/register')}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md hover:shadow-lg"
               >
@@ -1346,19 +1372,18 @@ const Landing = () => {
             {/* Left Column - Welcome & Quick Actions */}
             <div className="space-y-6">
               {/* Welcome Card */}
-              <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+              <div className="bg-white dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 dark:bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-400/20 rounded-full -ml-24 -mb-24 blur-2xl"></div>
                 
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-200">Live System</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-blue-200">Live System</span>
                   </div>
-                  
-                  <h2 className="text-3xl font-bold mb-3">Halo, Selamat Datang!</h2>
-                  <p className="text-blue-100 mb-8 leading-relaxed">Gunakan sistem absensi digital ini untuk memonitor kehadiran siswa dan guru dengan lebih mudah dan efisien.</p>
-                  
+                   
+                  <h2 className="text-3xl font-bold mb-3 text-slate-900 dark:text-white">Halo, Selamat Datang!</h2>
+                  <p className="text-slate-600 dark:text-blue-100 mb-8 leading-relaxed">Gunakan sistem absensi digital ini untuk memonitor kehadiran siswa dan guru dengan lebih mudah dan efisien.</p>
                   {/* Illustration */}
                   <div className="flex justify-center items-end gap-4 h-40 mb-8">
                     <div className="w-28 h-32 bg-gradient-to-t from-pink-500 to-red-400 rounded-t-3xl flex items-center justify-center shadow-xl">
@@ -1424,7 +1449,7 @@ const Landing = () => {
 
               {/* Stats Cards */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
                       <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1433,11 +1458,11 @@ const Landing = () => {
                     </div>
                     <span className="text-sm text-slate-600 font-medium">Total Hadir</span>
                   </div>
-                  <p className="text-3xl font-bold text-slate-900">{attendanceStats.totalHadir}</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{attendanceStats.totalHadir}</p>
                   <p className="text-xs text-slate-500 mt-1">Hari ini</p>
                 </div>
 
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
                       <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1446,7 +1471,7 @@ const Landing = () => {
                     </div>
                     <span className="text-sm text-slate-600 font-medium">Terlambat</span>
                   </div>
-                  <p className="text-3xl font-bold text-slate-900">{attendanceStats.keterlambatan}</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{attendanceStats.keterlambatan}</p>
                   <p className="text-xs text-slate-500 mt-1">Hari ini</p>
                 </div>
               </div>
@@ -1485,7 +1510,7 @@ const Landing = () => {
               </div>
 
               {/* Time Info Card */}
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2 mb-6">
                   <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
                     <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1584,7 +1609,7 @@ const Landing = () => {
   );
 
   return (
-    <div className="font-sans">
+    <div className={`font-sans ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       {/* Responsive: Mobile untuk layar < 1024px, Desktop untuk >= 1024px */}
       <div className="lg:hidden">
         <MobileLayout />

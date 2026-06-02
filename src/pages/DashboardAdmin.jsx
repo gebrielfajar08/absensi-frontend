@@ -213,7 +213,7 @@ const persistSchoolSettings = (settings) => {
   }));
 };
 
-const DashboardAdmin = () => {
+const DashboardAdmin = ({ theme, toggleTheme }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -1757,23 +1757,7 @@ const handleSaveSettings = async (section, e) => {
       return [];
     };
 
-    const getRecordKey = (record) => {
-      if (!record) return '';
-      return [
-        record.id,
-        record.attendance_id,
-        record.request_id,
-        record.permission_id,
-        record.user_id,
-        record.nis,
-        record.nip,
-        record.status,
-        record.date || record.created_at || record.attendance_time,
-        record.notes || record.reason || record.keterangan
-      ].filter(Boolean).join('|');
-    };
-
-    const mergedRecords = new Map();
+    const allRecords = [];
 
     for (const endpoint of endpoints) {
       let page = 1;
@@ -1793,10 +1777,7 @@ const handleSaveSettings = async (section, e) => {
 
           const records = extractArray(response);
           records.forEach((record) => {
-            const key = getRecordKey(record);
-            if (key) {
-              mergedRecords.set(key, record);
-            }
+            allRecords.push(record);
           });
 
           const payload = response.data;
@@ -1829,7 +1810,7 @@ const handleSaveSettings = async (section, e) => {
       }
     }
 
-    return Array.from(mergedRecords.values());
+    return allRecords;
   };
 
   // ✨ TAMBAHAN: Filter data berdasarkan search
@@ -2054,37 +2035,21 @@ const handleSaveSettings = async (section, e) => {
     return { total, hadir, terlambat, izin, sakit, absen, hadirPercent };
   };
 
-  // ✨ TAMBAHAN: Logika Grouping untuk Rekap (Datang & Pulang)
+  // ✨ TAMBAHAN: Tampilkan semua data rekap tanpa pengelompokan sehingga setiap baris absensi tampil lengkap
   const getGroupedRekapData = () => {
-    const groups = {};
-    attendanceReports.forEach(record => {
-      const dateKey = normalizeDateKey(record.date || record.attendance_time);
-      if (!dateKey) return;
-      const userId = record.user_id || record.user?.user_id || record.id;
-      const groupKey = `${userId}-${dateKey}`;
-      
-      if (!groups[groupKey]) {
-        groups[groupKey] = {
-          user_name: record.user_name || record.name,
-          role: record.role || 'siswa',
-          rawDate: record.date || record.attendance_time,
-          arrival: record.attendance_time || record.scan_time || record.created_at,
-          departure: null,
-          mode: record.type || record.method || 'QR Code',
-          status: record.status
-        };
-      } else {
-        const currentTime = new Date(record.attendance_time || record.scan_time || record.created_at);
-        const existingArrival = new Date(groups[groupKey].arrival);
-        if (currentTime < existingArrival) {
-          groups[groupKey].departure = groups[groupKey].arrival;
-          groups[groupKey].arrival = record.attendance_time || record.scan_time || record.created_at;
-        } else if (currentTime > existingArrival) {
-          groups[groupKey].departure = record.attendance_time || record.scan_time || record.created_at;
-        }
-      }
-    });
-    return Object.values(groups).sort((a, b) => new Date(b.rawDate) - new Date(a.rawDate));
+    return attendanceReports
+      .map(record => ({
+        ...record,
+        user_name: record.user_name || record.name || record.full_name || record.user?.name || record.user?.full_name || 'Tidak Diketahui',
+        role: record.role || record.user?.role || 'siswa',
+        rawDate: record.date || record.attendance_time || record.scan_time || record.created_at || record.time,
+        arrival: record.attendance_time || record.scan_time || record.created_at || record.time,
+        departure: record.departure || null,
+        mode: record.type || record.method || record.action || 'QR Code',
+        status: record.status || 'unknown'
+      }))
+      .filter(record => normalizeDateKey(record.rawDate))
+      .sort((a, b) => new Date(b.rawDate) - new Date(a.rawDate));
   };
 
   const getAttendanceChartData = () => {
@@ -2332,6 +2297,15 @@ const handleSaveSettings = async (section, e) => {
                     {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all"
+                  aria-label="Toggle tema"
+                >
+                  {theme === 'dark' ? '🌙' : '☀️'}
+                </button>
 
                 <button
                   onClick={() => setShowNotifications(prev => !prev)}

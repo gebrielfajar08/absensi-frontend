@@ -84,7 +84,7 @@ const getLocalTimestamp = (date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
-const DashboardSiswa = () => {
+const DashboardSiswa = ({ theme, toggleTheme }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ringkasan');
@@ -829,6 +829,14 @@ const DashboardSiswa = () => {
                     {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all"
+                  aria-label="Toggle tema"
+                >
+                  {theme === 'dark' ? '🌙' : '☀️'}
+                </button>
               </div>
             </div>
           </header>
