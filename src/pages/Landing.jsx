@@ -1027,7 +1027,7 @@ const Landing = () => {
   }
   // Mobile Layout
   const MobileLayout = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 pb-28">
       {/* Header */}
       <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 px-4 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">
@@ -1113,7 +1113,7 @@ const Landing = () => {
         <div className="grid grid-cols-4 gap-3 mb-6">
           <button 
             onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
-            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 transition"
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 transition dark:bg-slate-800 dark:text-white"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1125,7 +1125,7 @@ const Landing = () => {
 
           <button 
             onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('siswa'); setShowAbsenModal(true); }}
-            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 transition"
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 transition dark:bg-slate-800 dark:text-white"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1137,7 +1137,7 @@ const Landing = () => {
 
           <button 
             onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('guru'); setShowAbsenModal(true); }}
-            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-purple-50 hover:bg-purple-100 transition"
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-purple-50 hover:bg-purple-100 transition dark:bg-slate-800 dark:text-white"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1149,7 +1149,7 @@ const Landing = () => {
 
           <button 
             onClick={() => { setActiveMethodTab('izin'); setShowAbsenModal(true); }}
-            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 transition"
+            className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 transition dark:bg-slate-800 dark:text-white"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1236,7 +1236,7 @@ const Landing = () => {
       </div>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3 flex justify-between items-center">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3 flex justify-between items-center z-40 dark:bg-slate-900 dark:border-slate-800">
         <button className="flex flex-col items-center gap-1 text-blue-600">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -1373,7 +1373,7 @@ const Landing = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <button 
                       onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
-                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group"
+                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group dark:bg-slate-800 dark:text-white"
                     >
                       <div className="w-12 h-12 bg-white/30 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1385,7 +1385,7 @@ const Landing = () => {
 
                     <button 
                       onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('siswa'); setShowAbsenModal(true); }}
-                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group"
+                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group dark:bg-slate-800 dark:text-white"
                     >
                       <div className="w-12 h-12 bg-white/30 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1397,7 +1397,7 @@ const Landing = () => {
 
                     <button 
                       onClick={() => { setActiveMethodTab('izin'); setShowAbsenModal(true); }}
-                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group"
+                      className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group dark:bg-slate-800 dark:text-white"
                     >
                       <div className="w-12 h-12 bg-white/30 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1409,7 +1409,7 @@ const Landing = () => {
 
                     <button 
                       onClick={() => handleNavigate('/login')}
-                      className="bg-white hover:bg-slate-50 rounded-2xl p-4 text-left transition-all group"
+                      className="bg-white hover:bg-slate-50 rounded-2xl p-4 text-left transition-all group dark:bg-slate-900 dark:text-white"
                     >
                       <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

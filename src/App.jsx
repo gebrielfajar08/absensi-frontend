@@ -64,8 +64,14 @@ function App() {
     });
 
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-        window.localStorage.setItem('theme', theme);
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                document.documentElement.style.colorScheme = 'dark';
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                document.documentElement.style.colorScheme = 'light';
+            }
+            window.localStorage.setItem('theme', theme);
     }, [theme]);
 
     return (
