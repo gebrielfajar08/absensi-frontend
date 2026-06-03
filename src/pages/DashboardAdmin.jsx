@@ -108,10 +108,10 @@ const staticClassOptions = [
 ];
 
 const userEndpointCandidates = {
-  create: ['/admin/users'],
-  index: ['/admin/users'],
-  update: (id) => [`/admin/users/${id}`],
-  delete: (id) => [`/admin/users/${id}`]
+  create: ['/admin/users', '/users'],
+  index: ['/admin/users', '/users'],
+  update: (id) => [`/admin/users/${id}`, `/users/${id}`],
+  delete: (id) => [`/admin/users/${id}`, `/users/${id}`]
 };
 
 const apiTryEndpoints = async (method, endpoints, ...args) => {
@@ -122,8 +122,8 @@ const apiTryEndpoints = async (method, endpoints, ...args) => {
     } catch (err) {
       lastError = err;
       const status = err?.response?.status;
-      // ✨ JANGAN retri jika timeout atau server tidak merespon (Network Error)
-      if (!status || [401, 403, 422].includes(status)) {
+      // ✨ JANGAN retri jika Unauthorized, Forbidden, Validasi gagal, atau Server Crash (500)
+      if (!status || [401, 403, 422, 500].includes(status)) {
         break;
       }
     }
@@ -439,9 +439,8 @@ const fetchDataGuru = async () => {
   try {
     setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
-    const res = await api.get('/admin/users?role=guru', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    const res = await apiTryEndpoints('get', ['/admin/users?role=guru', '/users?role=guru', '/admin/users', '/users'], config);
     const rawData = res.data?.data || res.data || [];
     setGuruData(Array.isArray(rawData) ? rawData.map(normalizeUser) : []);
   } catch (err) {
@@ -457,9 +456,8 @@ const fetchDataSiswa = async () => {
   try {
     setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
-    const res = await api.get('/admin/users?role=siswa', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    const res = await apiTryEndpoints('get', ['/admin/users?role=siswa', '/users?role=siswa', '/admin/users', '/users'], config);
     const rawData = res.data?.data || res.data || [];
     setSiswaData(Array.isArray(rawData) ? rawData.map(normalizeUser) : []);
   } catch (err) {
@@ -475,7 +473,7 @@ const fetchClasses = async () => {
     setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
     const config = { headers: { Authorization: `Bearer ${token}` } };
-    const res = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
+    const res = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class', '/admin/class'], config);
     setClasses(res.data?.data || res.data || []);
   } catch (err) {
     console.error('Gagal mengambil data kelas:', err);
@@ -580,7 +578,7 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 30000 // Timeout 30 detik untuk backend yang lambat
+    timeout: 30000 // Batas waktu dinaikkan ke 30 detik
   };
 
   try {
@@ -740,7 +738,7 @@ const fetchSettings = async () => {
     try {
       setError('');
       const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 };
+      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 }; // Batas waktu dinaikkan ke 60 detik
       
       // Ambil semua data secara paralel
       const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
@@ -851,7 +849,7 @@ const fetchSettings = async () => {
   const fetchEvents = async () => {
     try {
       const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 30000 };
+      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 };
       // ✨ Mencoba beberapa kemungkinan endpoint jika salah satu 404
       const res = await fetchWithRetry(() => apiTryEndpoints('get', ['/admin/events', '/events', '/public/events'], config), 3, 1500);
       setEvents(Array.isArray(res.data) ? res.data : (res.data.data || []));
@@ -1734,10 +1732,11 @@ const handleSaveSettings = async (section, e) => {
   };
 
   const fetchAttendanceRecords = async (config = {}) => {
+    // ✨ Hapus endpoint yang menyebabkan 405 atau 500 jika tidak diperlukan untuk listing
     const endpoints = [
-      { url: '/admin/attendances', params: { page: 1, per_page: 1000 } },
+      { url: '/admin/attendances', params: { page: 1, per_page: 500 } },
       { url: '/admin/activity', params: { page: 1, per_page: 1000 } },
-      { url: '/attendance/izin', params: { page: 1, per_page: 1000 } }
+      // Rute non-admin biasanya tidak mengembalikan data rekap yang lengkap untuk admin
     ];
 
     const extractArray = (response) => {
@@ -1802,9 +1801,16 @@ const handleSaveSettings = async (section, e) => {
             page += 1;
           }
         } catch (error) {
-          if (endpoint.url === '/admin/activity') {
-            throw error;
+          const status = error?.response?.status;
+          const errMsg = error?.message || 'Network Error';
+          console.warn(`Peringatan: Gagal memuat ${endpoint.url} [Status: ${status || errMsg}].`);
+          
+          // Jika server crash (500) atau timeout, stop loop untuk endpoint ini dan kembalikan data yang ada
+          if (status === 500 || error.code === 'ECONNABORTED') {
+             setError(`Server error 500 pada ${endpoint.url}. Periksa log backend.`);
+             return allRecords; 
           }
+          hasMore = false;
           break;
         }
       }

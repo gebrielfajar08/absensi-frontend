@@ -19,6 +19,28 @@ const getLocalTimestamp = (date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
+// ➕ TAMBAHAN: Fungsi retry untuk menangani timeout/koneksi bermasalah
+const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries) break;
+      // Retry jika error timeout, masalah jaringan, atau server error sementara (500)
+      const isNetworkError = error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout');
+      const isServerError = error.response?.status === 500;
+      if (isNetworkError || isServerError) {
+        await new Promise(resolve => setTimeout(resolve, delay * attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 const Landing = ({ theme, toggleTheme }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeUserRole, setActiveUserRole] = useState('siswa');
@@ -31,6 +53,7 @@ const Landing = ({ theme, toggleTheme }) => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isLandingLoading, setIsLandingLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [backendStatus, setBackendError] = useState(null); // State baru untuk tracking error server
 
   useEffect(() => {
     let interval;
@@ -185,7 +208,8 @@ const Landing = ({ theme, toggleTheme }) => {
 
   const loadSettings = async () => {
     try {
-      const res = await api.get('/public/settings');
+      // Gunakan fetchWithRetry untuk settings agar lebih tangguh
+      const res = await fetchWithRetry(() => api.get('/public/settings', { timeout: 30000 }));
       const settings = res.data;
 
       const mappedSettings = {
@@ -204,20 +228,28 @@ const Landing = ({ theme, toggleTheme }) => {
 
       setAttendanceSettings(mappedSettings);
       localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
+      setBackendError(null);
     } catch (err) {
-      console.warn('Gagal ambil dari API, pakai localStorage');
+      console.warn('⚠️ Gagal ambil settings dari API, menggunakan cache local');
+      console.warn('⚠️ Backend Offline/Database error: Menggunakan cache local untuk settings.');
       const savedSettings = localStorage.getItem('school_settings');
       if (savedSettings) {
         try {
           setAttendanceSettings(JSON.parse(savedSettings));
-        } catch {}
+        } catch (e) {
+          console.error("Error parsing cached settings", e);
+        }
+      }
+      if (err.response?.status === 500 || err.code === 'ERR_NETWORK') {
+        setBackendError('Koneksi ke server bermasalah. Pastikan database aktif.');
       }
     }
   };
 
   const fetchStats = async () => {
     try {
-      const res = await api.get('/public/stats');
+      // Gunakan fetchWithRetry untuk statistik agar lebih tangguh
+      const res = await fetchWithRetry(() => api.get('/public/stats', { timeout: 20000 }));
       if (res && res.data != null) {
         const data = res.data;
         let statsSummary = { totalHadir: 0, keterlambatan: 0 };
@@ -250,9 +282,20 @@ const Landing = ({ theme, toggleTheme }) => {
 
         setTodayAttendanceRecords(recordsForToday); // Set the new state
         setAttendanceStats(statsSummary);
+        setBackendError(null);
       }
     } catch (err) {
-      console.warn('Gagal mengambil data statistik landing dari database:', err.message);
+      console.error('❌ Gagal mengambil data statistik landing:', err.message);
+      setBackendError('Gagal memuat data statistik terbaru.');
+      // Mengubah console.error menjadi console.warn agar tidak muncul tanda merah di browser
+      console.warn('⚠️ Statistik gagal dimuat:', err.message);
+      
+      // Menangani pesan error spesifik database agar user tahu apa yang terjadi
+      if (err.response?.status === 500) {
+        setBackendError('Server sedang maintenance (Database connection error).');
+      } else {
+        setBackendError('Gagal memuat data statistik terbaru.');
+      }
     }
   };
 
@@ -1361,6 +1404,17 @@ const Landing = ({ theme, toggleTheme }) => {
                       <div className="text-white text-4xl">👩</div>
                     </div>
                   </div>
+
+        {/* Server Error Warning */}
+        {backendStatus && (
+          <div className="mx-4 mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-2xl flex items-center gap-2 animate-pulse">
+            <span className="text-lg">⚠️</span>
+            <div className="flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-tight">Koneksi Server</p>
+              <p className="text-[10px] opacity-80">{backendStatus}</p>
+            </div>
+          </div>
+        )}
 
                   {/* Quick Action Buttons */}
                   <div className="grid grid-cols-2 gap-3">
