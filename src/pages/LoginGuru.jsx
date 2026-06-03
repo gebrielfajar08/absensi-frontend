@@ -49,21 +49,25 @@ const LoginGuru = () => {
     useEffect(() => {
         const verifyConnection = async () => {
             try {
-                const baseURL = api.defaults.baseURL;
+                const baseURL = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+                const apiRoot = baseURL.replace(/\/api\/?$/, '');
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), 10000);
                 
-                await fetch(baseURL, { 
+                const response = await fetch(`${apiRoot}/health`, { 
                     method: 'GET',
                     signal: controller.signal,
                     mode: 'cors',
                     cache: 'no-store'
                 });
                 clearTimeout(timeout);
+                if (!response.ok) {
+                    throw new Error('Health endpoint tidak merespons dengan benar');
+                }
                 setConnectionStatus('connected');
             } catch (err) {
-                // Hanya set disconnected jika benar-benar network error
-                if (err.name === 'TypeError' || err.message.includes('NetworkError')) {
+                // Hanya set disconnected jika benar-benar network error atau connector gagal
+                if (err.name === 'TypeError' || err.message.includes('NetworkError') || err.message.includes('Health endpoint')) {
                     setConnectionStatus('disconnected');
                 } else {
                     setConnectionStatus('connected');

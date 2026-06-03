@@ -1042,7 +1042,7 @@ const Landing = ({ theme, toggleTheme }) => {
   const MobileLayout = () => (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-28">
       {/* Header */}
-      <div className="bg-gradient-to-br from-slate-100 via-slate-200 to-blue-100 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 px-4 pt-12 pb-6">
+      <div className="bg-blue-600 dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 px-4 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
@@ -1060,8 +1060,8 @@ const Landing = ({ theme, toggleTheme }) => {
               )}
             </div>
             <div>
-              <h1 className="text-slate-900 dark:text-white font-bold text-lg">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
-              <p className="text-slate-500 dark:text-blue-200 text-xs">Mobile Presence</p>
+              <h1 className="text-white font-bold text-lg">{attendanceSettings.schoolName || 'AbsensiPro'}</h1>
+              <p className="text-blue-100 text-xs">Mobile Presence</p>
             </div>
           </div>
           <button
@@ -1077,8 +1077,8 @@ const Landing = ({ theme, toggleTheme }) => {
         
         <div className="text-center py-6">
           <p className="text-blue-200 text-sm mb-1">Halo, Selamat Datang!</p>
-          <h2 className="text-slate-900 dark:text-white text-2xl font-bold mb-2">{attendanceSettings.schoolName || 'Sistem Absensi'}</h2>
-          <p className="text-slate-600 dark:text-blue-100 text-xs">Gunakan sistem absensi ini untuk memonitor kehadiran</p>
+          <h2 className="text-white text-2xl font-bold mb-2">{attendanceSettings.schoolName || 'Sistem Absensi'}</h2>
+          <p className="text-blue-100 text-xs">Gunakan sistem absensi ini untuk memonitor kehadiran</p>
         </div>
 
         {/* Welcome Illustration - Restored */}
@@ -1094,38 +1094,6 @@ const Landing = ({ theme, toggleTheme }) => {
 
       {/* Main Content - adapts to light/dark theme */}
       <div className="bg-white dark:bg-slate-950 rounded-t-3xl -mt-6 min-h-screen px-4 pt-6">
-        {/* Balance Card */}
-        <div className="bg-slate-100 dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 rounded-2xl p-6 mb-6 shadow-xl text-center relative overflow-hidden">
-          <h3 className="text-4xl font-black tracking-tighter mb-1 relative z-10 text-slate-900 dark:text-white">{formatTimeShort(currentTime)}</h3>
-          <p className="text-slate-500 dark:text-blue-100 text-[10px] font-bold uppercase tracking-widest mb-6 relative z-10">{formatDateShort(currentTime)}</p>
-          
-          <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-5 mb-6 relative z-10">
-            <div className="border-r border-white/10">
-              <p className="text-blue-200 text-[10px] uppercase font-black tracking-widest mb-1">Total Hadir</p>
-              <p className="text-2xl font-black">{attendanceStats.totalHadir}</p>
-            </div>
-            <div>
-              <p className="text-blue-200 text-[10px] uppercase font-black tracking-widest mb-1">Terlambat</p>
-              <p className="text-2xl font-black">{attendanceStats.keterlambatan}</p>
-            </div>
-          </div>
-
-          <div className="flex gap-2 relative z-10">
-            <button 
-              onClick={() => handleTryOpenAbsen('datang')}
-              className="flex-1 bg-slate-100/80 dark:bg-white/10 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/20 transition text-slate-900 dark:text-white"
-            >
-              Absen Datang
-            </button>
-            <button 
-              onClick={() => handleTryOpenAbsen('pulang')}
-              className="flex-1 bg-slate-100/80 dark:bg-white/10 backdrop-blur-sm rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/20 transition text-slate-900 dark:text-white"
-            >
-              Absen Pulang
-            </button>
-          </div>
-        </div>
-
         {/* Quick Actions Grid */}
         <div className="grid grid-cols-4 gap-3 mb-6">
           <button 
@@ -1372,18 +1340,18 @@ const Landing = ({ theme, toggleTheme }) => {
             {/* Left Column - Welcome & Quick Actions */}
             <div className="space-y-6">
               {/* Welcome Card */}
-              <div className="bg-white dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+              <div className="bg-blue-600 dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 dark:bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-400/20 rounded-full -ml-24 -mb-24 blur-2xl"></div>
                 
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-blue-200">Live System</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-100">Live System</span>
                   </div>
                    
-                  <h2 className="text-3xl font-bold mb-3 text-slate-900 dark:text-white">Halo, Selamat Datang!</h2>
-                  <p className="text-slate-600 dark:text-blue-100 mb-8 leading-relaxed">Gunakan sistem absensi digital ini untuk memonitor kehadiran siswa dan guru dengan lebih mudah dan efisien.</p>
+                  <h2 className="text-3xl font-bold mb-3 text-white">Halo, Selamat Datang!</h2>
+                  <p className="text-blue-100 mb-8 leading-relaxed">Gunakan sistem absensi digital ini untuk memonitor kehadiran siswa dan guru dengan lebih mudah dan efisien.</p>
                   {/* Illustration */}
                   <div className="flex justify-center items-end gap-4 h-40 mb-8">
                     <div className="w-28 h-32 bg-gradient-to-t from-pink-500 to-red-400 rounded-t-3xl flex items-center justify-center shadow-xl">
