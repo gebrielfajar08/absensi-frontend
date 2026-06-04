@@ -44,10 +44,15 @@ const formatToIndonesiaTime = (utcDate) => {
 
 const formatTimeOnly = (utcDate) => {
   if (!utcDate) return '-';
+  const timeStr = String(utcDate).trim();
+  // ✨ Cek jika input sudah berupa format jam HH:mm
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(timeStr)) {
+    return timeStr.substring(0, 5);
+  }
   const date = new Date(utcDate);
   if (isNaN(date.getTime())) {
-    console.warn('Invalid date:', utcDate);
-    return '-';
+    // Jika gagal parse sebagai date, kembalikan string aslinya (mungkin format jam kustom)
+    return timeStr;
   }
   const options = {
     hour: '2-digit',
@@ -122,8 +127,10 @@ const apiTryEndpoints = async (method, endpoints, ...args) => {
     } catch (err) {
       lastError = err;
       const status = err?.response?.status;
-      // ✨ JANGAN retri jika Unauthorized, Forbidden, Validasi gagal, atau Server Crash (500)
-      if (!status || [401, 403, 422, 500].includes(status)) {
+      
+      // ✨ Jangan mencoba rute alternatif jika errornya adalah masalah otorisasi atau validasi
+      // Namun jika 500, kita izinkan mencoba rute fallback (misal dari /admin/stats ke /stats)
+      if (!status || [401, 403, 422].includes(status)) {
         break;
       }
     }
@@ -139,7 +146,11 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
       return await apiCall();
     } catch (error) {
       lastError = error;
-      if (attempt === maxRetries) break;
+      const status = error?.response?.status;
+
+      // ✨ Berhenti mencoba jika server sudah menyatakan error internal (500+)
+      if (attempt === maxRetries || (status && status >= 500)) break;
+
       // Retry jika error timeout atau masalah jaringan
       if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout')) {
         await new Promise(resolve => setTimeout(resolve, delay * attempt));
@@ -748,14 +759,8 @@ const fetchSettings = async () => {
         fetchWithRetry(() => fetchAttendanceRecords(config))
       ]);
       
-      // Process Stats - hitung dari data users jika stats endpoint tidak tersedia
-      let calculatedStats = {
-        totalUsers: 0,
-        totalGuru: 0,
-        totalSiswa: 0,
-        totalKelas: 0,
-        kehadiranHariIni: 0
-      };
+      // ✨ Gunakan data lama sebagai dasar agar UI tidak flash ke angka 0 saat server error
+      let calculatedStats = { ...stats };
       
       if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
         const statsData = statsRes.value.data;
@@ -1480,6 +1485,8 @@ const handleSaveSettings = async (section, e) => {
       : `${role}_${isPdf ? 'pdf' : 'excel'}`;
 
     return [
+      `/admin/export/${isPdf ? 'pdf' : 'excel'}`,
+      `/admin/export/attendance${isPdf ? '-pdf' : '-excel'}`,
       `/admin/export/${type}`,
       `/admin/export?type=${encodeURIComponent(type)}`,
       `/admin/export?role=${encodeURIComponent(role)}&format=${encodeURIComponent(format)}`
@@ -1719,12 +1726,16 @@ const handleSaveSettings = async (section, e) => {
     }
 
     const userNameValue = (userNameFallback !== '-' ? userNameFallback : userNameFromUserObj) || '-';
+    // ✨ Ambil data jam pulang dari berbagai kemungkinan field database
+    const departureValue = act.departure || act.pulang_time || act.jam_pulang || act.exit_time || null;
+
     return {
       ...act,
       status: statusValue,
       user_name: userNameValue,
       date: dateValue,
       scan_time: scanTimeValue,
+      departure: departureValue,
       notes: notesValue,
       role: roleValue || '',
       action: act.action || act.description || 'Absensi'

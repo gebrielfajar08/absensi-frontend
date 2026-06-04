@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Html5Qrcode } from 'html5-qrcode';
+import axios from 'axios';
 
 // Helper: Resolve URL foto/logo dengan fallback
 const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
@@ -28,10 +29,10 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
     } catch (error) {
       lastError = error;
       if (attempt === maxRetries) break;
-      // Retry jika error timeout, masalah jaringan, atau server error sementara (500)
+      // ✨ PERBAIKAN: Hanya retry jika masalah jaringan atau timeout. 
+      // Jangan retry jika 500 (Server Error) agar tidak membombardir server yang sedang bermasalah.
       const isNetworkError = error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout');
-      const isServerError = error.response?.status === 500;
-      if (isNetworkError || isServerError) {
+      if (isNetworkError) {
         await new Promise(resolve => setTimeout(resolve, delay * attempt));
         continue;
       }
@@ -209,15 +210,18 @@ const Landing = ({ theme, toggleTheme }) => {
   const loadSettings = async () => {
     try {
       // Gunakan fetchWithRetry untuk settings agar lebih tangguh
-      const res = await fetchWithRetry(() => api.get('/public/settings', { timeout: 30000 }));
-      const settings = res.data;
+      const res = await fetchWithRetry(() => api.get('/public/settings', { timeout: 15000 }));
+      // Pastikan mengambil data dari res.data.data jika backend membungkusnya, atau res.data jika langsung
+      const settings = res.data?.data || res.data;
+
+      if (!settings) return;
 
       const mappedSettings = {
-        attendanceStartTime: settings.attendanceStartTime || settings.jam_masuk || '',
-        attendanceEndTime: settings.attendanceEndTime || settings.jam_akhir || '',
-        lateThreshold: settings.lateThreshold || settings.batas_keterlambatan || '',
-        pulangStartTime: settings.pulangStartTime || settings.pulang_start_time || settings.jam_pulang_mulai || '',
-        pulangEndTime: settings.pulangEndTime || settings.pulang_end_time || settings.jam_pulang_akhir || '',
+        attendanceStartTime: settings.attendanceStartTime || settings.attendance_start_time || settings.jam_masuk || '07:00',
+        attendanceEndTime: settings.attendanceEndTime || settings.attendance_end_time || settings.jam_akhir || '12:00',
+        lateThreshold: settings.lateThreshold || settings.late_threshold || settings.batas_keterlambatan || '08:00',
+        pulangStartTime: settings.pulangStartTime || settings.pulang_start_time || settings.jam_pulang_mulai || settings.jam_pulang || '15:00',
+        pulangEndTime: settings.pulangEndTime || settings.pulang_end_time || settings.jam_pulang_akhir || '17:00',
         schoolEndTime: settings.schoolEndTime || settings.jam_pulang || '',
         schoolName: settings.schoolName || settings.nama_sekolah || '',
         schoolLogo: settings.schoolLogo || settings.logo || null,
@@ -248,8 +252,9 @@ const Landing = ({ theme, toggleTheme }) => {
 
   const fetchStats = async () => {
     try {
-      // Gunakan fetchWithRetry untuk statistik agar lebih tangguh
-      const res = await fetchWithRetry(() => api.get('/public/stats', { timeout: 20000 }));
+      // ✨ PERBAIKAN: Gunakan instance 'api' agar URL base sinkron dan gunakan fetchWithRetry
+      const res = await fetchWithRetry(() => api.get('/public/stats', { timeout: 10000 }));
+      
       if (res && res.data != null) {
         const data = res.data;
         let statsSummary = { totalHadir: 0, keterlambatan: 0 };
@@ -445,9 +450,13 @@ const Landing = ({ theme, toggleTheme }) => {
     const pulangOpenTime = (attendanceSettings.pulangStartTime || "15:00").substring(0, 5);
     const pulangCloseTime = (attendanceSettings.pulangEndTime || "16:00").substring(0, 5);
 
+    // ✨ Tambahan: Jika jam pulang sekolah belum diatur, gunakan default jam pulang mulai
+    const schoolEnd = (attendanceSettings.schoolEndTime || attendanceSettings.pulangStartTime || "15:30").substring(0, 5);
+
     if (checkIsHoliday()) return 'libur';
     if (action === 'pulang') {
-      if (currentTimeStr < pulangOpenTime) return 'belum_pulang';
+      // Cek apakah sudah masuk waktu pulang
+      if (currentTimeStr < schoolEnd && currentTimeStr < pulangOpenTime) return 'belum_pulang';
       if (currentTimeStr > pulangCloseTime) return 'sudah_tutup_pulang';
       return 'pulang';
     }
@@ -2034,11 +2043,15 @@ const Landing = ({ theme, toggleTheme }) => {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Info Waktu
+                Info Waktu {activeAttendanceAction === 'pulang' ? 'Pulang' : 'Datang'}
                 </h4>
                 <ul className="space-y-1 text-xs text-blue-800">
-                  <li>• Absen Dibuka: <strong>{attendanceSettings.attendanceStartTime}</strong></li>
-                  <li>• Absen Ditutup: <strong>{attendanceSettings.attendanceEndTime}</strong></li>
+                <li>
+                  • Absen Dibuka: <strong>{activeAttendanceAction === 'pulang' ? attendanceSettings.pulangStartTime : attendanceSettings.attendanceStartTime}</strong>
+                </li>
+                <li>
+                  • Absen Ditutup: <strong>{activeAttendanceAction === 'pulang' ? attendanceSettings.pulangEndTime : attendanceSettings.attendanceEndTime}</strong>
+                </li>
                   <li>• Status ditentukan otomatis berdasarkan waktu scan</li>
                 </ul>
               </div>
