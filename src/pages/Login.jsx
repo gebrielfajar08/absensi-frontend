@@ -22,6 +22,7 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
       lastError = error;
       if (attempt === maxRetries) break;
       if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout')) {
+        console.warn(`🔄 Retry attempt ${attempt}/${maxRetries} due to network/timeout issue...`);
         await new Promise(resolve => setTimeout(resolve, delay * attempt));
         continue;
       }
@@ -177,45 +178,43 @@ const LoginUnified = () => {
         navigate(targetPath, { replace: true });
       }, 600);
 
-    } catch (err) {
-      console.error('❌ Login error:', err);
-      
-      let errorMsg = 'Login gagal! Periksa kembali kredensial Anda.';
-      
-      if (err.response) {
-        // Server merespons dengan status code error
-        const status = err.response.status;
-        const data = err.response.data;
-        
-        console.log('Error response:', status, data);
-        
-        if (status === 403) {
-          errorMsg = 'Akses ditolak. Pastikan Anda memilih role yang benar (Siswa/Guru/Admin) dan menggunakan kredensial yang sesuai.';
-        } else if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-          errorMsg = 'Koneksi timeout. Server atau Tunnel sedang lambat. Silakan coba lagi.';
-        } else if (status === 401) {
-          errorMsg = 'Email/NIS/NIP atau kata sandi salah!';
-        } else if (status === 404) {
-          errorMsg = 'Akun tidak ditemukan. Silakan daftar terlebih dahulu.';
-        } else if (data?.message) {
-          errorMsg = data.message;
-        } else if (data?.errors) {
-          // Handle validation errors
-          const errors = Object.values(data.errors).flat();
-          errorMsg = errors.join('\n');
-        }
-      } else if (err.request) {
-        // Request terkirim tapi tidak ada response
-        errorMsg = 'Tidak ada respons dari server. Pastikan server backend berjalan di http://127.0.0.1:8000';
-      } else {
-        // Error lainnya
-        errorMsg = err.message || 'Terjadi kesalahan. Silakan coba lagi.';
-      }
-      
-      setError(errorMsg);
-    } finally {
-      setLoading(false);
+} catch (err) {
+  console.error('❌ Login error:', err);
+
+  let errorMsg = 'Login gagal! Periksa kembali kredensial Anda.';
+
+  if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+    errorMsg = 'Koneksi timeout. Server atau Tunnel sedang lambat. Silakan coba lagi.';
+  } else if (err.response) {
+    const status = err.response.status;
+    const data = err.response.data;
+
+    console.log('Error response:', status, data);
+
+    if (status === 403) {
+      errorMsg =
+        'Akses ditolak. Pastikan Anda memilih role yang benar (Siswa/Guru/Admin) dan menggunakan kredensial yang sesuai.';
+    } else if (status === 401) {
+      errorMsg = 'Email/NIS/NIP atau kata sandi salah!';
+    } else if (status === 404) {
+      errorMsg = 'Akun tidak ditemukan. Silakan daftar terlebih dahulu.';
+    } else if (data?.message) {
+      errorMsg = data.message;
+    } else if (data?.errors) {
+      const errors = Object.values(data.errors).flat();
+      errorMsg = errors.join('\n');
     }
+  } else if (err.request) {
+    errorMsg =
+      'Tidak ada respons dari server. Pastikan server backend berjalan di http://127.0.0.1:8000';
+  } else {
+    errorMsg = err.message || 'Terjadi kesalahan. Silakan coba lagi.';
+  }
+
+  setError(errorMsg);
+} finally {
+  setLoading(false);
+}
   };
 
   return (
