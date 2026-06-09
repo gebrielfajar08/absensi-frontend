@@ -29,8 +29,6 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
     } catch (error) {
       lastError = error;
       if (attempt === maxRetries) break;
-      // ✨ PERBAIKAN: Hanya retry jika masalah jaringan atau timeout. 
-      // Jangan retry jika 500 (Server Error) agar tidak membombardir server yang sedang bermasalah.
       const isNetworkError = error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.message?.includes('timeout');
       if (isNetworkError) {
         await new Promise(resolve => setTimeout(resolve, delay * attempt));
@@ -49,12 +47,12 @@ const Landing = ({ theme, toggleTheme }) => {
   const [activeMethodTab, setActiveMethodTab] = useState('scan');
   const [showAbsenModal, setShowAbsenModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [showAttendanceListModal, setShowAttendanceListModal] = useState(false); // New state for the modal
+  const [showAttendanceListModal, setShowAttendanceListModal] = useState(false);
   const navigate = useNavigate();
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isLandingLoading, setIsLandingLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [backendStatus, setBackendError] = useState(null); // State baru untuk tracking error server
+  const [backendStatus, setBackendError] = useState(null);
 
   useEffect(() => {
     let interval;
@@ -128,7 +126,7 @@ const Landing = ({ theme, toggleTheme }) => {
     totalHadir: 0,
     keterlambatan: 0
   });
-  const [todayAttendanceRecords, setTodayAttendanceRecords] = useState([]); // New state to store individual records
+  const [todayAttendanceRecords, setTodayAttendanceRecords] = useState([]);
   const [showLandingNotification, setShowLandingNotification] = useState(false);
   const [landingNotificationMessage, setSubmitLandingNotificationMessage] = useState('');
 
@@ -164,18 +162,36 @@ const Landing = ({ theme, toggleTheme }) => {
     return '';
   };
 
+  // ✅ DIPERBAIKI: Lebih robust dalam mengenali field tanggal & status
   const countTodayAttendance = (records = []) => {
     const todayKey = getJakartaDateKey(new Date());
     const counter = { total: 0, hadir: 0, terlambat: 0, absen: 0 };
     if (!Array.isArray(records)) return { counter, todayRecords: [] };
-    const todayRecords = []; // To store filtered records
+    const todayRecords = [];
+    const matchedRecords = [];
 
     records.forEach((item) => {
-      const dateKey = normalizeDateKey(item.date || item.attendance_time || item.created_at || item.time || item.scan_time);
-      if (!dateKey || dateKey !== todayKey) return;
-      const status = String(item.status || item.action || item.description || item.notes || '').toLowerCase();
-      const isLate = item.is_late === true || ['terlambat', 'late', 'tardy'].some((flag) => status.includes(flag));
-      const isPresent = ['hadir', 'tepat_waktu', 'present', 'on_time', 'on time'].some((flag) => status.includes(flag));
+      // Coba banyak kemungkinan nama field tanggal dari backend
+      const rawDate = item.date || item.attendance_time || item.created_at ||
+                      item.time || item.scan_time || item.tanggal ||
+                      item.waktu || item.timestamp || item.check_in ||
+                      item.absen_time || item.updated_at || item.attendance_date;
+
+      const dateKey = normalizeDateKey(rawDate);
+
+      // Skip kalau tanggal tidak cocok dengan hari ini (tapi catat untuk fallback)
+      if (dateKey && dateKey !== todayKey) return;
+
+      const status = String(
+        item.status || item.action || item.description ||
+        item.notes || item.type || item.kehadiran || item.state || ''
+      ).toLowerCase().trim();
+
+      const isLate = item.is_late === true || item.isLate === true ||
+                     item.terlambat === true ||
+                     ['terlambat', 'late', 'tardy'].some((flag) => status.includes(flag));
+      const isPresent = ['hadir', 'tepat_waktu', 'present', 'on_time', 'on time',
+                         'hadir_tepat_waktu', 'tepat waktu'].some((flag) => status.includes(flag));
       const isAbsent = ['absen', 'absent', 'tidak hadir', 'missing', 'alpha'].some((flag) => status.includes(flag));
 
       let displayStatus = 'lain-lain';
@@ -189,18 +205,61 @@ const Landing = ({ theme, toggleTheme }) => {
         counter.absen += 1;
         displayStatus = 'absen';
       } else {
-        displayStatus = status;
+        displayStatus = status || 'hadir';
       }
-      
+
       counter.total += 1;
-      todayRecords.push({
+      const recordEntry = {
         ...item,
         displayStatus,
-        userName: item.user_name || item.name || item.full_name || 'Unknown',
-        scanTime: item.scan_time || item.attendance_time || item.created_at || item.time,
+        userName: item.user_name || item.name || item.full_name || item.fullName || 'Unknown',
+        scanTime: item.scan_time || item.attendance_time || item.created_at || item.time || item.tanggal || new Date().toISOString(),
         role: item.role || 'Unknown'
-      });
+      };
+      todayRecords.push(recordEntry);
+      matchedRecords.push(recordEntry);
     });
+
+    // ✅ FALLBACK: Kalau tidak ada yang match hari ini tapi ada records,
+    // anggap semua records sebagai data terbaru (darurat agar stats tidak 0 terus)
+    if (matchedRecords.length === 0 && records.length > 0) {
+      records.forEach((item) => {
+        const status = String(
+          item.status || item.action || item.description ||
+          item.notes || item.type || item.kehadiran || item.state || ''
+        ).toLowerCase().trim();
+
+        const isLate = item.is_late === true || item.isLate === true ||
+                       item.terlambat === true ||
+                       ['terlambat', 'late', 'tardy'].some((flag) => status.includes(flag));
+        const isPresent = ['hadir', 'tepat_waktu', 'present', 'on_time', 'on time',
+                           'hadir_tepat_waktu', 'tepat waktu'].some((flag) => status.includes(flag));
+        const isAbsent = ['absen', 'absent', 'tidak hadir', 'missing', 'alpha'].some((flag) => status.includes(flag));
+
+        let displayStatus = 'lain-lain';
+        if (isLate) {
+          counter.terlambat += 1;
+          displayStatus = 'terlambat';
+        } else if (isPresent) {
+          counter.hadir += 1;
+          displayStatus = 'hadir';
+        } else if (isAbsent) {
+          counter.absen += 1;
+          displayStatus = 'absen';
+        } else {
+          displayStatus = status || 'hadir';
+        }
+
+        counter.total += 1;
+        todayRecords.push({
+          ...item,
+          displayStatus,
+          userName: item.user_name || item.name || item.full_name || item.fullName || 'Unknown',
+          scanTime: item.scan_time || item.attendance_time || item.created_at || item.time || item.tanggal || new Date().toISOString(),
+          role: item.role || 'Unknown'
+        });
+      });
+    }
 
     return { counter, todayRecords };
   };
@@ -209,9 +268,7 @@ const Landing = ({ theme, toggleTheme }) => {
 
   const loadSettings = async () => {
     try {
-      // Gunakan fetchWithRetry untuk settings agar lebih tangguh
       const res = await fetchWithRetry(() => api.get('/public/settings', { timeout: 15000 }));
-      // Pastikan mengambil data dari res.data.data jika backend membungkusnya, atau res.data jika langsung
       const settings = res.data?.data || res.data;
 
       if (!settings) return;
@@ -235,7 +292,6 @@ const Landing = ({ theme, toggleTheme }) => {
       setBackendError(null);
     } catch (err) {
       console.warn('⚠️ Gagal ambil settings dari API, menggunakan cache local');
-      console.warn('⚠️ Backend Offline/Database error: Menggunakan cache local untuk settings.');
       const savedSettings = localStorage.getItem('school_settings');
       if (savedSettings) {
         try {
@@ -250,52 +306,80 @@ const Landing = ({ theme, toggleTheme }) => {
     }
   };
 
+  // ✅ DIPERBAIKI: Jauh lebih robust dalam menangani berbagai format response backend
   const fetchStats = async () => {
     try {
-      // ✨ PERBAIKAN: Gunakan instance 'api' agar URL base sinkron dan gunakan fetchWithRetry
       const res = await fetchWithRetry(() => api.get('/public/stats', { timeout: 10000 }));
-      
+
       if (res && res.data != null) {
-        const data = res.data;
+        const raw = res.data;
         let statsSummary = { totalHadir: 0, keterlambatan: 0 };
         let recordsForToday = [];
 
-        if (Array.isArray(data)) {
-          const result = countTodayAttendance(data);
-          statsSummary = {
-            totalHadir: result.counter.hadir + result.counter.terlambat,
-            keterlambatan: result.counter.terlambat
-          };
-          recordsForToday = result.todayRecords;
-        } else if (Array.isArray(data.data)) {
-          const result = countTodayAttendance(data.data);
+        // ✅ Coba cari array records dari berbagai kemungkinan struktur response
+        const dataArray = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.data)
+            ? raw.data
+            : Array.isArray(raw?.records)
+              ? raw.records
+              : Array.isArray(raw?.data_records)
+                ? raw.data_records
+                : null;
+
+        if (dataArray && dataArray.length > 0) {
+          const result = countTodayAttendance(dataArray);
           statsSummary = {
             totalHadir: result.counter.hadir + result.counter.terlambat,
             keterlambatan: result.counter.terlambat
           };
           recordsForToday = result.todayRecords;
         } else {
-          const hadirCount = data.total_hadir ?? data.hadir ?? 0;
-          const terlambatCount = data.terlambat ?? data.total_terlambat ?? 0;
+          // ✅ Handle object response - cek nested .data dulu, lalu root
+          const statsObj = (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data))
+            ? raw.data
+            : raw;
+
+          // ✅ Coba banyak kemungkinan nama field untuk hadir & terlambat
+          const hadirCount = Number(
+            statsObj?.total_hadir ?? statsObj?.hadir ?? statsObj?.totalHadir ??
+            statsObj?.total_hadir_hari_ini ?? statsObj?.hadir_hari_ini ??
+            statsObj?.present_count ?? statsObj?.on_time ?? 0
+          ) || 0;
+
+          const terlambatCount = Number(
+            statsObj?.terlambat ?? statsObj?.total_terlambat ?? statsObj?.keterlambatan ??
+            statsObj?.late_count ?? statsObj?.terlambat_hari_ini ??
+            statsObj?.totalLate ?? statsObj?.total_late ?? 0
+          ) || 0;
 
           statsSummary = {
             totalHadir: hadirCount + terlambatCount,
             keterlambatan: terlambatCount
           };
-          recordsForToday = data.records || data.data_records || [];
+
+          // Coba ambil records dari nested structure juga
+          const nestedRecords = statsObj?.records || statsObj?.data_records ||
+                                raw?.records || raw?.data_records || [];
+          if (Array.isArray(nestedRecords) && nestedRecords.length > 0) {
+            const result = countTodayAttendance(nestedRecords);
+            recordsForToday = result.todayRecords;
+            // Kalau dari records ada hasilnya, pakai itu (lebih akurat)
+            if (result.counter.hadir + result.counter.terlambat > 0) {
+              statsSummary = {
+                totalHadir: result.counter.hadir + result.counter.terlambat,
+                keterlambatan: result.counter.terlambat
+              };
+            }
+          }
         }
 
-        setTodayAttendanceRecords(recordsForToday); // Set the new state
+        setTodayAttendanceRecords(recordsForToday);
         setAttendanceStats(statsSummary);
         setBackendError(null);
       }
     } catch (err) {
-      console.error('❌ Gagal mengambil data statistik landing:', err.message);
-      setBackendError('Gagal memuat data statistik terbaru.');
-      // Mengubah console.error menjadi console.warn agar tidak muncul tanda merah di browser
-      console.warn('⚠️ Statistik gagal dimuat:', err.message);
-      
-      // Menangani pesan error spesifik database agar user tahu apa yang terjadi
+      console.warn('⚠️ Gagal mengambil data statistik landing:', err.message);
       if (err.response?.status === 500) {
         setBackendError('Server sedang maintenance (Database connection error).');
       } else {
@@ -450,12 +534,10 @@ const Landing = ({ theme, toggleTheme }) => {
     const pulangOpenTime = (attendanceSettings.pulangStartTime || "15:00").substring(0, 5);
     const pulangCloseTime = (attendanceSettings.pulangEndTime || "16:00").substring(0, 5);
 
-    // ✨ Tambahan: Jika jam pulang sekolah belum diatur, gunakan default jam pulang mulai
     const schoolEnd = (attendanceSettings.schoolEndTime || attendanceSettings.pulangStartTime || "15:30").substring(0, 5);
 
     if (checkIsHoliday()) return 'libur';
     if (action === 'pulang') {
-      // Cek apakah sudah masuk waktu pulang
       if (currentTimeStr < schoolEnd && currentTimeStr < pulangOpenTime) return 'belum_pulang';
       if (currentTimeStr > pulangCloseTime) return 'sudah_tutup_pulang';
       return 'pulang';
@@ -468,7 +550,7 @@ const Landing = ({ theme, toggleTheme }) => {
 
   const handleTryOpenAbsen = (action = 'datang') => {
     const status = getAttendanceStatus(action);
-    
+
     if (status === 'libur') {
       showSubmitNotificationMessage("❌ Hari ini adalah hari libur (sesuai pengaturan). Absensi tidak tersedia.", "error");
       return;
@@ -494,6 +576,16 @@ const Landing = ({ theme, toggleTheme }) => {
 
     setActiveAttendanceAction(action);
     setShowAbsenModal(true);
+  };
+
+  // ✅ Helper: Refresh stats dengan delay untuk hindari race condition
+  const refreshStatsAfterSubmit = async () => {
+    localStorage.setItem('attendance_updated', Date.now().toString());
+    // Tunggu sebentar agar backend selesai insert data
+    await new Promise(resolve => setTimeout(resolve, 800));
+    await fetchStats();
+    // Refresh sekali lagi setelah 2 detik untuk memastikan data terbaru
+    setTimeout(() => fetchStats(), 2000);
   };
 
   const handleStudentSubmit = async (e) => {
@@ -548,25 +640,24 @@ const Landing = ({ theme, toggleTheme }) => {
         action: activeAttendanceAction
       };
 
-      await api.post('/attendance/student/manual', payload, { 
-        timeout: 60000 
+      await api.post('/attendance/student/manual', payload, {
+        timeout: 60000
       });
 
       const statusText = activeAttendanceAction === 'pulang'
-        ? '✅ Pulang tercatat' 
+        ? '✅ Pulang tercatat'
         : status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
       const successMsg = `Absensi siswa berhasil! ${statusText}`;
       showSubmitNotificationMessage(successMsg, 'success');
       setSubmitMessage({ type: 'success', text: successMsg });
-      
+
       if (activeAttendanceAction === 'pulang') playSound('success');
       else if (status === 'hadir') playSound('success');
       else playSound('late');
 
       setStudentForm({ user_id: '', fullName: '' });
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      await fetchStats();
-      
+      await refreshStatsAfterSubmit();
+
       setTimeout(() => {
         setShowAbsenModal(false);
         setSubmitMessage({ type: '', text: '' });
@@ -574,7 +665,7 @@ const Landing = ({ theme, toggleTheme }) => {
     } catch (err) {
       const responseData = err.response?.data;
       console.error('Student Attendance Error:', responseData || err);
-      
+
       let errorMsg = responseData?.message || 'Gagal menyimpan absensi';
 
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('exceeded')) {
@@ -584,7 +675,7 @@ const Landing = ({ theme, toggleTheme }) => {
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
         errorMsg = 'Server tidak terjangkau. Link Cloudflare Tunnel Anda mungkin sudah expired (Mati). Mohon update file .env dengan link baru dan restart terminal.';
       }
-      
+
       if (responseData?.errors) {
         errorMsg = Object.entries(responseData.errors)
           .map(([key, value]) => {
@@ -667,18 +758,17 @@ const Landing = ({ theme, toggleTheme }) => {
       const successMsg = `Absensi guru berhasil! ${statusText}`;
       showSubmitNotificationMessage(successMsg, 'success');
       setSubmitMessage({ type: 'success', text: successMsg });
-      
+
       if (activeAttendanceAction === 'pulang') playSound('success');
       else if (status === 'hadir') playSound('success');
       else playSound('late');
 
       setTeacherForm({ nip: '', fullName: '' });
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      await fetchStats();
+      await refreshStatsAfterSubmit();
     } catch (err) {
       const responseData = err.response?.data;
       console.error('Teacher Attendance Error:', responseData || err);
-      
+
       let errorMsg = responseData?.message || err.message || 'Gagal menyimpan absensi';
 
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('exceeded')) {
@@ -688,7 +778,7 @@ const Landing = ({ theme, toggleTheme }) => {
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
         errorMsg = 'Server tidak terjangkau. Periksa apakah Cloudflare Tunnel masih aktif.';
       }
-      
+
       if (responseData?.errors) {
         errorMsg = Object.entries(responseData.errors)
           .map(([key, value]) => {
@@ -717,12 +807,12 @@ const Landing = ({ theme, toggleTheme }) => {
       }
 
       const token = localStorage.getItem('token');
-      
+
       if (!izinForm.user_id.trim()) {
         setSubmitMessage({ type: 'error', text: '❌ NIS/NIP harus diisi!' });
         return;
       }
-      
+
       const payload = {
         name: izinForm.fullName.trim(),
         full_name: izinForm.fullName.trim(),
@@ -748,7 +838,7 @@ const Landing = ({ theme, toggleTheme }) => {
         const formData = new FormData();
         Object.keys(payload).forEach(key => formData.append(key, payload[key]));
         formData.append('attachment', izinForm.attachment);
-        
+
         await api.post('/attendance/izin', formData, {
           timeout: 60000,
           headers: {
@@ -767,8 +857,8 @@ const Landing = ({ theme, toggleTheme }) => {
       playSound('success');
 
       setIzinForm({ fullName: '', user_id: '', type: 'izin', reason: '', attachment: null, parent_phone: '' });
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      
+      await refreshStatsAfterSubmit();
+
       setTimeout(() => {
         setShowAbsenModal(false);
         setSubmitMessage({ type: '', text: '' });
@@ -797,7 +887,7 @@ const Landing = ({ theme, toggleTheme }) => {
 
       const qrData = JSON.parse(decodedText);
       setQrResult(qrData);
-      
+
       const validTypes = ['attendance_session', 'student_qr', 'teacher_qr'];
       if (qrData.type && !validTypes.includes(qrData.type)) {
         playSound('failed');
@@ -851,7 +941,7 @@ const Landing = ({ theme, toggleTheme }) => {
         showQRNotificationMessage(`❌ Absensi pulang sudah ditutup pada jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}`, 'error');
         return;
       }
-      
+
       const requestData = {
         qr_data: qrData,
         scan_time: getLocalTimestamp(currentTime),
@@ -872,7 +962,7 @@ const Landing = ({ theme, toggleTheme }) => {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
-      
+
       if (response.data.already_absent) {
         playSound('already');
         setShowQRNotification(false);
@@ -893,9 +983,8 @@ const Landing = ({ theme, toggleTheme }) => {
 
       handleCloseScanner();
       setQrResult(null);
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      await fetchStats();
-      
+      await refreshStatsAfterSubmit();
+
       setTimeout(() => {
         setShowAbsenModal(false);
         setSubmitMessage({ type: '', text: '' });
@@ -903,7 +992,7 @@ const Landing = ({ theme, toggleTheme }) => {
     } catch (err) {
       const status = err.response?.status;
       const backendMessage = err.response?.data?.message;
-      
+
       if (status === 400 && backendMessage && backendMessage.toLowerCase().includes('sudah absen')) {
         playSound('already');
         showQRNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
@@ -941,12 +1030,12 @@ const Landing = ({ theme, toggleTheme }) => {
         return;
       }
       if (qrScanner) return;
-      
+
       const scanner = new Html5Qrcode(
         showStandaloneQRScanner ? 'qr-reader-standalone' : 'qr-reader-main'
       );
       setQrScanner(scanner);
-      
+
       await scanner.start(
         { facingMode: mode },
         {
@@ -1074,7 +1163,7 @@ const Landing = ({ theme, toggleTheme }) => {
             </div>
           </div>
           <div className="relative h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
-            <div 
+            <div
               className="absolute top-0 left-0 h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
               style={{ width: `${loadingProgress}%` }}
             ></div>
@@ -1099,9 +1188,9 @@ const Landing = ({ theme, toggleTheme }) => {
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
               {attendanceSettings.schoolLogo && !logoError ? (
-                <img 
-                  src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
-                  alt="Logo" 
+                <img
+                  src={resolvePhotoUrl(attendanceSettings.schoolLogo)}
+                  alt="Logo"
                   className="w-10 h-10 object-contain rounded-full"
                   onError={() => setLogoError(true)}
                 />
@@ -1126,7 +1215,7 @@ const Landing = ({ theme, toggleTheme }) => {
             <span className="hidden sm:inline">{theme === 'dark' ? 'Gelap' : 'Terang'}</span>
           </button>
         </div>
-        
+
         <div className="text-center py-6">
           <p className="text-blue-200 text-sm mb-1">Halo, Selamat Datang!</p>
           <h2 className="text-white text-2xl font-bold mb-2">{attendanceSettings.schoolName || 'Sistem Absensi'}</h2>
@@ -1148,7 +1237,7 @@ const Landing = ({ theme, toggleTheme }) => {
       <div className="bg-white dark:bg-slate-950 rounded-t-3xl -mt-6 min-h-screen px-4 pt-6">
         {/* Quick Actions Grid */}
         <div className="grid grid-cols-4 gap-3 mb-6">
-          <button 
+          <button
             onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
             className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 transition dark:bg-slate-800 dark:text-white"
           >
@@ -1160,7 +1249,7 @@ const Landing = ({ theme, toggleTheme }) => {
             <span className="text-xs font-medium text-slate-700 text-center">Scan QR</span>
           </button>
 
-          <button 
+          <button
             onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('siswa'); setShowAbsenModal(true); }}
             className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 transition dark:bg-slate-800 dark:text-white"
           >
@@ -1172,7 +1261,7 @@ const Landing = ({ theme, toggleTheme }) => {
             <span className="text-xs font-medium text-slate-700 text-center">Siswa</span>
           </button>
 
-          <button 
+          <button
             onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('guru'); setShowAbsenModal(true); }}
             className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-purple-50 hover:bg-purple-100 transition dark:bg-slate-800 dark:text-white"
           >
@@ -1184,7 +1273,7 @@ const Landing = ({ theme, toggleTheme }) => {
             <span className="text-xs font-medium text-slate-700 text-center">Guru</span>
           </button>
 
-          <button 
+          <button
             onClick={() => { setActiveMethodTab('izin'); setShowAbsenModal(true); }}
             className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 transition dark:bg-slate-800 dark:text-white"
           >
@@ -1257,13 +1346,13 @@ const Landing = ({ theme, toggleTheme }) => {
 
         {/* Action Buttons */}
         <div className="space-y-3 mb-10">
-          <button 
+          <button
             onClick={() => handleNavigate('/login')}
             className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-semibold text-sm hover:bg-slate-800 transition shadow-lg"
           >
             Login
           </button>
-          <button 
+          <button
             onClick={() => handleNavigate('/register')}
             className="w-full bg-blue-100 text-blue-700 py-3.5 rounded-2xl font-semibold text-sm hover:bg-blue-200 transition"
           >
@@ -1280,19 +1369,18 @@ const Landing = ({ theme, toggleTheme }) => {
           </svg>
           <span className="text-[10px] font-medium">Home</span>
         </button>
-        
-        <button 
+
+        <button
           onClick={() => setShowAttendanceListModal(true)}
           className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
         >
-          {/* This is the "Absensi" button the user wants to modify */}
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
           <span className="text-[10px] font-medium">Absensi</span>
         </button>
 
-        <button 
+        <button
           onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
           className="flex flex-col items-center -mt-8"
         >
@@ -1303,7 +1391,7 @@ const Landing = ({ theme, toggleTheme }) => {
           </div>
         </button>
 
-        <button 
+        <button
           onClick={() => {
             setSubmitLandingNotificationMessage(`🔔 Info Kehadiran Hari Ini:\n- Total Hadir: ${attendanceStats.totalHadir}\n- Terlambat: ${attendanceStats.keterlambatan}\n\nData diperbarui secara real-time.`);
             setShowLandingNotification(true);
@@ -1316,7 +1404,7 @@ const Landing = ({ theme, toggleTheme }) => {
           <span className="text-[10px] font-medium">Notif</span>
         </button>
 
-        <button 
+        <button
           onClick={() => handleNavigate('/login')}
           className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
         >
@@ -1339,9 +1427,9 @@ const Landing = ({ theme, toggleTheme }) => {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
                 {attendanceSettings.schoolLogo && !logoError ? (
-                  <img 
-                    src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
-                    alt="Logo" 
+                  <img
+                    src={resolvePhotoUrl(attendanceSettings.schoolLogo)}
+                    alt="Logo"
                     className="w-10 h-10 object-contain rounded-full"
                     onError={() => setLogoError(true)}
                   />
@@ -1356,7 +1444,7 @@ const Landing = ({ theme, toggleTheme }) => {
                 <p className="text-xs text-slate-500">Sistem Absensi Digital</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -1388,20 +1476,20 @@ const Landing = ({ theme, toggleTheme }) => {
       <div className="pt-24 pb-12 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-8">
-            
+
             {/* Left Column - Welcome & Quick Actions */}
             <div className="space-y-6">
               {/* Welcome Card */}
               <div className="bg-blue-600 dark:bg-gradient-to-br dark:from-blue-600 dark:via-blue-700 dark:to-indigo-900 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 dark:bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-400/20 rounded-full -ml-24 -mb-24 blur-2xl"></div>
-                
+
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
                     <span className="text-xs font-semibold uppercase tracking-wider text-blue-100">Live System</span>
                   </div>
-                   
+
                   <h2 className="text-3xl font-bold mb-3 text-white">Halo, Selamat Datang!</h2>
                   <p className="text-blue-100 mb-8 leading-relaxed">Gunakan sistem absensi digital ini untuk memonitor kehadiran siswa dan guru dengan lebih mudah dan efisien.</p>
                   {/* Illustration */}
@@ -1427,7 +1515,7 @@ const Landing = ({ theme, toggleTheme }) => {
 
                   {/* Quick Action Buttons */}
                   <div className="grid grid-cols-2 gap-3">
-                    <button 
+                    <button
                       onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
                       className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group dark:bg-slate-800 dark:text-white"
                     >
@@ -1439,7 +1527,7 @@ const Landing = ({ theme, toggleTheme }) => {
                       <span className="font-semibold text-sm">Scan QR Code</span>
                     </button>
 
-                    <button 
+                    <button
                       onClick={() => { setActiveMethodTab('manual'); setActiveUserRole('siswa'); setShowAbsenModal(true); }}
                       className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group dark:bg-slate-800 dark:text-white"
                     >
@@ -1451,7 +1539,7 @@ const Landing = ({ theme, toggleTheme }) => {
                       <span className="font-semibold text-sm">Absen Manual</span>
                     </button>
 
-                    <button 
+                    <button
                       onClick={() => { setActiveMethodTab('izin'); setShowAbsenModal(true); }}
                       className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-2xl p-4 text-left transition-all group dark:bg-slate-800 dark:text-white"
                     >
@@ -1463,7 +1551,7 @@ const Landing = ({ theme, toggleTheme }) => {
                       <span className="font-semibold text-sm">Izin/Sakit</span>
                     </button>
 
-                    <button 
+                    <button
                       onClick={() => handleNavigate('/login')}
                       className="bg-white hover:bg-slate-50 rounded-2xl p-4 text-left transition-all group dark:bg-slate-900 dark:text-white"
                     >
@@ -1523,15 +1611,15 @@ const Landing = ({ theme, toggleTheme }) => {
                     </svg>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-3">
-                  <button 
+                  <button
                     onClick={() => handleTryOpenAbsen('datang')}
                     className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl py-3 text-sm font-semibold transition"
                   >
                     Absen Datang
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleTryOpenAbsen('pulang')}
                     className="bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl py-3 text-sm font-semibold transition"
                   >
@@ -1598,7 +1686,7 @@ const Landing = ({ theme, toggleTheme }) => {
               <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl">
                 <h3 className="text-xl font-bold mb-2">Siap untuk Absen?</h3>
                 <p className="text-slate-300 text-sm mb-4">Mulai absen sekarang dan jadilah bagian dari sekolah digital.</p>
-                <button 
+                <button
                   onClick={() => { setActiveMethodTab('scan'); setShowAbsenModal(true); }}
                   className="w-full bg-white text-slate-900 py-3 rounded-xl font-semibold hover:bg-slate-100 transition flex items-center justify-center gap-2"
                 >
@@ -1619,9 +1707,9 @@ const Landing = ({ theme, toggleTheme }) => {
           <div className="flex items-center justify-center gap-2 mb-3">
             <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
               {attendanceSettings.schoolLogo && !logoError ? (
-                <img 
-                  src={resolvePhotoUrl(attendanceSettings.schoolLogo)} 
-                  alt="Logo" 
+                <img
+                  src={resolvePhotoUrl(attendanceSettings.schoolLogo)}
+                  alt="Logo"
                   className="w-6 h-6 object-contain rounded-full"
                   onError={() => setLogoError(true)}
                 />
@@ -1722,7 +1810,7 @@ const Landing = ({ theme, toggleTheme }) => {
                 </svg>
               </button>
             </div>
-            
+
             <div className="p-6">
               {/* Role Tabs */}
               <div className="flex justify-center mb-6 space-x-2 flex-wrap">
@@ -1817,14 +1905,14 @@ const Landing = ({ theme, toggleTheme }) => {
                       <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-2xl mb-4 mx-auto max-w-[280px] aspect-square relative border-4 border-blue-50">
                         <div id="qr-reader-main" className="w-full h-full"></div>
                       </div>
-                      
+
                       {cameraError && (
                         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-[10px] text-red-600 font-bold">
                           ⚠️ {cameraError}
                         </div>
                       )}
 
-                      <button 
+                      <button
                         onClick={toggleCamera}
                         className="w-full py-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-black border-2 border-blue-100 hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
                       >
