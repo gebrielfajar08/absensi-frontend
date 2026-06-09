@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '../api/axios';
-import { persistAuthResponse, dashboardPathForRole, getRoleDisplayName } from '../utils/authSession';
+import { persistAuthResponse, dashboardPathForRole } from '../utils/authSession';
 
 const resolvePhotoUrl = (photo, fallbackBase = 'http://127.0.0.1:8000') => {
   if (!photo || typeof photo !== 'string') return null;
@@ -32,17 +32,9 @@ const fetchWithRetry = async (apiCall, maxRetries = 3, delay = 1500) => {
   throw lastError;
 };
 
-const SUPPORTED_ROLES = ['siswa', 'guru', 'admin'];
-const ROLE_ICONS = {
-  siswa: '🧑‍🎓',
-  guru: '👨‍🏫',
-  admin: '👨‍💼'
-};
-
 const LoginUnified = () => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState('siswa');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -60,7 +52,6 @@ const LoginUnified = () => {
   ];
 
   const navigate = useNavigate();
-  const location = useLocation();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -68,12 +59,6 @@ const LoginUnified = () => {
     }, 6000);
     return () => clearInterval(interval);
   }, [backgroundImages.length]);
-
-  useEffect(() => {
-    if (location.state?.role && SUPPORTED_ROLES.includes(location.state.role)) {
-      setSelectedRole(location.state.role);
-    }
-  }, [location.state]);
 
   useEffect(() => {
     const loadSettings = () => {
@@ -115,31 +100,25 @@ const LoginUnified = () => {
       
       // Validasi input
       if (!id || !password) {
-        throw new Error('Email/NIS/NIP dan kata sandi harus diisi!');
+        throw new Error('NIS/NIP/Email/Username dan kata sandi harus diisi!');
       }
 
-      // Siapkan payload berdasarkan role yang dipilih
+      // Siapkan payload unified (tanpa role)
       const payload = {
         password: password,
-        role: selectedRole
+        identifier: id // Field universal untuk unified login
       };
 
-      // Deteksi tipe identifier
+      // Deteksi tipe identifier untuk kompatibilitas backend
       if (id.includes('@')) {
         payload.email = id;
       } else if (/^\d+$/.test(id)) {
-        // Angka - bisa NIS (siswa) atau NIP (guru)
-        if (selectedRole === 'siswa') {
-          payload.nis = id;
-          payload.user_id = id;
-        } else if (selectedRole === 'guru') {
-          payload.nip = id;
-          payload.user_id = id;
-        } else {
-          payload.username = id;
-        }
+        // Angka - kirim semua kemungkinan field ID numerik
+        payload.nis = id;
+        payload.nip = id;
+        payload.user_id = id;
       } else {
-        // Username untuk admin
+        // Teks selain email - asumsikan username
         payload.username = id;
       }
 
@@ -160,14 +139,11 @@ const LoginUnified = () => {
 
       // Ambil data user dari response
       const userData = response.data?.user || response.data?.data?.user || response.data;
-      const userRole = userData.role || selectedRole;
+      const userRole = userData.role;
 
-      if (!SUPPORTED_ROLES.includes(userRole)) {
+      if (!userRole) {
         throw new Error('Role tidak dikenali. Hubungi administrator.');
       }
-
-      // // Tampilkan pesan sukses
-      // alert(`Login berhasil! Selamat datang ${userData.name || userRole}`);
 
       setIsExiting(true);
       
@@ -178,43 +154,41 @@ const LoginUnified = () => {
         navigate(targetPath, { replace: true });
       }, 600);
 
-} catch (err) {
-  console.error('❌ Login error:', err);
+    } catch (err) {
+      console.error('❌ Login error:', err);
 
-  let errorMsg = 'Login gagal! Periksa kembali kredensial Anda.';
+      let errorMsg = 'Login gagal! Periksa kembali kredensial Anda.';
 
-  if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-    errorMsg = 'Koneksi timeout. Server atau Tunnel sedang lambat. Silakan coba lagi.';
-  } else if (err.response) {
-    const status = err.response.status;
-    const data = err.response.data;
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        errorMsg = 'Koneksi timeout. Server atau Tunnel sedang lambat. Silakan coba lagi.';
+      } else if (err.response) {
+        const status = err.response.status;
+        const data = err.response.data;
 
-    console.log('Error response:', status, data);
+        console.log('Error response:', status, data);
 
-    if (status === 403) {
-      errorMsg =
-        'Akses ditolak. Pastikan Anda memilih role yang benar (Siswa/Guru/Admin) dan menggunakan kredensial yang sesuai.';
-    } else if (status === 401) {
-      errorMsg = 'Email/NIS/NIP atau kata sandi salah!';
-    } else if (status === 404) {
-      errorMsg = 'Akun tidak ditemukan. Silakan daftar terlebih dahulu.';
-    } else if (data?.message) {
-      errorMsg = data.message;
-    } else if (data?.errors) {
-      const errors = Object.values(data.errors).flat();
-      errorMsg = errors.join('\n');
+        if (status === 403) {
+          errorMsg = 'Akses ditolak. Akun Anda tidak memiliki izin untuk masuk.';
+        } else if (status === 401) {
+          errorMsg = 'Kredensial salah! Periksa kembali NIS/NIP/Email/Username dan kata sandi Anda.';
+        } else if (status === 404) {
+          errorMsg = 'Akun tidak ditemukan. Silakan daftar terlebih dahulu.';
+        } else if (data?.message) {
+          errorMsg = data.message;
+        } else if (data?.errors) {
+          const errors = Object.values(data.errors).flat();
+          errorMsg = errors.join('\n');
+        }
+      } else if (err.request) {
+        errorMsg = 'Tidak ada respons dari server. Pastikan server backend berjalan.';
+      } else {
+        errorMsg = err.message || 'Terjadi kesalahan. Silakan coba lagi.';
+      }
+
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
     }
-  } else if (err.request) {
-    errorMsg =
-      'Tidak ada respons dari server. Pastikan server backend berjalan di http://127.0.0.1:8000';
-  } else {
-    errorMsg = err.message || 'Terjadi kesalahan. Silakan coba lagi.';
-  }
-
-  setError(errorMsg);
-} finally {
-  setLoading(false);
-}
   };
 
   return (
@@ -297,10 +271,10 @@ const LoginUnified = () => {
             <div className="flex items-end justify-between">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                  <span className="text-xs">{ROLE_ICONS[selectedRole]}</span>
+                  <span className="text-xs">👤</span>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold">Portal {getRoleDisplayName(selectedRole)}</p>
+                  <p className="text-xs font-semibold">Portal Login</p>
                   <p className="text-xs text-gray-300">Masuk untuk melanjutkan</p>
                 </div>
               </div>
@@ -330,7 +304,7 @@ const LoginUnified = () => {
           <div className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto">
             <div className="mb-4 sm:mb-6">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-1 auth-heading uppercase tracking-tighter">Selamat Datang</h1>
-              <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm auth-text font-bold">Masuk ke akun {getRoleDisplayName(selectedRole)} Anda</p>
+              <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm auth-text font-bold">Masuk ke akun Anda</p>
             </div>
 
             {error && (
@@ -339,43 +313,17 @@ const LoginUnified = () => {
               </div>
             )}
 
-            {/* Role Selector */}
-            <div className="mb-4">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">Masuk Sebagai</label>
-              <div className="grid grid-cols-3 gap-2">
-                {SUPPORTED_ROLES.map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => {
-                      setSelectedRole(role);
-                      setIdentifier('');
-                      setError('');
-                    }}
-                    className={`px-2 py-2 rounded-lg text-xs font-medium transition-all border ${
-                      selectedRole === role
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span className="block text-lg mb-0.5">{ROLE_ICONS[role]}</span>
-                    <span>{getRoleDisplayName(role)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5">
-                  {selectedRole === 'siswa' ? 'NIS / Email' : selectedRole === 'guru' ? 'NIP / Email' : 'Username / Email'}
+                  NIS / NIP / Email / Username
                 </label>
                 <input
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="auth-input w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                  placeholder={selectedRole === 'siswa' ? 'Masukkan NIS atau Email' : selectedRole === 'guru' ? 'Masukkan NIP atau Email' : 'Masukkan Username atau Email'}
+                  placeholder="Masukkan NIS, NIP, Email, atau Username"
                   required
                   autoComplete="username"
                 />
@@ -422,7 +370,7 @@ const LoginUnified = () => {
                   </>
                 ) : (
                   <>
-                    <span>Masuk sebagai {getRoleDisplayName(selectedRole)}</span>
+                    <span>Masuk</span>
                   </>
                 )}
               </button>

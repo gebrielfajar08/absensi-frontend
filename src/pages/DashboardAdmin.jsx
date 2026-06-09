@@ -1659,9 +1659,9 @@ const handleSaveSettings = async (section, e) => {
     const status = String(item.status || '').toLowerCase();
     const approval = String(item.approval_status || item.review_status || '').toLowerCase();
     const isPermission = ['izin', 'sakit'].includes(status);
-    const approved = ['approved', 'disetujui', 'diterima', 'accepted'].includes(approval) || item.is_approved === true || item.approved === true;
+    const approved = ['approved', 'disetujui', 'diterima', 'accepted', 'rejected', 'ditolak'].includes(approval) || item.is_approved === true || item.approved === true;
     const pending = ['pending', 'requested', 'waiting', 'menunggu'].includes(approval) || item.is_pending === true || item.pending === true;
-    return isPermission && !approved && (pending || approval === '');
+    return isPermission && !approved && (pending || approval === '' || approval === 'null');
   });
 
   // ✨ FIX: Normalisasi user agar NIS/NIP dan Kelas selalu tersedia

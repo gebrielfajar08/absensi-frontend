@@ -817,16 +817,22 @@ const Landing = ({ theme, toggleTheme }) => {
         name: izinForm.fullName.trim(),
         full_name: izinForm.fullName.trim(),
         type: 'manual',
+        approval_status: 'pending',
+        is_pending: true,
+        pending: true,
         reason: izinForm.reason,
         notes: izinForm.reason,
         keterangan: izinForm.reason,
         attendance_time: getLocalTimestamp(currentTime),
+        scan_time: getLocalTimestamp(currentTime),
+        date: getJakartaDateKey(currentTime),
         status: izinForm.type,
         role: activeUserRole === 'guru' ? 'guru' : 'siswa'
       };
       if (activeUserRole === 'siswa') {
         payload.user_id = izinForm.user_id.trim();
         payload.nis = izinForm.user_id.trim();
+        payload.student_id = izinForm.user_id.trim();
         payload.parent_phone = izinForm.parent_phone.trim();
       } else if (activeUserRole === 'guru') {
         payload.user_id = izinForm.user_id.trim();

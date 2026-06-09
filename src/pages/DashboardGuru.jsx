@@ -671,21 +671,17 @@ const DashboardGuru = ({ theme, toggleTheme }) => {
         const config = { headers: getAuthHeaders() };
         const payload = {
           student_id: studentId,
+          user_id: studentId,
+          nis: studentId,
           status,
-          date: selectedDate,
+          date: selectedDate || new Date().toISOString().split('T')[0],
           approval_status: 'pending',
           is_pending: true,
           pending: true,
           reason: permissionNote.trim() || `Pengajuan ${status === 'sakit' ? 'sakit' : 'izin'} dari dashboard guru`,
-          notes: permissionNote.trim() || `Pengajuan ${status === 'sakit' ? 'sakit' : 'izin'} dari dashboard guru`,
-          keterangan: permissionNote.trim() || `Pengajuan ${status === 'sakit' ? 'sakit' : 'izin'} dari dashboard guru`,
           attendance_time: getLocalTimestamp(new Date()),
-          role: 'guru',
-          user_id: user?.user_id || user?.nip || user?.id || '',
-          nip: user?.user_id || user?.nip || user?.id || '',
-          teacher_id: user?.user_id || user?.nip || user?.id || '',
-          full_name: user?.name || user?.full_name || '',
-          name: user?.name || user?.full_name || ''
+          role: 'siswa',
+          submitted_by: user?.name || 'Guru'
         };
 
         await fetchWithRetry(() => api.post('/attendance/izin', payload, config));
