@@ -386,7 +386,7 @@ const Landing = ({ theme, toggleTheme }) => {
         setBackendError('Gagal memuat data statistik terbaru.');
       }
     }
-  };
+  };  
 
   useEffect(() => {
     const initLanding = async () => {
