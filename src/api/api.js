@@ -19,4 +19,9 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  timeout: 30000, // semua request ikut ini
+});
+
 export default api;

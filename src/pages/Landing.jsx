@@ -749,9 +749,7 @@ const Landing = ({ theme, toggleTheme }) => {
         action: activeAttendanceAction
       };
 
-      await api.post('/attendance/teacher/manual', payload, {
-        timeout: 60000
-      });
+      await api.post('/attendance/teacher/manual', payload);
 
       const statusText = activeAttendanceAction === 'pulang'
         ? '✅ Pulang tercatat'
@@ -1158,34 +1156,34 @@ const Landing = ({ theme, toggleTheme }) => {
     return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
-  const isPageLoading = (isLandingLoading || loadingProgress < 100) || isNavigating;
+  // const isPageLoading = (isLandingLoading || loadingProgress < 100) || isNavigating;
 
-  if (isPageLoading && !isNavigating) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white dark:bg-slate-900 transition-colors duration-500 px-6">
-        <div className="w-full max-w-[280px] sm:max-w-xs">
-          <div className="flex justify-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/20 animate-bounce">
-              <span className="text-3xl">⚡</span>
-            </div>
-          </div>
-          <div className="relative h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
-            <div
-              className="absolute top-0 left-0 h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${loadingProgress}%` }}
-            ></div>
-          </div>
-          <div className="flex justify-between items-center px-1">
-            <div>
-              <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest opacity-80">Loading</h2>
-              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tighter">Synchronizing...</p>
-            </div>
-            <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tighter">{loadingProgress}%</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // if (isPageLoading && !isNavigating) {
+  //   return (
+  //     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white dark:bg-slate-900 transition-colors duration-500 px-6">
+  //       <div className="w-full max-w-[280px] sm:max-w-xs">
+  //         <div className="flex justify-center mb-8">
+  //           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/20 animate-bounce">
+  //             <span className="text-3xl">⚡</span>
+  //           </div>
+  //         </div>
+  //         <div className="relative h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
+  //           <div
+  //             className="absolute top-0 left-0 h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
+  //             style={{ width: `${loadingProgress}%` }}
+  //           ></div>
+  //         </div>
+  //         <div className="flex justify-between items-center px-1">
+  //           <div>
+  //             <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest opacity-80">Loading</h2>
+  //             <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tighter">Synchronizing...</p>
+  //           </div>
+  //           <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tighter">{loadingProgress}%</span>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // }
   // Mobile Layout
   const MobileLayout = () => (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-28">
