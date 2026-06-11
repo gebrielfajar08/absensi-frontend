@@ -103,11 +103,15 @@ const LoginUnified = () => {
         throw new Error('NIS/NIP/Email/Username dan kata sandi harus diisi!');
       }
 
-      // Siapkan payload unified (tanpa role)
-      const payload = {
-        password: password,
-        identifier: id // Field universal untuk unified login
-      };
+const payload = {
+  password
+};
+
+if (id.includes('@')) {
+  payload.email = id;
+} else {
+  payload.nis = id;
+}
 
       // Deteksi tipe identifier untuk kompatibilitas backend
       if (id.includes('@')) {
@@ -316,14 +320,14 @@ const LoginUnified = () => {
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5">
-                  NIS / NIP / Email / Username
+                  Email
                 </label>
                 <input
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="auth-input w-full px-3 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                  placeholder="Masukkan NIS, NIP, Email, atau Username"
+                  placeholder="Masukkan Email"
                   required
                   autoComplete="username"
                 />

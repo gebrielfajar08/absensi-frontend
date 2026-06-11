@@ -391,13 +391,14 @@ const Landing = ({ theme, toggleTheme }) => {
   useEffect(() => {
     const initLanding = async () => {
       setIsLandingLoading(true);
-      await Promise.allSettled([loadSettings(), fetchStats()]);
+      await loadSettings();
+      await fetchStats();
       setIsLandingLoading(false);
     };
 
     initLanding();
 
-    const syncInterval = setInterval(fetchStats, 30000);
+    const syncInterval = setInterval(fetchStats, 60000);
 
     const handleStorageChange = (e) => {
       if (e.key === 'school_settings') {

@@ -3,31 +3,24 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
   withCredentials: false,
-  timeout: 30000, // Default 30 detik timeout untuk semua requests
+  timeout: 30000,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   }
 });
 
-// INTERCEPTOR REQUEST
+// REQUEST INTERCEPTOR
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-
   const url = config.url || '';
 
-  // ❗ HANYA endpoint auth yang benar-benar public
   const publicEndpoints = ['/login', '/register'];
-
   const isPublic = publicEndpoints.some((p) => url.includes(p));
 
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
-    if (typeof config.headers?.delete === 'function') {
-      config.headers.delete('Content-Type');
-    } else if (config.headers) {
-      delete config.headers['Content-Type'];
-      delete config.headers['content-type'];
-    }
+    delete config.headers['Content-Type'];
+    delete config.headers['content-type'];
   }
 
   if (token && !isPublic) {
@@ -40,7 +33,7 @@ api.interceptors.request.use((config) => {
 // FLAG ANTI LOOP
 let isRedirecting = false;
 
-// INTERCEPTOR RESPONSE
+// RESPONSE INTERCEPTOR
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -50,21 +43,31 @@ api.interceptors.response.use(
     const publicEndpoints = ['/login', '/register'];
     const isPublic = publicEndpoints.some((p) => url.includes(p));
 
-    if ((status === 401 || status === 403) && !isPublic && !isRedirecting) {
+    if (
+      (status === 401 || status === 403) &&
+      !isPublic &&
+      !isRedirecting &&
+      !url.includes('/attendance/stats')
+    ) {
       isRedirecting = true;
 
       const userStr = localStorage.getItem('user');
-      let role = 'admin';
+      let role = 'unknown';
 
       try {
         if (userStr) {
           const userData = JSON.parse(userStr);
           role = userData.role?.toLowerCase() || 'admin';
         }
-      } catch {}
+      } catch (e) {}
 
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      if (
+        url.includes('/auth') ||
+        url.includes('/login')
+      ) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
 
       if (!window.location.pathname.includes('/login')) {
         if (role === 'siswa') {

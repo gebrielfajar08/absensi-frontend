@@ -1342,15 +1342,18 @@ const handleSaveSettings = async (section, e) => {
       appendField('pulang_end_time', formatTime(settingsData.pulangEndTime));
       appendField('pulangEndTime', formatTime(settingsData.pulangEndTime));
       appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
-      appendField('activeDays', settingsData.activeDays);
-      data.append('attendance_session_open', settingsData.attendanceSessionOpen || settingsData.attendance_session_open ? '1' : '0');
-      data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled || settingsData.auto_mark_absent_enabled ? '1' : '0');
-      data.append('enable_qr_code', settingsData.enableQRCode || settingsData.enable_qr_code ? '1' : '0');
-      data.append('disable_attendance_on_holidays', settingsData.disableAttendanceOnHolidays ? '1' : '0');
+      
+ data.append('enable_notifications', settingsData.enableNotifications ? 'true' : 'false');
+data.append('enable_email_reports', settingsData.enableEmailReports ? 'true' : 'false');
+
+data.append('attendance_session_open', settingsData.attendanceSessionOpen ? 'true' : 'false');
+data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? 'true' : 'false');
+data.append('enable_qr_code', settingsData.enableQRCode ? 'true' : 'false');
+data.append('disable_attendance_on_holidays', settingsData.disableAttendanceOnHolidays ? 'true' : 'false');
     }
 
     if (section === 'notification') {
-      data.append('enable_notifications', settingsData.enableNotifications ? '1' : '0');
+      data.append('enable_notifications', settingsData.enableNotifications ? true : false);
       data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
     }
 
@@ -1439,7 +1442,6 @@ const handleSaveSettings = async (section, e) => {
         setSettingsSaved(false);
       }, 3000);
     }
-
   } catch (err) {
     console.log('🔥 INI ERROR ASLI DARI BACKEND:');
     console.log(err.response?.data);
