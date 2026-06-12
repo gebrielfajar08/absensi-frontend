@@ -1325,6 +1325,9 @@ const handleSaveSettings = async (section, e) => {
       return time.toString().substring(0, 5);
     };
 
+    console.log('RAW enableNotifications:', settingsData.enableNotifications);
+console.log('TYPE:', typeof settingsData.enableNotifications);
+
     if (section === 'school') {
       appendField('schoolName', settingsData.schoolName);
       appendField('schoolAddress', settingsData.schoolAddress);
@@ -1343,19 +1346,18 @@ const handleSaveSettings = async (section, e) => {
       appendField('pulangEndTime', formatTime(settingsData.pulangEndTime));
       appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
       
- data.append('enable_notifications', settingsData.enableNotifications ? 'true' : 'false');
-data.append('enable_email_reports', settingsData.enableEmailReports ? 'true' : 'false');
 
-data.append('attendance_session_open', settingsData.attendanceSessionOpen ? 'true' : 'false');
-data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? 'true' : 'false');
-data.append('enable_qr_code', settingsData.enableQRCode ? 'true' : 'false');
-data.append('disable_attendance_on_holidays', settingsData.disableAttendanceOnHolidays ? 'true' : 'false');
+data.append('enable_email_reports', settingsData.enableEmailReports ? 1 : 0);
+data.append('enable_notifications', Number(settingsData.enableNotifications === true));
+data.append('attendance_session_open', settingsData.attendanceSessionOpen ? 1 : 0);
+data.append('auto_mark_absent_enabled', settingsData.autoMarkAbsentEnabled ? 1 : 0);
+data.append('enable_qr_code', settingsData.enableQRCode ? 1 : 0);
+data.append('disable_attendance_on_holidays', settingsData.disableAttendanceOnHolidays ? 1 : 0);
     }
 
-    if (section === 'notification') {
-      data.append('enable_notifications', settingsData.enableNotifications ? true : false);
-      data.append('enable_email_reports', settingsData.enableEmailReports ? '1' : '0');
-    }
+if (section === 'notification') {
+  data.append('enable_email_reports', settingsData.enableEmailReports ? 1 : 0);
+}
 
     if (section === 'media') {
       appendFileWithAliases('logo', logoFile, ['school_logo', 'schoolLogo']);
@@ -1368,8 +1370,8 @@ data.append('disable_attendance_on_holidays', settingsData.disableAttendanceOnHo
     if (section === 'sound') {
       appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
       appendField('schoolEndTime', formatTime(settingsData.schoolEndTime));
-      appendFileWithAliases('start_sound', startSoundFile, ['start_sound_url', 'startSound']);
-      appendFileWithAliases('end_sound', endSoundFile, ['end_sound_url', 'endSound']);
+      appendFileWithAliases('start_sound', startSoundFile);
+      appendFileWithAliases('end_sound', endSoundFile);
     }
 
     console.log('KIRIM DATA:');

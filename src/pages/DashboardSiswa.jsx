@@ -185,7 +185,15 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
       try {
         const res = await api.get('/public/settings');
         if (res.data) {
-          const settings = res.data;
+          const res = await api.get('/public/settings');
+
+// 🔥 AUTO HANDLE SEMUA FORMAT BACKEND
+const settings = res?.data?.data ?? res?.data ?? null;
+
+if (!settings || typeof settings !== 'object') {
+  console.warn('Settings API kosong / salah format:', res);
+  return;
+}
           const mappedSettings = {
             schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
             schoolLogo: settings.schoolLogo || settings.logo || settings.logo_url || null,
@@ -204,8 +212,8 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
           localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
         }
       } catch (err) {
-        console.warn('Gagal fetch settings dari API, menggunakan cache local');
-        loadSettings();
+console.error('❌ Settings API gagal:', err?.message || err);
+loadSettings(); // fallback tetap jalan tapi jelas errornya
       }
     };
 
