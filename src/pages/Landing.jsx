@@ -418,6 +418,8 @@ const Landing = ({ theme, toggleTheme }) => {
 
   useEffect(() => {
     if (showAbsenModal && activeMethodTab === 'scan') {
+      isSubmittingRef.current = false;
+      lastScannedDataRef.current = null;
       const timer = setTimeout(() => startQRScanner(), 500);
       return () => {
         clearTimeout(timer);
@@ -590,7 +592,12 @@ const Landing = ({ theme, toggleTheme }) => {
   };
 
   const handleStudentSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
@@ -630,7 +637,6 @@ const Landing = ({ theme, toggleTheme }) => {
 
       const payload = {
         name: studentForm.fullName.trim(),
-        full_name: studentForm.fullName.trim(),
         user_id: studentForm.user_id.trim(),
         nis: studentForm.user_id.trim(),
         attendance_time: getLocalTimestamp(currentTime),
@@ -641,8 +647,11 @@ const Landing = ({ theme, toggleTheme }) => {
         action: activeAttendanceAction
       };
 
-      await api.post('/attendance/student/manual', payload, {
-        timeout: 60000
+      // Gunakan axios mentah untuk menghindari interceptor redirect ke login admin
+      const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+      await axios.post(`${baseUrl}/siswa/attendance/scan`, payload, {
+        timeout: 30000,
+        headers: { 'Content-Type': 'application/json' }
       });
 
       const statusText = activeAttendanceAction === 'pulang'
@@ -695,7 +704,12 @@ const Landing = ({ theme, toggleTheme }) => {
   };
 
   const handleTeacherSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
@@ -749,7 +763,12 @@ const Landing = ({ theme, toggleTheme }) => {
         action: activeAttendanceAction
       };
 
-      await api.post('/attendance/teacher/manual', payload);
+      // Gunakan axios mentah untuk menghindari interceptor redirect ke login admin
+      const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+      await axios.post(`${baseUrl}/attendance/teacher/manual`, payload, {
+        timeout: 30000,
+        headers: { 'Content-Type': 'application/json' }
+      });
 
       const statusText = activeAttendanceAction === 'pulang'
         ? '✅ Pulang tercatat'
@@ -796,7 +815,12 @@ const Landing = ({ theme, toggleTheme }) => {
   };
 
   const handleIzinSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
     try {
@@ -844,14 +868,16 @@ const Landing = ({ theme, toggleTheme }) => {
         Object.keys(payload).forEach(key => formData.append(key, payload[key]));
         formData.append('attachment', izinForm.attachment);
 
-        await api.post('/attendance/izin', formData, {
-          timeout: 60000,
+        const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+        await axios.post(`${baseUrl}/attendance/izin`, formData, {
+          timeout: 30000,
           headers: {
             ...(token ? { Authorization: `Bearer ${token}` } : {})
           }
         });
       } else {
-        await api.post('/attendance/izin', payload, {
+        const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+        await axios.post(`${baseUrl}/attendance/izin`, payload, {
           timeout: 60000,
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
@@ -900,7 +926,7 @@ const Landing = ({ theme, toggleTheme }) => {
         return;
       }
 
-      if (!qrData.id && !qrData.student_id && !qrData.teacher_id) {
+      if (!qrData.id && !qrData.student_id && !qrData.teacher_id && !qrData.user_id && !qrData.nis && !qrData.nip) {
         playSound('failed');
         showQRNotificationMessage('❌ QR Code tidak memiliki ID yang valid!', 'error');
         return;
@@ -952,19 +978,22 @@ const Landing = ({ theme, toggleTheme }) => {
         scan_time: getLocalTimestamp(currentTime),
         status: activeAttendanceAction === 'pulang' ? 'hadir' : status,
         type: activeAttendanceAction === 'pulang' ? 'pulang' : (qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr')),
-        user_id: qrData.user_id || qrData.id || qrData.student_id || qrData.teacher_id || '',
-        student_id: qrData.student_id || qrData.id || '',
-        teacher_id: qrData.teacher_id || qrData.id || '',
-        name: qrData.name || qrData.full_name || '',
+        user_id: qrData.user_id || qrData.nis || qrData.nip || qrData.id || qrData.student_id || qrData.teacher_id || '',
+        student_id: qrData.student_id || qrData.nis || qrData.id || '',
+        teacher_id: qrData.teacher_id || qrData.nip || qrData.id || '',
+        name: qrData.name || qrData.nama || qrData.full_name || '',
         role: qrData.role || activeUserRole,
         action: activeAttendanceAction
       };
 
-      const response = await api.post('/scan', requestData, {
-        timeout: 120000,
+      const endpoint = requestData.role === 'guru' ? '/attendance/teacher/manual' : '/siswa/attendance/scan';
+
+      const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+      const response = await axios.post(`${baseUrl}${endpoint}`, requestData, {
+        timeout: 30000,
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
       });
 
@@ -1331,11 +1360,11 @@ const Landing = ({ theme, toggleTheme }) => {
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-600">Buka</span>
+              <span className="text-slate-600">Datang Dibuka</span>
               <span className="font-semibold text-slate-800">{attendanceSettings.attendanceStartTime}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-600">Tutup</span>
+              <span className="text-slate-600">Datang Ditutup</span>
               <span className="font-semibold text-slate-800">{attendanceSettings.attendanceEndTime}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
@@ -1359,7 +1388,7 @@ const Landing = ({ theme, toggleTheme }) => {
           </button>
           <button
             onClick={() => handleNavigate('/register')}
-            className="w-full bg-blue-100 text-blue-700 py-3.5 rounded-2xl font-semibold text-sm hover:bg-blue-200 transition"
+            className="w-full bg-blue-100 text-blue-700 py-3.5 rounded-2xl font-semibold text-sm hover:bg-slate-800 transition"
           >
             Register
           </button>

@@ -1,17 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api/axios';
-import { persistAuthResponse, dashboardPathForRole } from '../utils/authSession';
-
-const resolvePhotoUrl = (photo) => {
-  if (!photo) return null;
-  if (typeof photo !== 'string') return null;
-  const trimmed = photo.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
-  return `${base}/${trimmed.replace(/^\//, '')}`;
-};
 
 const LoginAdmin = () => {
     const [email, setEmail] = useState('');
@@ -22,28 +11,6 @@ const LoginAdmin = () => {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [isExiting, setIsExiting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
-    const [schoolSettings, setSchoolSettings] = useState({ name: 'AbsensiPro', logo: null });
-    const [logoError, setLogoError] = useState(false);
-
-    useEffect(() => {
-        const loadSettings = () => {
-            const savedSettings = localStorage.getItem('school_settings');
-            if (savedSettings) {
-                try {
-                    const settings = JSON.parse(savedSettings);
-                    setSchoolSettings({
-                        name: settings.schoolName || settings.nama_sekolah || 'AbsensiPro',
-                        logo: settings.schoolLogo || settings.logo || null
-                    });
-                } catch (err) {
-                    console.error("Error parsing settings", err);
-                }
-            }
-        };
-        loadSettings();
-        window.addEventListener('storage', loadSettings);
-        return () => window.removeEventListener('storage', loadSettings);
-    }, []);
     
     const navigate = useNavigate();
 
@@ -78,26 +45,23 @@ const LoginAdmin = () => {
         setLoading(true);
 
         try {
-            const res = await api.post('/login', {
-                email: email.trim(),
+            const res = await api.post('/login', { 
+                email, 
                 password,
-                role: 'admin',
+                role: 'admin'
             });
-
-            persistAuthResponse(res);
-
+            
+            localStorage.setItem('token', res.data.token);
+            localStorage.setItem('user', JSON.stringify(res.data.user));
+            
             setIsExiting(true);
-
+            
             setTimeout(() => {
-                navigate(dashboardPathForRole('admin'), { replace: true });
-            }, 100);
+                navigate('/dashboard/admin');
+            }, 600);
             
         } catch (err) {
-            if (!err.response) {
-                setError('❌ Gagal terhubung ke server! Cek apakah Cloudflare Tunnel kamu masih aktif di terminal.');
-            } else {
-                setError(err.response?.data?.message || 'Email atau password salah!');
-            }
+            setError(err.response?.data?.message || 'Email atau password salah!');
         } finally {
             setLoading(false);
         }
@@ -121,21 +85,12 @@ const LoginAdmin = () => {
                 <div className="hidden lg:flex lg:w-5/12 bg-blue-600 p-6">
                     <div className="flex flex-col justify-between w-full">
                         <div className="flex items-center space-x-2">
-                            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-                                {schoolSettings.logo && !logoError ? (
-                                    <img 
-                                        src={resolvePhotoUrl(schoolSettings.logo)} 
-                                        alt="Logo" 
-                                        className="w-full h-full object-contain p-1"
-                                        onError={() => setLogoError(true)} 
-                                    />
-                                ) : (
-                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                    </svg>
-                                )}
+                            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
+                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
                             </div>
-                            <span className="text-white text-lg font-bold">{schoolSettings.name}</span>
+                            <span className="text-white text-lg font-bold">AbsensiPro</span>
                         </div>
 
                         <div className="text-center py-8">

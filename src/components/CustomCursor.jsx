@@ -15,7 +15,7 @@ export default function CustomCursor() {
 
     const load = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/settings");
+        const res = await fetch("http://127.0.0.1:8000/api/public/settings");
         const data = await res.json();
 
         schoolLogo = data.schoolLogo || data.logo;

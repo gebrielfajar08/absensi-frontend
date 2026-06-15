@@ -427,7 +427,9 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
       const qrData = {
         type: 'student_qr',
         nis: user.nis || user.user_id || '',
+        user_id: user.nis || user.user_id || '',
         nama: user.name || '',
+        name: user.name || '',
         role: user.role || 'siswa',
         generated_at: new Date().toISOString() // Sesuai dengan format Dashboard Admin
       };

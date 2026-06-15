@@ -128,7 +128,8 @@ if (id.includes('@')) {
 
       console.log('📤 Sending login request:', payload);
 
-      const response = await fetchWithRetry(() => api.post('/login', payload, { 
+      const response = await fetchWithRetry(() => 
+        api.post('/auth/login', payload, { 
         timeout: 60000, // Tingkatkan ke 60 detik
         headers: {
           'Content-Type': 'application/json',

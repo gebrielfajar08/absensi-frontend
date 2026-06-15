@@ -9,7 +9,7 @@ const resolvePhotoUrl = (photo) => {
   const trimmed = photo.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
+  const base = api.defaults.baseURL?.replace(/\/api\/?$/, '') || '';
   return `${base}/${trimmed.replace(/^\//, '')}`;
 };
 
@@ -23,60 +23,22 @@ const LoginGuru = () => {
     const [isExiting, setIsExiting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const [schoolSettings, setSchoolSettings] = useState({ name: 'AbsensiPro', logo: null });
-    const [connectionStatus, setConnectionStatus] = useState('checking');
-    const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
-        const loadSettings = () => {
-            const savedSettings = localStorage.getItem('school_settings');
-            if (savedSettings) {
-                try {
-                    const settings = JSON.parse(savedSettings);
-                    setSchoolSettings({
-                        name: settings.schoolName || settings.nama_sekolah || 'AbsensiPro',
-                        logo: settings.schoolLogo || settings.logo || null
-                    });
-                } catch (err) {
-                    console.error("Error parsing settings", err);
-                }
+        const savedSettings = localStorage.getItem('school_settings');
+        if (savedSettings) {
+            try {
+                const settings = JSON.parse(savedSettings);
+                setSchoolSettings({
+                    name: settings.schoolName || settings.nama_sekolah || 'AbsensiPro',
+                    logo: settings.schoolLogo || settings.logo || null
+                });
+            } catch (err) {
+                console.error("Error parsing settings", err);
             }
-        };
-        loadSettings();
-        window.addEventListener('storage', loadSettings);
-        return () => window.removeEventListener('storage', loadSettings);
+        }
     }, []);
     
-    useEffect(() => {
-        const verifyConnection = async () => {
-            try {
-                const baseURL = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
-                const apiRoot = baseURL.replace(/\/api\/?$/, '');
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 10000);
-                
-                const response = await fetch(`${apiRoot}/health`, { 
-                    method: 'GET',
-                    signal: controller.signal,
-                    mode: 'cors',
-                    cache: 'no-store'
-                });
-                clearTimeout(timeout);
-                if (!response.ok) {
-                    throw new Error('Health endpoint tidak merespons dengan benar');
-                }
-                setConnectionStatus('connected');
-            } catch (err) {
-                // Hanya set disconnected jika benar-benar network error atau connector gagal
-                if (err.name === 'TypeError' || err.message.includes('NetworkError') || err.message.includes('Health endpoint')) {
-                    setConnectionStatus('disconnected');
-                } else {
-                    setConnectionStatus('connected');
-                }
-            }
-        };
-        verifyConnection();
-    }, []);
-
     const navigate = useNavigate();
 
     // Background images (logic tetap ada, tapi tidak ditampilkan)
@@ -126,11 +88,7 @@ const LoginGuru = () => {
             }, 600);
             
         } catch (err) {
-            if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
-                setError('Gagal terhubung ke server. Pastikan URL API masih aktif dan backend berjalan.');
-            } else {
-                setError(err.response?.data?.message || 'Email atau password salah!');
-            }
+            setError(err.response?.data?.message || 'Email atau password salah!');
         } finally {
             setLoading(false);
         }
@@ -155,13 +113,8 @@ const LoginGuru = () => {
                     <div className="flex flex-col justify-between w-full">
                         <div className="flex items-center space-x-2">
                             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-                                {schoolSettings.logo && !logoError ? (
-                                    <img 
-                                        src={resolvePhotoUrl(schoolSettings.logo)} 
-                                        alt="Logo" 
-                                        className="w-full h-full object-contain p-1"
-                                        onError={() => setLogoError(true)} 
-                                    />
+                                {schoolSettings.logo ? (
+                                    <img src={resolvePhotoUrl(schoolSettings.logo)} alt="Logo" className="w-full h-full object-contain p-1" />
                                 ) : (
                                     <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14v2m0 4h.01M4.929 4.929a12 12 0 0116.342 0M4.929 19.071a12 12 0 0016.342 0" />
@@ -191,13 +144,6 @@ const LoginGuru = () => {
                             <h2 className="text-xl font-bold text-gray-900 mb-1.5">Selamat Datang, Guru! 👋</h2>
                             <p className="text-gray-600 text-sm">Masuk untuk mengelola kelas dan absensi</p>
                         </div>
-
-                        {connectionStatus === 'disconnected' && (
-                            <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg mb-4 text-[10px] animate-fade-in">
-                                ⚠️ <b>Koneksi Server Bermasalah:</b><br/> 
-                                Host tidak ditemukan. Jika kamu menggunakan Cloudflare Tunnel, pastikan tunnel tersebut sudah dijalankan ulang.
-                            </div>
-                        )}
 
                         {error && (
                             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg mb-4 text-sm animate-fade-in">
