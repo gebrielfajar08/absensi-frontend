@@ -744,111 +744,99 @@ const fetchSettings = async () => {
     return [];
   };
 
-  const fetchAllData = async () => {
+const fetchAllData = async () => {
     setDataLoading(true);
     try {
-      setError('');
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 }; // Batas waktu dinaikkan ke 60 detik
-      
-      // Ambil semua data secara paralel
-      const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
-        fetchWithRetry(() => apiTryEndpoints('get', ['/admin/stats', '/stats'], config)),
-        fetchWithRetry(() => apiTryEndpoints('get', userEndpointCandidates.index, config)),
-        fetchWithRetry(() => apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config)),
-        fetchWithRetry(() => fetchAttendanceRecords(config))
-      ]);
-      
-      // ✨ Gunakan data lama sebagai dasar agar UI tidak flash ke angka 0 saat server error
-      let calculatedStats = { ...stats };
-      
-      if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
-        const statsData = statsRes.value.data;
-        // Handle berbagai format response stats
-        calculatedStats = {
-          totalUsers: statsData.total_users ?? statsData.totalUsers ?? statsData.total ?? 0,
-          totalGuru: statsData.total_guru ?? statsData.totalGuru ?? statsData.guru ?? 0,
-          totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? statsData.siswa ?? 0,
-          totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? statsData.kelas ?? 0,
-          kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? statsData.hari_ini ?? statsData.today ?? 0
+        setError('');
+        const token = localStorage.getItem('token');
+        const config = { 
+            headers: { Authorization: `Bearer ${token}` }, 
+            timeout: 30000 // Turunkan timeout jadi 30 detik
         };
-      }
-      
-      // Jika stats endpoint tidak memberikan data, hitung dari users
-      if (calculatedStats.totalUsers === 0 && usersRes.status === 'fulfilled' && usersRes.value?.data) {
-        const uData = usersRes.value?.data;
-        const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-        const gurus = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'guru');
-        const siswas = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'siswa');
-        calculatedStats.totalUsers = rawUsers.length;
-        calculatedStats.totalGuru = gurus.length;
-        calculatedStats.totalSiswa = siswas.length;
-      }
-      
-      setStats(calculatedStats);
-      
-      // Process Users
-      if (usersRes.status === 'fulfilled' && usersRes.value) {
-        const uData = usersRes.value?.data;
-        const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-        setUsers(rawUsers.map(normalizeUser));
-      }
 
-      // Process Classes
-      if (classesRes.status === 'fulfilled' && classesRes.value) {
-        const classData = normalizeRecordsResponse(classesRes.value);
-        setClasses(classData.length > 0 ? classData : staticClassOptions);
-        // Update stats dengan jumlah kelas jika belum ada dari stats endpoint
-        if (calculatedStats.totalKelas === 0) {
-          const finalClassCount = classData.length > 0 ? classData.length : staticClassOptions.length;
-          setStats(prev => ({ ...prev, totalKelas: finalClassCount }));
-        }
-      } else {
-        // Jika endpoint classes gagal, gunakan static options sebagai fallback
-        setClasses(staticClassOptions);
-        if (calculatedStats.totalKelas === 0) {
-          setStats(prev => ({ ...prev, totalKelas: staticClassOptions.length }));
-        }
-      }
+        // Ambil semua data secara paralel dengan error handling yang lebih baik
+        const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
+            fetchWithRetry(() => apiTryEndpoints('get', ['/admin/stats', '/stats'], config), 2, 1000),
+            fetchWithRetry(() => apiTryEndpoints('get', userEndpointCandidates.index, config), 2, 1000),
+            fetchWithRetry(() => apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config), 2, 1000),
+            fetchWithRetry(() => fetchAttendanceRecords(config), 2, 1000)
+        ]);
 
-      // Process Attendance Reports
-      if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
-        const rawActivity = attendanceRes.value;
-        const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
-        setRecentActivity(normalizedActivity);
-        setAttendanceReports(normalizedActivity);
+        // Process Stats - dengan fallback yang lebih baik
+        let calculatedStats = { totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 };
         
-        // Update kehadiran hari ini dari attendance jika belum ada
-        const today = getJakartaDateKey(new Date());
-        const todayAttendance = normalizedActivity.filter(item => {
-          const itemKey = normalizeDateKey(item.date || item.created_at || item.attendance_time);
-          return itemKey === today;
-        });
-        
-        if (calculatedStats.kehadiranHariIni === 0 && todayAttendance.length > 0) {
-          setStats(prev => ({ ...prev, kehadiranHariIni: todayAttendance.length }));
+        if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
+            const statsData = statsRes.value.data;
+            calculatedStats = {
+                totalUsers: statsData.total_users ?? statsData.totalUsers ?? statsData.total ?? 0,
+                totalGuru: statsData.total_guru ?? statsData.totalGuru ?? statsData.guru ?? 0,
+                totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? statsData.siswa ?? 0,
+                totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? statsData.kelas ?? 0,
+                kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? statsData.hari_ini ?? statsData.today ?? 0
+            };
         }
-        
-        console.debug('🟢 DashboardAdmin data loaded:', {
-          users: calculatedStats.totalUsers,
-          guru: calculatedStats.totalGuru,
-          siswa: calculatedStats.totalSiswa,
-          kelas: calculatedStats.totalKelas,
-          attendance: normalizedActivity.length
-        });
-      }
+
+        // Fallback: Hitung dari users jika stats kosong
+        if (calculatedStats.totalUsers === 0 && usersRes.status === 'fulfilled' && usersRes.value?.data) {
+            const uData = usersRes.value?.data;
+            const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
+            const gurus = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'guru');
+            const siswas = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'siswa');
+            calculatedStats.totalUsers = rawUsers.length;
+            calculatedStats.totalGuru = gurus.length;
+            calculatedStats.totalSiswa = siswas.length;
+        }
+
+        setStats(calculatedStats);
+
+        // Process Users
+        if (usersRes.status === 'fulfilled' && usersRes.value) {
+            const uData = usersRes.value?.data;
+            const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
+            setUsers(rawUsers.map(normalizeUser));
+        }
+
+        // Process Classes
+        if (classesRes.status === 'fulfilled' && classesRes.value) {
+            const classData = normalizeRecordsResponse(classesRes.value);
+            setClasses(classData.length > 0 ? classData : staticClassOptions);
+            if (calculatedStats.totalKelas === 0) {
+                const finalClassCount = classData.length > 0 ? classData.length : staticClassOptions.length;
+                setStats(prev => ({ ...prev, totalKelas: finalClassCount }));
+            }
+        } else {
+            setClasses(staticClassOptions);
+            if (calculatedStats.totalKelas === 0) {
+                setStats(prev => ({ ...prev, totalKelas: staticClassOptions.length }));
+            }
+        }
+
+        // Process Attendance Reports
+        if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
+            const rawActivity = attendanceRes.value;
+            const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
+            setRecentActivity(normalizedActivity);
+            setAttendanceReports(normalizedActivity);
+            
+            // Update kehadiran hari ini dari attendance
+            const today = getJakartaDateKey(new Date());
+            const todayAttendance = normalizedActivity.filter(item => {
+                const itemKey = normalizeDateKey(item.date || item.created_at || item.attendance_time);
+                return itemKey === today;
+            });
+            if (calculatedStats.kehadiranHariIni === 0 && todayAttendance.length > 0) {
+                setStats(prev => ({ ...prev, kehadiranHariIni: todayAttendance.length }));
+            }
+        }
+
     } catch (err) {
-      console.error('Gagal mengambil data', err);
-      setError('Gagal memuat data dari server.');
-      setStats({ totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 });
-      setUsers([]);
-      setClasses([]);
-      setRecentActivity([]);
-      setAttendanceReports([]);
+        console.error('Gagal mengambil data', err);
+        setError('Gagal memuat data dari server.');
+        setStats({ totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 });
     } finally {
-      setDataLoading(false);
+        setDataLoading(false);
     }
-  };
+};
 
   // ✨ TAMBAHAN: Fetch & CRUD Event
   const fetchEvents = async () => {
@@ -1334,6 +1322,7 @@ console.log('TYPE:', typeof settingsData.enableNotifications);
       appendField('schoolPhone', settingsData.schoolPhone);
       appendField('schoolEmail', settingsData.schoolEmail);
       appendField('academicYear', settingsData.academicYear);
+      appendFileWithAliases('logo', logoFile, ['school_logo', 'schoolLogo']);
     }
 
     if (section === 'attendance') {
@@ -1360,7 +1349,6 @@ if (section === 'notification') {
 }
 
     if (section === 'media') {
-      appendFileWithAliases('logo', logoFile, ['school_logo', 'schoolLogo']);
       appendFileWithAliases('photo1', mediaPhotoFiles[1], ['dashboard_photo_1', 'dashboardPhoto1']);
       appendFileWithAliases('photo2', mediaPhotoFiles[2], ['dashboard_photo_2', 'dashboardPhoto2']);
       appendFileWithAliases('photo3', mediaPhotoFiles[3], ['dashboard_photo_3', 'dashboardPhoto3']);
@@ -1746,93 +1734,58 @@ if (section === 'notification') {
     };
   };
 
-  const fetchAttendanceRecords = async (config = {}) => {
-    // ✨ Hapus endpoint yang menyebabkan 405 atau 500 jika tidak diperlukan untuk listing
+const fetchAttendanceRecords = async (config = {}) => {
+    // Hanya gunakan endpoint yang benar-benar ada
     const endpoints = [
-      { url: '/admin/attendances', params: { page: 1, per_page: 500 } },
-      { url: '/admin/activity', params: { page: 1, per_page: 1000 } },
-      // Rute non-admin biasanya tidak mengembalikan data rekap yang lengkap untuk admin
+        { url: '/admin/attendances', params: { page: 1, per_page: 100 } },
     ];
-
+    
     const extractArray = (response) => {
-      if (!response) return [];
-      const payload = response.data;
-      if (Array.isArray(payload)) return payload;
-      if (Array.isArray(payload?.data)) return payload.data;
-      if (Array.isArray(payload?.results)) return payload.results;
-      if (Array.isArray(payload?.items)) return payload.items;
-      if (Array.isArray(payload?.records)) return payload.records;
-      if (Array.isArray(payload?.permissions)) return payload.permissions;
-      if (Array.isArray(payload?.requests)) return payload.requests;
-
-      const nestedArrays = Object.values(payload || {}).filter(Array.isArray);
-      if (nestedArrays.length > 0) return nestedArrays[0];
-
-      return [];
+        if (!response) return [];
+        const payload = response.data;
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload?.results)) return payload.results;
+        if (Array.isArray(payload?.items)) return payload.items;
+        if (Array.isArray(payload?.records)) return payload.records;
+        return [];
     };
-
+    
     const allRecords = [];
-
+    
     for (const endpoint of endpoints) {
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore) {
         try {
-          const response = await api.get(endpoint.url, {
-            ...config,
-            params: {
-              ...(config.params || {}),
-              page,
-              per_page: 1000,
-              ...endpoint.params
-            }
-          });
-
-          const records = extractArray(response);
-          records.forEach((record) => {
-            allRecords.push(record);
-          });
-
-          const payload = response.data;
-          const currentPage = Number(payload?.current_page ?? page);
-          const lastPage = Number(payload?.last_page ?? payload?.meta?.last_page ?? currentPage);
-
-          const isPaginatedResponse = [
-            Array.isArray(payload),
-            Array.isArray(payload?.data),
-            Array.isArray(payload?.results),
-            Array.isArray(payload?.items),
-            Array.isArray(payload?.records),
-            Array.isArray(payload?.permissions),
-            Array.isArray(payload?.requests)
-          ].some(Boolean);
-
-          if (!isPaginatedResponse) {
-            hasMore = false;
-          } else if (currentPage >= lastPage || !payload?.next_page_url) {
-            hasMore = false;
-          } else {
-            page += 1;
-          }
+            const response = await api.get(endpoint.url, {
+                ...config,
+                params: {
+                    ...(config.params || {}),
+                    page: 1,
+                    per_page: 100, // Batasi agar tidak terlalu berat
+                    ...endpoint.params
+                },
+                timeout: 15000 // Timeout 15 detik per request
+            });
+            
+            const records = extractArray(response);
+            records.forEach((record) => {
+                allRecords.push(record);
+            });
+            
         } catch (error) {
-          const status = error?.response?.status;
-          const errMsg = error?.message || 'Network Error';
-          console.warn(`Peringatan: Gagal memuat ${endpoint.url} [Status: ${status || errMsg}].`);
-          
-          // Jika server crash (500) atau timeout, stop loop untuk endpoint ini dan kembalikan data yang ada
-          if (status === 500 || error.code === 'ECONNABORTED') {
-             setError(`Server error 500 pada ${endpoint.url}. Periksa log backend.`);
-             return allRecords; 
-          }
-          hasMore = false;
-          break;
+            const status = error?.response?.status;
+            const errMsg = error?.message || 'Network Error';
+            console.warn(`⚠️ Gagal memuat ${endpoint.url} [Status: ${status || errMsg}].`);
+            
+            // Jangan stop jika error, kembalikan data yang ada
+            if (status === 500 || error.code === 'ECONNABORTED') {
+                setError(`Server error pada ${endpoint.url}. Periksa log backend.`);
+                return allRecords; // Kembalikan data yang sudah didapat
+            }
         }
-      }
     }
-
+    
     return allRecords;
-  };
+};
 
   // ✨ TAMBAHAN: Filter data berdasarkan search
   const filterData = (data, query = '') => {
@@ -4337,6 +4290,29 @@ if (section === 'notification') {
                                   className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 />
                               </div>
+                              {/* Moved Logo Sekolah here */}
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Logo Sekolah</label>
+                                <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                  <div className="w-16 h-16 rounded-lg bg-white flex items-center justify-center overflow-hidden border border-blue-200 shadow-sm">
+                                    {logoPreview ? (
+                                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
+                                    ) : (
+                                      <span className="text-2xl">🏫</span>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleLogoChange}
+                                    className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all"
+                                  />
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">
+                                  Logo ini akan ditampilkan di seluruh aplikasi (dashboard, login, landing page).
+                                </p>
+                              </div>
+
                             </div>
                             <div className="flex justify-end">
                               <button
@@ -4435,26 +4411,7 @@ if (section === 'notification') {
                         {settingsSection === 'media' && (
                           <form onSubmit={(e) => handleSaveSettings('media', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
                             <h3 className="text-base font-bold text-blue-800">🖼️ Media & Galeri Sekolah</h3>
-                            <div className="space-y-4">
-                              <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Logo Sekolah</label>
-                                <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                                  <div className="w-16 h-16 rounded-lg bg-white flex items-center justify-center overflow-hidden border border-blue-200 shadow-sm">
-                                    {logoPreview ? (
-                                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-                                    ) : (
-                                      <span className="text-2xl">🏫</span>
-                                    )}
-                                  </div>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleLogoChange}
-                                    className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all"
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-4">
+                            <div className="space-y-4"> {/* Removed the entire logo section from here */}
                                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">Galeri Foto (Maks 3)</label>
                                 <div className="grid grid-cols-3 gap-2">
                                   {[1, 2, 3].map((i) => (
@@ -4508,7 +4465,6 @@ if (section === 'notification') {
                                   />
                                 </div>
                               </div>
-                            </div>
                             <div className="flex justify-end">
                               <button
                                 type="submit"

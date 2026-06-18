@@ -5,6 +5,7 @@ import { resolvePhotoUrl, formatTimeShort, formatDateShort } from '../utils/atte
 import Notification from '../components/attendance/Notification';
 import AttendanceModal from '../components/attendance/AttendanceModal';
 import AttendanceListModal from '../components/attendance/AttendanceListModal';
+import FloatingMagazine from '../components/FloatingMagazine';
 
 const Landing = ({ theme, toggleTheme }) => {
   const navigate = useNavigate();
@@ -692,6 +693,9 @@ const Landing = ({ theme, toggleTheme }) => {
         records={attendance.todayAttendanceRecords}
         onClose={() => attendance.setShowAttendanceListModal(false)}
       />
+
+      {/* ✅ Floating Magazine Button - muncul di mobile & desktop */}
+      <FloatingMagazine />
 
       {/* Animations */}
       <style>{`
