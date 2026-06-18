@@ -118,15 +118,6 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [myQRCode, setMyQRCode] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
-  const [permissionSubmitting, setPermissionSubmitting] = useState(false);
-  const isSynchronizingData = loading || scheduleLoading || qrLoading;
-
-  const [permissionForm, setPermissionForm] = useState({
-    type: 'izin',
-    reason: '',
-    startDate: '',
-    endDate: ''
-  });
 
   const [attendanceSettings, setAttendanceSettings] = useState({
     schoolName: 'SMPK DON BOSCO',
@@ -185,15 +176,12 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
       try {
         const res = await api.get('/public/settings');
         if (res.data) {
-          const res = await api.get('/public/settings');
+          const settings = res?.data?.data ?? res?.data ?? null;
 
-// 🔥 AUTO HANDLE SEMUA FORMAT BACKEND
-const settings = res?.data?.data ?? res?.data ?? null;
-
-if (!settings || typeof settings !== 'object') {
-  console.warn('Settings API kosong / salah format:', res);
-  return;
-}
+          if (!settings || typeof settings !== 'object') {
+            console.warn('Settings API kosong / salah format:', res);
+            return;
+          }
           const mappedSettings = {
             schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
             schoolLogo: settings.schoolLogo || settings.logo || settings.logo_url || null,
@@ -212,8 +200,8 @@ if (!settings || typeof settings !== 'object') {
           localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
         }
       } catch (err) {
-console.error('❌ Settings API gagal:', err?.message || err);
-loadSettings(); // fallback tetap jalan tapi jelas errornya
+        console.error('❌ Settings API gagal:', err?.message || err);
+        loadSettings(); // fallback tetap jalan tapi jelas errornya
       }
     };
 
@@ -366,40 +354,40 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
       const eventRes = await api.get('/public/events', config).catch(() => ({ data: [] }));
       setEvents(Array.isArray(eventRes.data) ? eventRes.data : []);
 
-    const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
-    setStats({
-      totalAttendance: statsData.total_pertemuan || 0,
+      const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
+      setStats({
+        totalAttendance: statsData.total_pertemuan || 0,
         presentDays: (statsData.hadir || 0) + (statsData.terlambat || 0),
-      lateDays: statsData.terlambat || 0,
-      absentDays: statsData.absen || 0,
-      izinDays: statsData.izin || 0,
-      sakitDays: statsData.sakit || 0,
-      percentage: statsData.persentase || 0,
-    });
+        lateDays: statsData.terlambat || 0,
+        absentDays: statsData.absen || 0,
+        izinDays: statsData.izin || 0,
+        sakitDays: statsData.sakit || 0,
+        percentage: statsData.persentase || 0,
+      });
 
-    if (results[1].status === 'fulfilled') setAttendanceHistory(results[1].value.data);
-    if (results[2].status === 'fulfilled') {
-      setClassInfo(results[2].value.data.class);
-      setTeacherInfo(results[2].value.data.teacher);
-    }
+      if (results[1].status === 'fulfilled') setAttendanceHistory(results[1].value.data);
+      if (results[2].status === 'fulfilled') {
+        setClassInfo(results[2].value.data.class);
+        setTeacherInfo(results[2].value.data.teacher);
+      }
 
-    // Sinkronisasi data user dari database ke state
-    const dbUser = (results[0].status === 'fulfilled' ? results[0].value.data.user_info : null) || 
-                   (results[2].status === 'fulfilled' ? results[2].value.data.user_info : null) || 
-                   {};
-    if (Object.keys(dbUser).length > 0) {
-      setUser(prevUser => ({
-        ...prevUser, ...dbUser
-      }));
-    }
-    
-  } catch (err) {
-    console.error('❌ Gagal mengambil data siswa:', err);
-    if (!silent) alert('⚠️ Gagal memuat data. Periksa koneksi server.');
+      // Sinkronisasi data user dari database ke state
+      const dbUser = (results[0].status === 'fulfilled' ? results[0].value.data.user_info : null) || 
+                     (results[2].status === 'fulfilled' ? results[2].value.data.user_info : null) || 
+                     {};
+      if (Object.keys(dbUser).length > 0) {
+        setUser(prevUser => ({
+          ...prevUser, ...dbUser
+        }));
+      }
+      
+    } catch (err) {
+      console.error('❌ Gagal mengambil data siswa:', err);
+      if (!silent) alert('⚠️ Gagal memuat data. Periksa koneksi server.');
     } finally {
       setLoading(false);
     }
-};
+  };
 
   // ➕ TAMBAHAN: Fetch Jadwal Pelajaran
   const fetchSchedules = async () => {
@@ -597,53 +585,6 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
     }
   };
 
-  const submitPermissionRequest = async (e) => {
-    e.preventDefault();
-
-    if (!permissionForm.reason.trim()) {
-      addNotification('📝 Mohon isi alasan izin/sakit terlebih dahulu.', 'warning');
-      return;
-    }
-
-    try {
-      setPermissionSubmitting(true);
-      const token = localStorage.getItem('token');
-      const payload = {
-        name: user?.name || user?.full_name || '',
-        full_name: user?.name || user?.full_name || '',
-        type: 'manual',
-        status: permissionForm.type,
-        approval_status: 'pending',
-        is_pending: true,
-        pending: true,
-        reason: permissionForm.reason.trim(),
-        notes: permissionForm.reason.trim(),
-        keterangan: permissionForm.reason.trim(),
-        attendance_time: getLocalTimestamp(new Date()),
-        user_id: user?.nis || user?.user_id || '',
-        nis: user?.nis || user?.user_id || '',
-        role: 'siswa',
-        ...(permissionForm.startDate ? { start_date: permissionForm.startDate } : {}),
-        ...(permissionForm.endDate ? { end_date: permissionForm.endDate } : {})
-      };
-
-      await api.post('/attendance/izin', payload, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        timeout: 60000
-      });
-
-      addNotification(`✅ Pengajuan ${permissionForm.type === 'sakit' ? 'sakit' : 'izin'} berhasil dikirim ke admin.`, 'success');
-      setPermissionForm({ type: 'izin', reason: '', startDate: '', endDate: '' });
-      localStorage.setItem('attendance_updated', Date.now().toString());
-      await fetchStudentData(false);
-    } catch (err) {
-      console.error('❌ Gagal mengirim pengajuan izin/sakit:', err);
-      addNotification(`❌ ${err.response?.data?.message || 'Gagal mengirim pengajuan izin/sakit'}`, 'error');
-    } finally {
-      setPermissionSubmitting(false);
-    }
-  };
-
   const menuItems = [
     { id: 'ringkasan', label: 'Ringkasan', icon: '📊' },
     { id: 'absensi', label: 'Absensi', icon: '✅' },
@@ -772,7 +713,7 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
           </div>
         </aside>
 
-        {/* Main UI Column - UNTOUCHED */}
+        {/* Main UI Column */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* ✨ TOAST NOTIFICATION CONTAINER (RIGHT TOP) */}
           <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 w-[calc(100%-2rem)] sm:w-72 max-w-[18rem] pointer-events-none">
@@ -824,10 +765,10 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
                   </svg>
                 </button>
 
-        {/* ✨ Judul dinamis mengikuti fitur yang diklik */}
-        <h1 className="text-lg md:text-xl font-bold text-blue-900 tracking-tight ml-2">
-          {menuItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
-        </h1>
+                {/* ✨ Judul dinamis mengikuti fitur yang diklik */}
+                <h1 className="text-lg md:text-xl font-bold text-blue-900 tracking-tight ml-2">
+                  {menuItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
+                </h1>
               </div>
 
               <div className="flex items-center gap-2 md:gap-6">
@@ -851,7 +792,7 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
             </div>
           </header>
 
-          {isSynchronizingData && (
+          {(loading || scheduleLoading || qrLoading) && (
             <div className="theme-loader-overlay fixed top-[70px] inset-x-0 bottom-0 z-30 flex items-center justify-center backdrop-blur-sm">
               <div className="text-center">
                 <div className="theme-loader-spinner animate-spin rounded-full h-12 w-12 border-4 mx-auto mb-4"></div>
@@ -872,7 +813,7 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
                     {/* Ornamen Dekoratif */}
                     <div className="absolute right-0 top-0 w-32 h-full bg-white/10 -skew-x-12 translate-x-16 pointer-events-none"></div>
                     <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
-                      <span className="text-8xl">🧑‍🎓</span>
+                      <span className="text-8xl">🧑‍</span>
                     </div>
 
                     <div className="relative z-10 flex-shrink-0">
@@ -1178,71 +1119,6 @@ loadSettings(); // fallback tetap jalan tapi jelas errornya
                         </button>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="mt-8 bg-white rounded-2xl border-2 border-blue-100 shadow-lg p-6">
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
-                        <div>
-                          <h3 className="text-lg font-bold text-blue-900">📋 Ajukan Izin / Sakit</h3>
-                          <p className="text-sm text-slate-500">Pengajuan kamu akan dikirim ke admin untuk disetujui terlebih dahulu.</p>
-                        </div>
-                        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-blue-50 text-blue-700 text-xs font-bold">
-                          <span>⏳</span> Menunggu persetujuan admin
-                        </div>
-                      </div>
-
-                      <form onSubmit={submitPermissionRequest} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-700 mb-2">Jenis Pengajuan</label>
-                          <select
-                            value={permissionForm.type}
-                            onChange={(e) => setPermissionForm(prev => ({ ...prev, type: e.target.value }))}
-                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="izin">Izin</option>
-                            <option value="sakit">Sakit</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-700 mb-2">Tanggal Mulai</label>
-                          <input
-                            type="date"
-                            value={permissionForm.startDate}
-                            onChange={(e) => setPermissionForm(prev => ({ ...prev, startDate: e.target.value }))}
-                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-700 mb-2">Tanggal Selesai</label>
-                          <input
-                            type="date"
-                            value={permissionForm.endDate}
-                            onChange={(e) => setPermissionForm(prev => ({ ...prev, endDate: e.target.value }))}
-                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-semibold text-slate-700 mb-2">Alasan / Keterangan</label>
-                          <textarea
-                            required
-                            rows={4}
-                            value={permissionForm.reason}
-                            onChange={(e) => setPermissionForm(prev => ({ ...prev, reason: e.target.value }))}
-                            placeholder="Contoh: sakit kepala, mengikuti acara keluarga, atau alasan lainnya..."
-                            className="w-full border-2 border-blue-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="md:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <p className="text-xs text-slate-500">Status pengajuan akan muncul kembali di riwayat setelah admin meninjau.</p>
-                          <button
-                            type="submit"
-                            disabled={permissionSubmitting}
-                            className="px-5 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm disabled:opacity-60"
-                          >
-                            {permissionSubmitting ? 'Mengirim...' : 'Kirim Pengajuan'}
-                          </button>
-                        </div>
-                      </form>
                     </div>
 
                     <div className="mt-8 bg-amber-50 border-2 border-amber-100 rounded-2xl p-5 flex items-start gap-4">

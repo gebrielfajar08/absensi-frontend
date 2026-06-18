@@ -15,7 +15,15 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   const url = config.url || '';
 
-  const publicEndpoints = ['/login', '/register'];
+  const publicEndpoints = [
+    '/login', 
+    '/register', 
+    '/siswa/attendance/scan', 
+    '/attendance/teacher/manual', 
+    '/attendance/izin',
+    '/public/settings',
+    '/public/stats'
+  ];
   const isPublic = publicEndpoints.some((p) => url.includes(p));
 
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
@@ -23,9 +31,9 @@ api.interceptors.request.use((config) => {
     delete config.headers['content-type'];
   }
 
-  if (token && !isPublic) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+if (token) {
+  config.headers.Authorization = `Bearer ${token}`;
+}
 
   return config;
 });
@@ -40,13 +48,20 @@ api.interceptors.response.use(
     const status = error?.response?.status;
     const url = error?.config?.url || '';
 
-    const publicEndpoints = ['/login', '/register'];
+const publicEndpoints = [
+  '/login',
+  '/register',
+  '/public/settings',
+  '/public/stats'
+];
+
     const isPublic = publicEndpoints.some((p) => url.includes(p));
 
     if (
       (status === 401 || status === 403) &&
       !isPublic &&
       !isRedirecting &&
+      window.location.pathname !== '/' &&
       !url.includes('/attendance/stats')
     ) {
       isRedirecting = true;
