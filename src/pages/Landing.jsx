@@ -31,27 +31,57 @@ const Landing = ({ theme, toggleTheme }) => {
     return () => clearInterval(interval);
   }, [isLandingLoading]);
 
-  // Init landing
-  useEffect(() => {
-    const initLanding = async () => {
-      setIsLandingLoading(true);
-      await attendance.loadSettings();
-      await attendance.fetchStats();
+// Init landing - DIPERBAIKI: tanpa interval spam
+useEffect(() => {
+  let isMounted = true; // Flag untuk mencegah update state jika unmount
+  
+  const initLanding = async () => {
+    setIsLandingLoading(true);
+    
+    // Load dari cache dulu (instant, tanpa network)
+    const savedSettings = localStorage.getItem('school_settings');
+    if (savedSettings) {
+      try {
+        const data = JSON.parse(savedSettings);
+        attendance.setAttendanceSettings(data);
+      } catch (e) {
+        console.warn('⚠️ Cache settings invalid');
+      }
+    }
+    
+    // Fetch dari API hanya SEKALI (tidak ada retry spam)
+    if (isMounted) {
+      try {
+        await Promise.allSettled([
+          attendance.loadSettings(),
+          attendance.fetchStats()
+        ]);
+      } catch (err) {
+        console.warn('⚠️ Initial fetch failed, using cache');
+      }
+    }
+    
+    if (isMounted) {
       setIsLandingLoading(false);
-    };
-    initLanding();
+    }
+  };
+  
+  initLanding();
 
-    const syncInterval = setInterval(attendance.fetchStats, 60000);
-    const handleStorageChange = (e) => {
-      if (e.key === 'school_settings') attendance.loadSettings();
-      if (e.key === 'attendance_updated') attendance.fetchStats();
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(syncInterval);
-    };
-  }, []);
+  // Storage listener untuk sync antar tab (TIDAK ADA INTERVAL)
+  const handleStorageChange = (e) => {
+    if (!isMounted) return;
+    if (e.key === 'school_settings') attendance.loadSettings();
+    if (e.key === 'attendance_updated') attendance.fetchStats();
+  };
+  
+  window.addEventListener('storage', handleStorageChange);
+  
+  return () => {
+    isMounted = false; // Cleanup flag
+    window.removeEventListener('storage', handleStorageChange);
+  };
+}, []); // ← Dependency array kosong = hanya jalan SEKALI saat mount
 
   // Timer
   useEffect(() => {
@@ -660,7 +690,6 @@ const Landing = ({ theme, toggleTheme }) => {
         show={attendance.showAbsenModal}
         onClose={() => {
           attendance.setShowAbsenModal(false);
-          setSubmitMessage({ type: '', text: '' });
         }}
         activeUserRole={attendance.activeUserRole}
         setActiveUserRole={attendance.setActiveUserRole}

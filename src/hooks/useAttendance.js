@@ -68,122 +68,126 @@ const useAttendance = (currentTime) => {
   const lastScannedAtRef = useRef(0);
   const audioContextRef = useRef(null);
 
-  // Load settings
-  const loadSettings = async () => {
-    try {
-      const res = await fetchWithRetry(() => api.get('/public/settings', { timeout: 15000 }));
-      const settings = res.data?.data || res.data;
-      if (!settings) return;
+// ✅ Load settings - TANPA RETRY SPAM
+const loadSettings = async () => {
+  try {
+    // Hanya 1x percobaan, timeout 10 detik
+    const res = await api.get('/public/settings', { 
+      timeout: 10000,
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    const settings = res.data?.data || res.data;
+    if (!settings) return;
 
-      const mappedSettings = {
-        attendanceStartTime: settings.attendanceStartTime || settings.attendance_start_time || settings.jam_masuk || '07:00',
-        attendanceEndTime: settings.attendanceEndTime || settings.attendance_end_time || settings.jam_akhir || '12:00',
-        lateThreshold: settings.lateThreshold || settings.late_threshold || settings.batas_keterlambatan || '08:00',
-        pulangStartTime: settings.pulangStartTime || settings.pulang_start_time || settings.jam_pulang_mulai || settings.jam_pulang || '15:00',
-        pulangEndTime: settings.pulangEndTime || settings.pulang_end_time || settings.jam_pulang_akhir || '17:00',
-        schoolEndTime: settings.schoolEndTime || settings.jam_pulang || '',
-        schoolName: settings.schoolName || settings.nama_sekolah || '',
-        schoolLogo: settings.schoolLogo || settings.logo || null,
-        limitOneScanPerDay: settings.limitOneScanPerDay || false,
-        disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
-        activeDays: settings.activeDays || settings.active_days || 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
-      };
+    const mappedSettings = {
+      attendanceStartTime: settings.attendanceStartTime || settings.attendance_start_time || settings.jam_masuk || '07:00',
+      attendanceEndTime: settings.attendanceEndTime || settings.attendance_end_time || settings.jam_akhir || '12:00',
+      lateThreshold: settings.lateThreshold || settings.late_threshold || settings.batas_keterlambatan || '08:00',
+      pulangStartTime: settings.pulangStartTime || settings.pulang_start_time || settings.jam_pulang_mulai || settings.jam_pulang || '15:00',
+      pulangEndTime: settings.pulangEndTime || settings.pulang_end_time || settings.jam_pulang_akhir || '17:00',
+      schoolEndTime: settings.schoolEndTime || settings.jam_pulang || '15:30',
+      schoolName: settings.schoolName || settings.nama_sekolah || 'SMPK DON BOSCO',
+      schoolLogo: settings.schoolLogo || settings.logo || null,
+      limitOneScanPerDay: settings.limitOneScanPerDay || false,
+      disableAttendanceOnHolidays: settings.disableAttendanceOnHolidays ?? settings.disable_attendance_on_holidays ?? true,
+      activeDays: settings.activeDays || settings.active_days || 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu'
+    };
 
-      setAttendanceSettings(mappedSettings);
-      localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
-      setBackendStatus(null);
-    } catch (err) {
-      console.warn('⚠️ Gagal ambil settings dari API, menggunakan cache local');
-      const savedSettings = localStorage.getItem('school_settings');
-      if (savedSettings) {
-        try {
-          setAttendanceSettings(JSON.parse(savedSettings));
-        } catch (e) {
-          console.error("Error parsing cached settings", e);
-        }
-      }
-      if (err.response?.status === 500 || err.code === 'ERR_NETWORK') {
-        setBackendStatus('Koneksi ke server bermasalah. Pastikan database aktif.');
+    setAttendanceSettings(mappedSettings);
+    localStorage.setItem('school_settings', JSON.stringify(mappedSettings));
+    setBackendStatus(null);
+  } catch (err) {
+    // Silent fail - jangan spam console
+    console.warn('⚠️ Gagal ambil settings, gunakan cache');
+    const savedSettings = localStorage.getItem('school_settings');
+    if (savedSettings) {
+      try {
+        setAttendanceSettings(JSON.parse(savedSettings));
+      } catch (e) {
+        console.error("Error parsing cache", e);
       }
     }
-  };
+  }
+};
 
-  // Fetch stats
-  const fetchStats = async () => {
-    try {
-      const res = await fetchWithRetry(() => api.get('/public/stats', { timeout: 10000 }));
+// ✅ Fetch stats - TANPA RETRY SPAM
+const fetchStats = async () => {
+  try {
+    // Hanya 1x percobaan, timeout 10 detik
+    const res = await api.get('/public/stats', { 
+      timeout: 10000,
+      headers: { 'Cache-Control': 'no-cache' }
+    });
 
-      if (res && res.data != null) {
-        const raw = res.data;
-        let statsSummary = { totalHadir: 0, keterlambatan: 0 };
-        let recordsForToday = [];
+    if (res && res.data != null) {
+      const raw = res.data;
+      let statsSummary = { totalHadir: 0, keterlambatan: 0 };
+      let recordsForToday = [];
 
-        const dataArray = Array.isArray(raw)
-          ? raw
-          : Array.isArray(raw?.data)
-            ? raw.data
-            : Array.isArray(raw?.records)
-              ? raw.records
-              : Array.isArray(raw?.data_records)
-                ? raw.data_records
-                : null;
+      const dataArray = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : Array.isArray(raw?.records)
+            ? raw.records
+            : Array.isArray(raw?.data_records)
+              ? raw.data_records
+              : null;
 
-        if (dataArray && dataArray.length > 0) {
-          const result = countTodayAttendance(dataArray);
-          statsSummary = {
-            totalHadir: result.counter.hadir + result.counter.terlambat,
-            keterlambatan: result.counter.terlambat
-          };
+      if (dataArray && dataArray.length > 0) {
+        const result = countTodayAttendance(dataArray);
+        statsSummary = {
+          totalHadir: result.counter.hadir + result.counter.terlambat,
+          keterlambatan: result.counter.terlambat
+        };
+        recordsForToday = result.todayRecords;
+      } else {
+        const statsObj = (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data))
+          ? raw.data
+          : raw;
+
+        const hadirCount = Number(
+          statsObj?.total_hadir ?? statsObj?.hadir ?? statsObj?.totalHadir ??
+          statsObj?.total_hadir_hari_ini ?? statsObj?.hadir_hari_ini ??
+          statsObj?.present_count ?? statsObj?.on_time ?? 0
+        ) || 0;
+
+        const terlambatCount = Number(
+          statsObj?.terlambat ?? statsObj?.total_terlambat ?? statsObj?.keterlambatan ??
+          statsObj?.late_count ?? statsObj?.terlambat_hari_ini ??
+          statsObj?.totalLate ?? statsObj?.total_late ?? 0
+        ) || 0;
+
+        statsSummary = {
+          totalHadir: hadirCount + terlambatCount,
+          keterlambatan: terlambatCount
+        };
+
+        const nestedRecords = statsObj?.records || statsObj?.data_records ||
+                              raw?.records || raw?.data_records || [];
+        if (Array.isArray(nestedRecords) && nestedRecords.length > 0) {
+          const result = countTodayAttendance(nestedRecords);
           recordsForToday = result.todayRecords;
-        } else {
-          const statsObj = (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data))
-            ? raw.data
-            : raw;
-
-          const hadirCount = Number(
-            statsObj?.total_hadir ?? statsObj?.hadir ?? statsObj?.totalHadir ??
-            statsObj?.total_hadir_hari_ini ?? statsObj?.hadir_hari_ini ??
-            statsObj?.present_count ?? statsObj?.on_time ?? 0
-          ) || 0;
-
-          const terlambatCount = Number(
-            statsObj?.terlambat ?? statsObj?.total_terlambat ?? statsObj?.keterlambatan ??
-            statsObj?.late_count ?? statsObj?.terlambat_hari_ini ??
-            statsObj?.totalLate ?? statsObj?.total_late ?? 0
-          ) || 0;
-
-          statsSummary = {
-            totalHadir: hadirCount + terlambatCount,
-            keterlambatan: terlambatCount
-          };
-
-          const nestedRecords = statsObj?.records || statsObj?.data_records ||
-                                raw?.records || raw?.data_records || [];
-          if (Array.isArray(nestedRecords) && nestedRecords.length > 0) {
-            const result = countTodayAttendance(nestedRecords);
-            recordsForToday = result.todayRecords;
-            if (result.counter.hadir + result.counter.terlambat > 0) {
-              statsSummary = {
-                totalHadir: result.counter.hadir + result.counter.terlambat,
-                keterlambatan: result.counter.terlambat
-              };
-            }
+          if (result.counter.hadir + result.counter.terlambat > 0) {
+            statsSummary = {
+              totalHadir: result.counter.hadir + result.counter.terlambat,
+              keterlambatan: result.counter.terlambat
+            };
           }
         }
+      }
 
-        setTodayAttendanceRecords(recordsForToday);
-        setAttendanceStats(statsSummary);
-        setBackendStatus(null);
-      }
-    } catch (err) {
-      console.warn('⚠️ Gagal mengambil data statistik landing:', err.message);
-      if (err.response?.status === 500) {
-        setBackendStatus('Server sedang maintenance (Database connection error).');
-      } else {
-        setBackendStatus('Gagal memuat data statistik terbaru.');
-      }
+      setTodayAttendanceRecords(recordsForToday);
+      setAttendanceStats(statsSummary);
+      setBackendStatus(null);
     }
-  };
+  } catch (err) {
+    // Silent fail - jangan spam console
+    console.warn('⚠️ Stats API gagal, gunakan 0');
+    setAttendanceStats({ totalHadir: 0, keterlambatan: 0 });
+  }
+};
 
   // Play sound
   const playSound = (type) => {
@@ -239,9 +243,9 @@ const useAttendance = (currentTime) => {
   // Refresh stats
   const refreshStatsAfterSubmit = async () => {
     localStorage.setItem('attendance_updated', Date.now().toString());
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 500));
     await fetchStats();
-    setTimeout(() => fetchStats(), 2000);
+    setTimeout(() => fetchStats(), 1500);
   };
 
   // Show notifications
@@ -349,9 +353,9 @@ const useAttendance = (currentTime) => {
 
       const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
       await axios.post(`${baseUrl}/public/attendance/student`, payload, {
-    timeout: 30000,
-    headers: { 'Content-Type': 'application/json' }
-    });
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/json' }
+      });
 
       const statusText = activeAttendanceAction === 'pulang'
         ? '✅ Pulang tercatat'
@@ -378,11 +382,11 @@ const useAttendance = (currentTime) => {
       let errorMsg = responseData?.message || 'Gagal menyimpan absensi';
 
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('exceeded')) {
-        errorMsg = 'Koneksi Timeout. Cloudflare Tunnel lambat atau sudah mati.';
+        errorMsg = 'Koneksi Timeout. Server lambat atau tidak merespons.';
       }
 
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
-        errorMsg = 'Server tidak terjangkau. Link Cloudflare Tunnel mungkin expired.';
+        errorMsg = 'Server tidak terjangkau. Periksa koneksi internet.';
       }
 
       if (responseData?.errors) {
@@ -452,9 +456,9 @@ const useAttendance = (currentTime) => {
 
       const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
       await axios.post(`${baseUrl}/public/attendance/teacher`, payload, {
-  timeout: 30000,
-  headers: { 'Content-Type': 'application/json' }
-});
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/json' }
+      });
 
       const statusText = activeAttendanceAction === 'pulang'
         ? '✅ Pulang tercatat'
@@ -476,11 +480,11 @@ const useAttendance = (currentTime) => {
       let errorMsg = responseData?.message || err.message || 'Gagal menyimpan absensi';
 
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        errorMsg = 'Koneksi Timeout. Cloudflare Tunnel lambat atau sudah mati.';
+        errorMsg = 'Koneksi Timeout. Server lambat atau tidak merespons.';
       }
 
       if (!err.response && (err.code === 'ERR_NETWORK' || err.message.includes('Network Error'))) {
-        errorMsg = 'Server tidak terjangkau. Periksa Cloudflare Tunnel.';
+        errorMsg = 'Server tidak terjangkau. Periksa koneksi internet.';
       }
 
       if (responseData?.errors) {
@@ -500,7 +504,7 @@ const useAttendance = (currentTime) => {
     }
   };
 
-  // Izin submit
+  // ✅ Izin submit - sudah diperbaiki, hapus duplikasi komentar
   const handleIzinSubmit = async (e) => {
     if (e) {
       e.preventDefault();
@@ -510,6 +514,7 @@ const useAttendance = (currentTime) => {
 
     setIsSubmitting(true);
     setSubmitMessage({ type: '', text: '' });
+    
     try {
       if (checkIsHoliday(currentTime, attendanceSettings)) {
         setSubmitMessage({ type: 'error', text: '❌ Tidak dapat mengirim izin pada hari libur.' });
@@ -524,70 +529,100 @@ const useAttendance = (currentTime) => {
       }
 
       const payload = {
-        name: izinForm.fullName.trim(),
+        user_id: izinForm.user_id.trim(),
         full_name: izinForm.fullName.trim(),
+        name: izinForm.fullName.trim(),
+        status: izinForm.type,
+        reason: izinForm.reason || izinForm.keterangan || '',
+        keterangan: izinForm.reason || izinForm.keterangan || '',
+        notes: izinForm.reason || izinForm.keterangan || '',
+        role: activeUserRole === 'guru' ? 'guru' : 'siswa',
+        date: getJakartaDateKey(currentTime),
+        attendance_time: getLocalTimestamp(currentTime),
+        scan_time: getLocalTimestamp(currentTime),
         type: 'manual',
         approval_status: 'pending',
         is_pending: true,
         pending: true,
-        reason: izinForm.reason,
-        notes: izinForm.reason,
-        keterangan: izinForm.reason,
-        attendance_time: getLocalTimestamp(currentTime),
-        scan_time: getLocalTimestamp(currentTime),
-        date: getJakartaDateKey(currentTime),
-        status: izinForm.type,
-        role: activeUserRole === 'guru' ? 'guru' : 'siswa'
       };
+
       if (activeUserRole === 'siswa') {
-        payload.user_id = izinForm.user_id.trim();
-        payload.nis = izinForm.user_id.trim();
+        payload.parent_phone = izinForm.parent_phone?.trim() || '';
         payload.student_id = izinForm.user_id.trim();
-        payload.parent_phone = izinForm.parent_phone.trim();
+        payload.nis = izinForm.user_id.trim();
       } else if (activeUserRole === 'guru') {
-        payload.user_id = izinForm.user_id.trim();
         payload.nip = izinForm.user_id.trim();
         payload.teacher_id = izinForm.user_id.trim();
       }
 
       const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
 
-if (izinForm.attachment) {
-  const formData = new FormData();
-  Object.keys(payload).forEach(key => formData.append(key, payload[key]));
-  formData.append('attachment', izinForm.attachment);
+      let response;
+      if (izinForm.attachment) {
+        const formData = new FormData();
+        Object.keys(payload).forEach(key => {
+          if (payload[key] !== null && payload[key] !== undefined) {
+            formData.append(key, payload[key]);
+          }
+        });
+        formData.append('attachment', izinForm.attachment);
 
-  await axios.post(`${baseUrl}/public/attendance/izin`, formData, {
-    timeout: 30000,
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  });
-} else {
-        await axios.post(`${baseUrl}/public/attendance/izin`, payload, {
-    timeout: 60000,
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-});
+        response = await axios.post(`${baseUrl}/public/attendance/izin`, formData, {
+          timeout: 30000,
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+      } else {
+        response = await axios.post(`${baseUrl}/public/attendance/izin`, payload, {
+          timeout: 30000,
+          headers: token ? { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          } : {
+            'Content-Type': 'application/json'
+          }
+        });
       }
 
       showSubmitNotificationMessage(`✅ Pengajuan ${izinForm.type} berhasil dikirim!`, 'success');
       setSubmitMessage({ type: 'success', text: `✅ Pengajuan ${izinForm.type} berhasil dikirim!` });
       playSound('success');
 
-      setIzinForm({ fullName: '', user_id: '', type: 'izin', reason: '', attachment: null, parent_phone: '' });
+      setIzinForm({ 
+        fullName: '', 
+        user_id: '', 
+        type: 'izin', 
+        reason: '', 
+        attachment: null, 
+        parent_phone: '' 
+      });
+      
       await refreshStatsAfterSubmit();
 
       setTimeout(() => {
         setShowAbsenModal(false);
         setSubmitMessage({ type: '', text: '' });
       }, 2000);
+      
     } catch (err) {
-      if (err.response?.status !== 401 && err.code !== 'ERR_NETWORK') {
-        console.error('Error submitting izin:', err);
+      console.error('Error submitting izin:', err);
+      
+      let errorMsg = 'Gagal mengirim pengajuan izin';
+      
+      if (err.response) {
+        errorMsg = err.response.data?.message || err.response.data?.error || errorMsg;
+        console.error('Backend error:', err.response.data);
+      } else if (err.code === 'ECONNABORTED') {
+        errorMsg = 'Request timeout. Server lambat atau tidak merespons.';
+      } else if (err.code === 'ERR_NETWORK') {
+        errorMsg = 'Server tidak terjangkau. Periksa koneksi atau backend.';
+      } else {
+        errorMsg = err.message || errorMsg;
       }
-      const errorMsg = err.response?.data?.message || err.message || 'Gagal mengirim pengajuan izin';
-      showSubmitNotificationMessage(`❌ Gagal: ${errorMsg}`, 'error');
-      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
+      
+      showSubmitNotificationMessage(`❌ ${errorMsg}`, 'error');
+      setSubmitMessage({ type: 'error', text: `❌ ${errorMsg}` });
       playSound('failed');
     } finally {
       setIsSubmitting(false);
@@ -634,100 +669,129 @@ if (izinForm.attachment) {
     }
   };
 
-  // Submit QR
-  const submitQRAttendance = async (qrData) => {
-    if (isSubmittingRef.current) return;
-    const token = localStorage.getItem('token');
-    setIsSubmitting(true);
-    isSubmittingRef.current = true;
-    try {
-      if (checkIsHoliday(currentTime, attendanceSettings)) {
-        showQRNotificationMessage('❌ Hari ini libur. Absensi ditiadakan.', 'error');
-        return;
-      }
-
-      const status = getAttendanceStatus(currentTime, attendanceSettings, activeAttendanceAction);
-      if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
-        showQRNotificationMessage(`❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.pulangStartTime || attendanceSettings.schoolEndTime}`, 'warning');
-        return;
-      }
-      if (activeAttendanceAction === 'pulang' && status === 'sudah_tutup_pulang') {
-        showQRNotificationMessage(`❌ Absensi pulang sudah ditutup pada jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}`, 'error');
-        return;
-      }
-
-      const requestData = {
-        qr_data: qrData,
-        scan_time: getLocalTimestamp(currentTime),
-        status: activeAttendanceAction === 'pulang' ? 'pulang' : status,
-        type: activeAttendanceAction === 'pulang' ? 'pulang' : (qrData.type || (activeUserRole === 'guru' ? 'teacher_qr' : 'student_qr')),
-        user_id: qrData.user_id || qrData.nis || qrData.nip || qrData.id || qrData.student_id || qrData.teacher_id || '',
-        student_id: qrData.student_id || qrData.nis || qrData.id || '',
-        teacher_id: qrData.teacher_id || qrData.nip || qrData.id || '',
-        name: qrData.name || qrData.nama || qrData.full_name || '',
-        role: qrData.role || activeUserRole,
-        action: activeAttendanceAction
-      };
-
-      const endpoint = requestData.role === 'guru' 
-    ? '/public/attendance/teacher' 
-    : '/public/attendance/student';
-      const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
-      const response = await axios.post(`${baseUrl}${endpoint}`, requestData, {
-        timeout: 30000,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-
-      if (response.data.already_absent) {
-        playSound('already');
-        showQRNotificationMessage('⚠️ Anda sudah absen hari ini!', 'warning');
-        showSubmitNotificationMessage('⚠️ Anda sudah absen hari ini!', 'warning');
-        return;
-      }
-
-      const statusText = activeAttendanceAction === 'pulang'
-        ? '✅ Pulang tercatat'
-        : status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
-      playSound('success');
-      showQRNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
-      showSubmitNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
-      setSubmitMessage({ type: 'success', text: `✅ Absensi via QR berhasil! ${statusText}` });
-
-      setShowAbsenModal(false);
-      await refreshStatsAfterSubmit();
-
-      setTimeout(() => {
-        setSubmitMessage({ type: '', text: '' });
-      }, 2000);
-    } catch (err) {
-      const status = err.response?.status;
-      const backendMessage = err.response?.data?.message;
-
-      if (status === 400 && backendMessage && backendMessage.toLowerCase().includes('sudah absen')) {
-        playSound('already');
-        showQRNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
-        showSubmitNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
-        setSubmitMessage({ type: 'warning', text: `⚠️ ${backendMessage}` });
-        return;
-      }
-
-      if (status !== 401 && err.code !== 'ERR_NETWORK') {
-        console.error('❌ QR Submit Error:', err);
-      }
-
-      const errorMsg = backendMessage || err.response?.data?.error || 'Gagal menyimpan absensi';
-      playSound('failed');
-      showQRNotificationMessage(`❌ ${errorMsg}`, 'error');
-      showSubmitNotificationMessage(`❌ ${errorMsg}`, 'error');
-      setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
-    } finally {
-      setIsSubmitting(false);
-      isSubmittingRef.current = false;
+// Submit QR - DIPERBAIKI agar data masuk database
+const submitQRAttendance = async (qrData) => {
+  if (isSubmittingRef.current) return;
+  const token = localStorage.getItem('token');
+  setIsSubmitting(true);
+  isSubmittingRef.current = true;
+  
+  try {
+    if (checkIsHoliday(currentTime, attendanceSettings)) {
+      showQRNotificationMessage('❌ Hari ini libur. Absensi ditiadakan.', 'error');
+      return;
     }
-  };
+
+    const status = getAttendanceStatus(currentTime, attendanceSettings, activeAttendanceAction);
+    if (activeAttendanceAction === 'pulang' && status === 'belum_pulang') {
+      showQRNotificationMessage(`❌ Belum jam pulang! Silakan kembali pada jam ${attendanceSettings.pulangStartTime || attendanceSettings.schoolEndTime}`, 'warning');
+      return;
+    }
+    if (activeAttendanceAction === 'pulang' && status === 'sudah_tutup_pulang') {
+      showQRNotificationMessage(`❌ Absensi pulang sudah ditutup pada jam ${attendanceSettings.pulangEndTime || attendanceSettings.schoolEndTime}`, 'error');
+      return;
+    }
+
+    // ✅ Ekstrak data dari QR dengan fallback yang lebih baik
+    const userId = qrData.user_id || qrData.nis || qrData.nip || qrData.id || qrData.student_id || qrData.teacher_id || '';
+    const userName = qrData.name || qrData.nama || qrData.full_name || 'User';
+    const userRole = qrData.role || activeUserRole;
+    
+    if (!userId) {
+      showQRNotificationMessage('❌ QR Code tidak memiliki ID yang valid!', 'error');
+      playSound('failed');
+      return;
+    }
+
+    // ✅ Payload yang SESUAI dengan validasi backend
+    const requestData = {
+      name: userName,  // ← WAJIB ADA untuk backend
+      user_id: userId, // ← WAJIB ADA untuk backend
+      nis: userId,     // ← Alias untuk user_id
+      nip: userId,     // ← Alias untuk user_id
+      attendance_time: getLocalTimestamp(currentTime),
+      scan_time: getLocalTimestamp(currentTime),
+      status: activeAttendanceAction === 'pulang' ? 'hadir' : status,
+      role: userRole,
+      type: activeAttendanceAction === 'pulang' ? 'pulang' : 'qr_scan',
+      action: activeAttendanceAction,
+      qr_data: qrData  // ← Kirim juga qr_data untuk fallback
+    };
+
+    // ✅ Pilih endpoint berdasarkan role
+    const endpoint = userRole === 'guru' 
+      ? '/public/attendance/teacher' 
+      : '/public/attendance/student';
+    
+    const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
+    
+    console.log('📤 QR Scan Request:', { endpoint, requestData }); // Debug log
+    
+    const response = await axios.post(`${baseUrl}${endpoint}`, requestData, {
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+
+    console.log('✅ QR Scan Response:', response.data); // Debug log
+
+    if (response.data.already_absent) {
+      playSound('already');
+      showQRNotificationMessage('⚠️ Anda sudah absen hari ini!', 'warning');
+      showSubmitNotificationMessage('⚠️ Anda sudah absen hari ini!', 'warning');
+      return;
+    }
+
+    const statusText = activeAttendanceAction === 'pulang'
+      ? '✅ Pulang tercatat'
+      : status === 'hadir' ? '✅ Tepat Waktu' : '⚠️ Terlambat';
+    
+    playSound('success');
+    showQRNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
+    showSubmitNotificationMessage(`Absensi via QR berhasil! ${statusText}`, 'success');
+    setSubmitMessage({ type: 'success', text: `✅ Absensi via QR berhasil! ${statusText}` });
+
+    setShowAbsenModal(false);
+    await refreshStatsAfterSubmit();
+
+    setTimeout(() => {
+      setSubmitMessage({ type: '', text: '' });
+    }, 2000);
+    
+  } catch (err) {
+    console.error('❌ QR Submit Error:', err);
+    console.error('❌ Error Response:', err.response?.data);
+    
+    const status = err.response?.status;
+    const backendMessage = err.response?.data?.message;
+
+    if (status === 400 && backendMessage && backendMessage.toLowerCase().includes('sudah absen')) {
+      playSound('already');
+      showQRNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
+      showSubmitNotificationMessage(`⚠️ ${backendMessage}`, 'warning');
+      setSubmitMessage({ type: 'warning', text: `⚠️ ${backendMessage}` });
+      return;
+    }
+
+    let errorMsg = backendMessage || err.response?.data?.error || 'Gagal menyimpan absensi';
+    
+    if (err.code === 'ECONNABORTED') {
+      errorMsg = 'Koneksi timeout. Server lambat atau tidak merespons.';
+    } else if (err.code === 'ERR_NETWORK') {
+      errorMsg = 'Server tidak terjangkau. Periksa koneksi internet.';
+    }
+    
+    playSound('failed');
+    showQRNotificationMessage(`❌ ${errorMsg}`, 'error');
+    showSubmitNotificationMessage(`❌ ${errorMsg}`, 'error');
+    setSubmitMessage({ type: 'error', text: '❌ Gagal: ' + errorMsg });
+  } finally {
+    setIsSubmitting(false);
+    isSubmittingRef.current = false;
+  }
+};
 
   return {
     // States

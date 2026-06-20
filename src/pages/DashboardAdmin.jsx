@@ -744,100 +744,6 @@ const fetchSettings = async () => {
     return [];
   };
 
-const fetchAllData = async () => {
-    setDataLoading(true);
-    try {
-        setError('');
-        const token = localStorage.getItem('token');
-        const config = { 
-            headers: { Authorization: `Bearer ${token}` }, 
-            timeout: 30000 // Turunkan timeout jadi 30 detik
-        };
-
-        // Ambil semua data secara paralel dengan error handling yang lebih baik
-        const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
-            fetchWithRetry(() => apiTryEndpoints('get', ['/admin/stats', '/stats'], config), 2, 1000),
-            fetchWithRetry(() => apiTryEndpoints('get', userEndpointCandidates.index, config), 2, 1000),
-            fetchWithRetry(() => apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config), 2, 1000),
-            fetchWithRetry(() => fetchAttendanceRecords(config), 2, 1000)
-        ]);
-
-        // Process Stats - dengan fallback yang lebih baik
-        let calculatedStats = { totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 };
-        
-        if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
-            const statsData = statsRes.value.data;
-            calculatedStats = {
-                totalUsers: statsData.total_users ?? statsData.totalUsers ?? statsData.total ?? 0,
-                totalGuru: statsData.total_guru ?? statsData.totalGuru ?? statsData.guru ?? 0,
-                totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? statsData.siswa ?? 0,
-                totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? statsData.kelas ?? 0,
-                kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? statsData.hari_ini ?? statsData.today ?? 0
-            };
-        }
-
-        // Fallback: Hitung dari users jika stats kosong
-        if (calculatedStats.totalUsers === 0 && usersRes.status === 'fulfilled' && usersRes.value?.data) {
-            const uData = usersRes.value?.data;
-            const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-            const gurus = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'guru');
-            const siswas = rawUsers.filter(u => (u.role || '').toString().toLowerCase() === 'siswa');
-            calculatedStats.totalUsers = rawUsers.length;
-            calculatedStats.totalGuru = gurus.length;
-            calculatedStats.totalSiswa = siswas.length;
-        }
-
-        setStats(calculatedStats);
-
-        // Process Users
-        if (usersRes.status === 'fulfilled' && usersRes.value) {
-            const uData = usersRes.value?.data;
-            const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-            setUsers(rawUsers.map(normalizeUser));
-        }
-
-        // Process Classes
-        if (classesRes.status === 'fulfilled' && classesRes.value) {
-            const classData = normalizeRecordsResponse(classesRes.value);
-            setClasses(classData.length > 0 ? classData : staticClassOptions);
-            if (calculatedStats.totalKelas === 0) {
-                const finalClassCount = classData.length > 0 ? classData.length : staticClassOptions.length;
-                setStats(prev => ({ ...prev, totalKelas: finalClassCount }));
-            }
-        } else {
-            setClasses(staticClassOptions);
-            if (calculatedStats.totalKelas === 0) {
-                setStats(prev => ({ ...prev, totalKelas: staticClassOptions.length }));
-            }
-        }
-
-        // Process Attendance Reports
-        if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
-            const rawActivity = attendanceRes.value;
-            const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
-            setRecentActivity(normalizedActivity);
-            setAttendanceReports(normalizedActivity);
-            
-            // Update kehadiran hari ini dari attendance
-            const today = getJakartaDateKey(new Date());
-            const todayAttendance = normalizedActivity.filter(item => {
-                const itemKey = normalizeDateKey(item.date || item.created_at || item.attendance_time);
-                return itemKey === today;
-            });
-            if (calculatedStats.kehadiranHariIni === 0 && todayAttendance.length > 0) {
-                setStats(prev => ({ ...prev, kehadiranHariIni: todayAttendance.length }));
-            }
-        }
-
-    } catch (err) {
-        console.error('Gagal mengambil data', err);
-        setError('Gagal memuat data dari server.');
-        setStats({ totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 });
-    } finally {
-        setDataLoading(false);
-    }
-};
-
   // ✨ TAMBAHAN: Fetch & CRUD Event
   const fetchEvents = async () => {
     try {
@@ -1734,57 +1640,69 @@ if (section === 'notification') {
     };
   };
 
-const fetchAttendanceRecords = async (config = {}) => {
-    // Hanya gunakan endpoint yang benar-benar ada
-    const endpoints = [
-        { url: '/admin/attendances', params: { page: 1, per_page: 100 } },
-    ];
-    
-    const extractArray = (response) => {
-        if (!response) return [];
-        const payload = response.data;
-        if (Array.isArray(payload)) return payload;
-        if (Array.isArray(payload?.data)) return payload.data;
-        if (Array.isArray(payload?.results)) return payload.results;
-        if (Array.isArray(payload?.items)) return payload.items;
-        if (Array.isArray(payload?.records)) return payload.records;
-        return [];
-    };
-    
-    const allRecords = [];
-    
-    for (const endpoint of endpoints) {
-        try {
-            const response = await api.get(endpoint.url, {
-                ...config,
-                params: {
-                    ...(config.params || {}),
-                    page: 1,
-                    per_page: 100, // Batasi agar tidak terlalu berat
-                    ...endpoint.params
-                },
-                timeout: 15000 // Timeout 15 detik per request
-            });
-            
-            const records = extractArray(response);
-            records.forEach((record) => {
-                allRecords.push(record);
-            });
-            
-        } catch (error) {
-            const status = error?.response?.status;
-            const errMsg = error?.message || 'Network Error';
-            console.warn(`⚠️ Gagal memuat ${endpoint.url} [Status: ${status || errMsg}].`);
-            
-            // Jangan stop jika error, kembalikan data yang ada
-            if (status === 500 || error.code === 'ECONNABORTED') {
-                setError(`Server error pada ${endpoint.url}. Periksa log backend.`);
-                return allRecords; // Kembalikan data yang sudah didapat
-            }
+const fetchAllData = async () => {
+    setDataLoading(true);
+    try {
+        setError('');
+        const token = localStorage.getItem('token');
+        const config = { 
+            headers: { Authorization: `Bearer ${token}` }, 
+            timeout: 30000 // Turunkan dari 60000 ke 30000
+        };
+
+        // Ambil data dengan timeout lebih pendek
+        const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
+            apiTryEndpoints('get', ['/admin/stats', '/stats'], config).catch(() => null),
+            apiTryEndpoints('get', userEndpointCandidates.index, config).catch(() => null),
+            apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config).catch(() => null),
+            fetchAttendanceRecords(config).catch(() => [])
+        ]);
+
+        // Process Stats
+        let calculatedStats = { totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 };
+        
+        if (statsRes && statsRes.value?.data) {
+            const statsData = statsRes.value.data;
+            calculatedStats = {
+                totalUsers: statsData.total_users ?? statsData.totalUsers ?? 0,
+                totalGuru: statsData.total_guru ?? statsData.totalGuru ?? 0,
+                totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? 0,
+                totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? 0,
+                kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? 0
+            };
         }
+
+        setStats(calculatedStats);
+
+        // Process Users
+        if (usersRes && usersRes.value) {
+            const uData = usersRes.value?.data;
+            const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
+            setUsers(rawUsers.map(normalizeUser));
+        }
+
+        // Process Classes
+        if (classesRes && classesRes.value) {
+            const classData = normalizeRecordsResponse(classesRes.value);
+            setClasses(classData.length > 0 ? classData : staticClassOptions);
+        } else {
+            setClasses(staticClassOptions);
+        }
+
+        // Process Attendance
+        if (attendanceRes && attendanceRes.value) {
+            const rawActivity = attendanceRes.value;
+            const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
+            setRecentActivity(normalizedActivity);
+            setAttendanceReports(normalizedActivity);
+        }
+
+    } catch (err) {
+        console.error('Gagal mengambil data:', err.message);
+        setError('Beberapa data gagal dimuat.');
+    } finally {
+        setDataLoading(false);
     }
-    
-    return allRecords;
 };
 
   // ✨ TAMBAHAN: Filter data berdasarkan search
@@ -4476,171 +4394,211 @@ const fetchAttendanceRecords = async (config = {}) => {
                           </form>
                         )}
                         {settingsSection === 'attendance' && (
-                          <form onSubmit={(e) => handleSaveSettings('attendance', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
-                            <h3 className="text-base font-bold text-blue-800">⏰ Pengaturan Absensi</h3>
-                            <div className="space-y-4">
-                              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                                <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Absensi Datang</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi Datang</label>
-                                    <input
-                                      type="time"
-                                      name="attendanceStartTime"
-                                      value={settingsData.attendanceStartTime}
-                                      onChange={handleSettingsChange}
-                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi Datang</label>
-                                    <input
-                                      type="time"
-                                      name="attendanceEndTime"
-                                      value={settingsData.attendanceEndTime}
-                                      onChange={handleSettingsChange}
-                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="mt-3">
-                                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Batas Keterlambatan Datang</label>
-                                  <input
-                                    type="time"
-                                    name="lateThreshold"
-                                    value={settingsData.lateThreshold}
-                                    onChange={handleSettingsChange}
-                                    className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  />
-                                </div>
-                              </div>
+  <form onSubmit={(e) => handleSaveSettings('attendance', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
+    <h3 className="text-base font-bold text-blue-800">⏰ Pengaturan Absensi</h3>
+    <div className="space-y-4">
+      <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Absensi Datang</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Buka Absensi Datang</label>
+            <input
+              type="time"
+              name="attendanceStartTime"
+              value={settingsData.attendanceStartTime}
+              onChange={handleSettingsChange}
+              className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi Datang</label>
+            <input
+              type="time"
+              name="attendanceEndTime"
+              value={settingsData.attendanceEndTime}
+              onChange={handleSettingsChange}
+              className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+        </div>
+        <div className="mt-3">
+          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Batas Keterlambatan Datang</label>
+          <input
+            type="time"
+            name="lateThreshold"
+            value={settingsData.lateThreshold}
+            onChange={handleSettingsChange}
+            className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+          />
+        </div>
+      </div>
 
-                              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                                <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Absensi Pulang</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Mulai Absensi Pulang</label>
-                                    <input
-                                      type="time"
-                                      name="pulangStartTime"
-                                      value={settingsData.pulangStartTime}
-                                      onChange={handleSettingsChange}
-                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi Pulang</label>
-                                    <input
-                                      type="time"
-                                      name="pulangEndTime"
-                                      value={settingsData.pulangEndTime}
-                                      onChange={handleSettingsChange}
-                                      className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                    />
-                                  </div>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-2">Setelah jam ini, siswa yang belum absen pulang dapat ditandai absen/alpha secara otomatis oleh sistem.</p>
-                              </div>
+      <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Absensi Pulang</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Mulai Absensi Pulang</label>
+            <input
+              type="time"
+              name="pulangStartTime"
+              value={settingsData.pulangStartTime}
+              onChange={handleSettingsChange}
+              className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Tutup Absensi Pulang</label>
+            <input
+              type="time"
+              name="pulangEndTime"
+              value={settingsData.pulangEndTime}
+              onChange={handleSettingsChange}
+              className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mt-2">Setelah jam ini, siswa yang belum absen pulang dapat ditandai absen/alpha secara otomatis oleh sistem.</p>
+      </div>
 
-                              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                                <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Informasi Pulang Sekolah</h4>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah</label>
-                                <input
-                                  type="time"
-                                  name="schoolEndTime"
-                                  value={settingsData.schoolEndTime}
-                                  onChange={handleSettingsChange}
-                                  className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                                <p className="text-xs text-slate-500 mt-1">Jam resmi berakhir sekolah, dipakai untuk informasi dan notifikasi bel pulang.</p>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-200">
-                                <div>
-                                  <p className="text-sm font-medium text-amber-900">Buka sesi absensi</p>
-                                  <p className="text-xs text-slate-600">Matikan untuk menutup absensi QR/manual siswa</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    name="attendanceSessionOpen"
-                                    checked={settingsData.attendanceSessionOpen}
-                                    onChange={handleSettingsChange}
-                                    className="sr-only peer"
-                                  />
-                                  <div className="w-11 h-6 bg-amber-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                                </label>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <div>
-                                  <p className="text-sm font-medium text-slate-800">Auto alpha/absen jam pulang</p>
-                                  <p className="text-xs text-slate-500">Siswa tanpa rekaman di hari itu ditandai absen otomatis</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    name="autoMarkAbsentEnabled"
-                                    checked={settingsData.autoMarkAbsentEnabled}
-                                    onChange={handleSettingsChange}
-                                    className="sr-only peer"
-                                  />
-                                  <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-700"></div>
-                                </label>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100">
-                                <div>
-                                  <p className="text-sm font-medium text-blue-800">QR Code Absensi</p>
-                                  <p className="text-xs text-slate-500">Aktifkan absensi menggunakan QR code</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    name="enableQRCode"
-                                    checked={settingsData.enableQRCode}
-                                    onChange={handleSettingsChange}
-                                    className="sr-only peer"
-                                  />
-                                  <div className="w-11 h-6 bg-blue-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                </label>
-                              </div>
+      <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Informasi Pulang Sekolah</h4>
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Jam Pulang Sekolah</label>
+        <input
+          type="time"
+          name="schoolEndTime"
+          value={settingsData.schoolEndTime}
+          onChange={handleSettingsChange}
+          className="w-full px-3 py-2 border border-blue-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+        />
+        <p className="text-xs text-slate-500 mt-1">Jam resmi berakhir sekolah, dipakai untuk informasi dan notifikasi bel pulang.</p>
+      </div>
+      <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-200">
+        <div>
+          <p className="text-sm font-medium text-amber-900">Buka sesi absensi</p>
+          <p className="text-xs text-slate-600">Matikan untuk menutup absensi QR/manual siswa</p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            name="attendanceSessionOpen"
+            checked={settingsData.attendanceSessionOpen}
+            onChange={handleSettingsChange}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-amber-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+        </label>
+      </div>
+      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+        <div>
+          <p className="text-sm font-medium text-slate-800">Auto alpha/absen jam pulang</p>
+          <p className="text-xs text-slate-500">Siswa tanpa rekaman di hari itu ditandai absen otomatis</p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            name="autoMarkAbsentEnabled"
+            checked={settingsData.autoMarkAbsentEnabled}
+            onChange={handleSettingsChange}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-700"></div>
+        </label>
+      </div>
+      <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100">
+        <div>
+          <p className="text-sm font-medium text-blue-800">QR Code Absensi</p>
+          <p className="text-xs text-slate-500">Aktifkan absensi menggunakan QR code</p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            name="enableQRCode"
+            checked={settingsData.enableQRCode}
+            onChange={handleSettingsChange}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-blue-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+        </label>
+      </div>
 
-                            {/* ✨ TAMBAHAN: Pengaturan Hari Aktif */}
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                              <label className="block text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">Hari Aktif Absensi</label>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((day) => {
-                              const isActive = (settingsData.activeDays || '').split(',').includes(day);
-                                  return (
-                                    <label key={day} className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 transition-all">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={isActive}
-                                        onChange={(e) => {
-                                          const currentDays = settingsData.activeDays.split(',').filter(d => d !== "");
-                                          const nextDays = e.target.checked 
-                                            ? [...currentDays, day] 
-                                            : currentDays.filter(d => d !== day);
-                                          setSettingsData(prev => ({...prev, activeDays: nextDays.join(',')}));
-                                        }}
-                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                                      />
-                                      <span className="text-xs font-medium text-slate-700">{day}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <p className="text-[10px] text-slate-500 mt-2 italic">Hanya hari yang dicentang yang bisa digunakan untuk melakukan absensi.</p>
-                            </div>
-                            </div>
-                            <div className="flex justify-end">
-                              <button
-                                type="submit"
-                                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
-                              >
-                                Simpan Absensi
-                              </button>
-                            </div>
-                          </form>
-                        )}
+      {/* ✨ TAMBAHAN: Pengaturan Hari Aktif */}
+      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+        <label className="block text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">Hari Aktif Absensi</label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((day) => {
+            const isActive = (settingsData.activeDays || '').split(',').includes(day);
+            return (
+              <label key={day} className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-blue-300 transition-all">
+                <input 
+                  type="checkbox" 
+                  checked={isActive}
+                  onChange={(e) => {
+                    const currentDays = settingsData.activeDays.split(',').filter(d => d !== "");
+                    const nextDays = e.target.checked 
+                      ? [...currentDays, day] 
+                      : currentDays.filter(d => d !== day);
+                    setSettingsData(prev => ({...prev, activeDays: nextDays.join(',')}));
+                  }}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs font-medium text-slate-700">{day}</span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-slate-500 mt-2 italic">Hanya hari yang dicentang yang bisa digunakan untuk melakukan absensi.</p>
+      </div>
+
+      {/* ✨ TAMBAHAN BARU: Tombol Proses Alfa Manual */}
+      <div className="p-4 bg-gradient-to-r from-rose-50 to-red-50 rounded-xl border-2 border-rose-200 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">⚡</span>
+              <p className="text-sm font-bold text-rose-900">Proses Alfa Manual</p>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tandai semua <strong>siswa & guru</strong> yang belum melakukan absensi hari ini sebagai <span className="font-bold text-rose-700">ALFA</span> secara instan di database.
+            </p>
+            <p className="text-[10px] text-slate-500 mt-1 italic">
+              💡 Sistem akan mengecek hari aktif & tidak akan menimpa data siswa yang sudah absen.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleProcessAutoAlpha}
+            disabled={isPromoting}
+            className="flex-shrink-0 px-5 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-xl text-sm font-bold shadow-md hover:from-rose-700 hover:to-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2 border-rose-400 flex items-center gap-2"
+          >
+            {isPromoting ? (
+              <>
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Memproses...</span>
+              </>
+            ) : (
+              <>
+                <span>🚀</span>
+                <span>Proses Alfa Sekarang</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div className="flex justify-end">
+      <button
+        type="submit"
+        className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+      >
+        Simpan Absensi
+      </button>
+    </div>
+  </form>
+)}
 
                         {settingsSection === 'notification' && (
                           <form onSubmit={(e) => handleSaveSettings('notification', e)} className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 space-y-4">
