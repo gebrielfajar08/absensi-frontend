@@ -73,7 +73,7 @@ const loadSettings = async () => {
   try {
     // Hanya 1x percobaan, timeout 10 detik
     const res = await api.get('/public/settings', { 
-      timeout: 10000,
+      timeout: 60000,
       headers: { 'Cache-Control': 'no-cache' }
     });
     
@@ -116,7 +116,7 @@ const fetchStats = async () => {
   try {
     // Hanya 1x percobaan, timeout 10 detik
     const res = await api.get('/public/stats', { 
-      timeout: 10000,
+      timeout: 60000,
       headers: { 'Cache-Control': 'no-cache' }
     });
 

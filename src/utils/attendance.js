@@ -234,6 +234,6 @@ export const countTodayAttendance = (records = []) => {
       });
     });
   }
-
+  
   return { counter, todayRecords };
 };

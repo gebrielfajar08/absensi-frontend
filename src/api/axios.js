@@ -3,41 +3,49 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
   withCredentials: false,
-  timeout: 60000,
+  timeout: 15000, // ✅ TURUNKAN dari 60000 ke 15000 (15 detik) - lebih cepat
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   }
 });
 
+// ✅ DAFTAR ENDPOINT PUBLIK (tidak perlu token)
+const PUBLIC_ENDPOINTS = [
+  '/login',
+  '/register',
+  '/auth/login',
+  '/auth/register',
+  '/forgot-password',
+  '/public/settings',
+  '/public/stats',
+  '/public/events',
+  '/public/scan',
+  '/public/health',
+  '/public/attendance',       // ← ✅ INI YANG HILANG! Untuk QR scan siswa & guru
+  '/public/attendance/student', // ← ✅ Absensi siswa manual/QR
+  '/public/attendance/teacher', // ← ✅ Absensi guru manual/QR
+  '/public/attendance/izin',    // ← ✅ Pengajuan izin
+  '/siswa/attendance/scan',
+  '/attendance/teacher/manual',
+  '/attendance/student/manual',
+  '/attendance/izin',
+  '/health',
+  '/events'
+];
+
+const isPublicEndpoint = (url) => {
+  if (!url) return false;
+  return PUBLIC_ENDPOINTS.some((p) => url.includes(p));
+};
+
 // REQUEST INTERCEPTOR
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   const url = config.url || '';
+  const isPublic = isPublicEndpoint(url);
 
-  // ✅ DAFTAR ENDPOINT PUBLIK (tidak perlu token)
-  const publicEndpoints = [
-    '/login', 
-    '/register', 
-    '/auth/login',
-    '/auth/register',
-    '/forgot-password',
-    '/siswa/attendance/scan', 
-    '/attendance/teacher/manual', 
-    '/attendance/student/manual',
-    '/attendance/izin',
-    '/public/settings',
-    '/public/stats',
-    '/public/events',
-    '/public/scan',
-    '/public/attendance',
-    '/health',
-    '/events'
-  ];
-  
-  const isPublic = publicEndpoints.some((p) => url.includes(p));
-
-  // Handle FormData (upload file)
+  // Handle FormData (upload file) - hapus Content-Type agar browser set otomatis
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
     delete config.headers['Content-Type'];
     delete config.headers['content-type'];
@@ -48,8 +56,8 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // Logging untuk debugging (opsional, bisa dihapus)
-  if (import.meta.env.DEV) {
+  // ✅ Logging HANYA saat development (tidak spam production)
+  if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_AXIOS === 'true') {
     console.log(`📤 ${config.method?.toUpperCase()} ${url}`, {
       hasToken: !!token,
       isPublic,
@@ -59,18 +67,20 @@ api.interceptors.request.use((config) => {
 
   return config;
 }, (error) => {
-  console.error('❌ Request Error:', error);
+  if (import.meta.env.DEV) {
+    console.error('❌ Request Error:', error);
+  }
   return Promise.reject(error);
 });
 
-// FLAG ANTI LOOP
+// FLAG ANTI LOOP - mencegah redirect berkali-kali
 let isRedirecting = false;
 
 // RESPONSE INTERCEPTOR
 api.interceptors.response.use(
   (response) => {
-    // Logging untuk debugging (opsional)
-    if (import.meta.env.DEV) {
+    // ✅ Logging response HANYA saat debug aktif
+    if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_AXIOS === 'true') {
       const url = response.config?.url || '';
       console.log(`✅ Response ${response.status} from ${url}`);
     }
@@ -79,23 +89,9 @@ api.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     const url = error?.config?.url || '';
+    const isPublic = isPublicEndpoint(url);
 
-    // ✅ DAFTAR ENDPOINT PUBLIK (sama seperti di request interceptor)
-    const publicEndpoints = [
-      '/login',
-      '/register',
-      '/auth/login',
-      '/auth/register',
-      '/public/settings',
-      '/public/stats',
-      '/public/events',
-      '/public/attendance',
-      '/health'
-    ];
-
-    const isPublic = publicEndpoints.some((p) => url.includes(p));
-
-    // Logging error untuk debugging
+    // ✅ Logging error hanya saat development
     if (import.meta.env.DEV) {
       console.error(`❌ API Error ${status || 'Network'} on ${url}:`, {
         message: error?.message,
@@ -104,7 +100,7 @@ api.interceptors.response.use(
       });
     }
 
-    // Handle 401/403 - Redirect ke login
+    // Handle 401/403 - Redirect ke login (hanya untuk endpoint yang butuh auth)
     if (
       (status === 401 || status === 403) &&
       !isPublic &&
@@ -142,32 +138,36 @@ api.interceptors.response.use(
           window.location.href = '/login/admin';
         }
       }
+
+      // Reset flag setelah 3 detik agar bisa redirect lagi jika perlu
+      setTimeout(() => {
+        isRedirecting = false;
+      }, 3000);
     }
 
-    // Handle Network Error (backend tidak jalan)
+    // Handle Network Error (backend tidak jalan) - anti spam
     if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
-      console.error('🌐 Network Error: Backend tidak terjangkau atau CORS issue');
-      
-      // Tampilkan notifikasi jika ini pertama kali
       if (!window.__networkErrorShown) {
         window.__networkErrorShown = true;
-        console.warn('⚠️ Backend tidak terjangkau. Pastikan server Laravel berjalan di http://127.0.0.1:8000');
-        
-        // Reset flag setelah 10 detik
+        if (import.meta.env.DEV) {
+          console.warn('⚠️ Backend tidak terjangkau. Pastikan server Laravel berjalan di http://127.0.0.1:8000');
+        }
         setTimeout(() => {
           window.__networkErrorShown = false;
         }, 10000);
       }
     }
 
-    // Handle Timeout
+    // Handle Timeout - anti spam
     if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      console.error(`⏱️ Timeout Error: Request ke ${url} melebihi batas waktu`);
+      if (import.meta.env.DEV) {
+        console.warn(`⏱️ Timeout: ${url}`);
+      }
     }
 
-    // Handle 500 Server Error
-    if (status === 500) {
-      console.error('💥 Server Error 500:', error?.response?.data?.message || 'Internal Server Error');
+    // Handle 500 Server Error - anti spam
+    if (status === 500 && import.meta.env.DEV) {
+      console.warn('💥 Server Error 500:', error?.response?.data?.message || 'Internal Server Error');
     }
 
     return Promise.reject(error);

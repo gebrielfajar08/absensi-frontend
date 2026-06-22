@@ -1748,6 +1748,30 @@ const fetchAllData = async () => {
     });
   };
 
+  // ✨ TAMBAHAN: Fungsi fetchAttendanceRecords yang hilang
+const fetchAttendanceRecords = async (config = {}) => {
+  try {
+    const response = await api.get('/admin/attendances', {
+      ...config,
+      params: {
+        page: 1,
+        per_page: 100,
+        ...(config.params || {})
+      },
+      timeout: 15000 // Timeout 15 detik
+    });
+    
+    // Extract data dari response
+    if (response.data?.data) {
+      return Array.isArray(response.data.data) ? response.data.data : [];
+    }
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (error) {
+    console.warn('⚠️ Gagal fetch attendance records:', error.message);
+    return []; // Return empty array jika error
+  }
+};
+
   const handleDeleteSchedule = async (id) => {
     setConfirmModal({
       show: true,
