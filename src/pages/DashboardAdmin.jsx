@@ -589,7 +589,7 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 30000 // Batas waktu dinaikkan ke 30 detik
+    timeout: 10000 // Batas waktu dinaikkan ke 30 detik
   };
 
   try {
@@ -841,34 +841,36 @@ const fetchSettings = async () => {
     };
   };
 
-  const buildUserPayload = () => {
-    const classFields = resolveClassFields(formData);
-    const payload = {
-      name: formData.name,
-      email: formData.email,
-      role: formData.role,
-      phone: formData.phone || '',
-      class_name: classFields.kelas || classFields.class_name || '',
-      gender: formData.gender || '',
-      parent_name: formData.parent_name || ''
-    };
-    if (formData.password) {
-      payload.password = formData.password;
-    }
-    if (formData.role === 'siswa') {
-      payload.nis = formData.user_id;
-      payload.class_name = classFields.kelas || classFields.class_name || payload.class_name;
-      if (formData.parent_phone) payload.parent_phone = formData.parent_phone;
-        if (classFields.class_id) payload.class_id = classFields.class_id; // Tambahkan class_id secara eksplisit untuk siswa
-    }
-    if (formData.role === 'guru' || formData.role === 'admin') {
-      payload.nis = formData.user_id;
-    }
-    if (formData.password) {
-      payload.password_confirmation = formData.password;
-    }
-    return payload;
+const buildUserPayload = () => {
+  const classFields = resolveClassFields(formData);
+  const payload = {
+    name: formData.name,
+    email: formData.email,
+    role: formData.role,
+    phone: formData.phone || '',
+    class_name: classFields.kelas || classFields.class_name || '',
+    gender: formData.gender || '',
+    parent_name: formData.parent_name || ''
   };
+  
+  if (formData.password && formData.password.trim() !== '') {
+    payload.password = formData.password;
+    payload.password_confirmation = formData.password;
+  }
+  
+  if (formData.role === 'siswa') {
+    payload.nis = formData.user_id;
+    payload.class_name = classFields.kelas || classFields.class_name || payload.class_name;
+    if (formData.parent_phone) payload.parent_phone = formData.parent_phone;
+    if (classFields.class_id) payload.class_id = classFields.class_id;
+  }
+  
+  if (formData.role === 'guru' || formData.role === 'admin') {
+    payload.nip = formData.user_id;
+  }
+  
+  return payload;
+};
 
   // CRUD Operations
   const handleCreateUser = async (e) => {
@@ -957,35 +959,44 @@ const fetchSettings = async () => {
     }
   };
 
-  const handlePromoteStudents = async (studentIds) => {
-    if (!studentIds || studentIds.length === 0) {
-      addNotification('Silakan pilih minimal satu siswa untuk dinaikkan kelasnya.', 'warning');
-      return;
-    }
-    
-    setConfirmModal({
-      show: true,
-      title: 'Naik Kelas',
-      message: `Yakin ingin menaikkan ${studentIds.length} siswa ke tingkat berikutnya?`,
-      onConfirm: async () => {
-        setIsPromoting(true);
-        try {
-          const token = localStorage.getItem('token');
-          const config = { headers: { Authorization: `Bearer ${token}` } };
-          await api.post('/admin/students/promote', { student_ids: studentIds }, config);
-          addNotification('Berhasil menaikkan kelas siswa!', 'success');
-          setSelectedPromoteStudents([]);
-          await fetchDataSiswa();
-          await fetchAllData();
-        } catch (err) {
-          addNotification('Gagal menaikkan kelas', 'error');
-        } finally {
-          setIsPromoting(false);
-          setConfirmModal({ show: false });
-        }
+const handlePromoteStudents = async (studentIds) => {
+  if (!studentIds || studentIds.length === 0) {
+    addNotification('Silakan pilih minimal satu siswa untuk dinaikkan kelasnya.', 'warning');
+    return;
+  }
+  
+  setConfirmModal({
+    show: true,
+    title: 'Naik Kelas',
+    message: `Yakin ingin menaikkan ${studentIds.length} siswa ke tingkat berikutnya?`,
+    onConfirm: async () => {
+      setIsPromoting(true);
+      try {
+        const token = localStorage.getItem('token');
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        
+        // Kirim request ke backend
+        await api.post('/admin/students/promote', { student_ids: studentIds }, config);
+        
+        addNotification('Berhasil menaikkan kelas siswa!', 'success');
+        setSelectedPromoteStudents([]);
+        
+        // Refresh semua data
+        await fetchDataSiswa();
+        await fetchAllData();
+        
+        // Trigger storage event untuk sync
+        localStorage.setItem('attendance_updated', Date.now().toString());
+      } catch (err) {
+        console.error('Promotion error:', err);
+        addNotification(err.response?.data?.message || 'Gagal menaikkan kelas', 'error');
+      } finally {
+        setIsPromoting(false);
+        setConfirmModal({ show: false });
       }
-    });
-  };
+    }
+  });
+};
 
   // ✨ TAMBAHAN: Fungsi untuk memproses absensi Alpa secara instan (Manual Trigger)
   const handleProcessAutoAlpha = async () => {
@@ -1015,60 +1026,64 @@ const fetchSettings = async () => {
     }
   };
 
-  const handleUpdateUser = async (e) => {
-    e.preventDefault();
-    if (!formData.name || !formData.email || !formData.user_id) {
-      return addNotification('Nama, email, dan NIS/NIP wajib diisi.', 'error');
+const handleUpdateUser = async (e) => {
+  e.preventDefault();
+  
+  if (!formData.name || !formData.email || !formData.user_id) {
+    return addNotification('Nama, email, dan NIS/NIP wajib diisi.', 'error');
+  }
+  
+  if (formData.role === 'siswa' && (!formData.class_id || !formData.parent_phone)) {
+    return addNotification('Untuk siswa, pilih kelas dan isi nomor telepon orang tua.', 'error');
+  }
+  
+  try {
+    const token = localStorage.getItem('token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    const payload = buildUserPayload();
+    
+    console.debug('📤 Update payload:', payload);
+    
+    let responseData;
+    if (profilePhoto) {
+      const formDataUpload = new FormData();
+      Object.entries(payload).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) formDataUpload.append(k, v);
+      });
+      formDataUpload.append('photo', profilePhoto);
+      formDataUpload.append('_method', 'PUT');
+      
+      responseData = await apiTryEndpoints('post', userEndpointCandidates.update(selectedUser.id), formDataUpload, {
+        ...config,
+        headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
+      });
+    } else {
+      // Hapus password jika kosong
+      if (!payload.password) delete payload.password;
+      if (!payload.password_confirmation) delete payload.password_confirmation;
+      
+      responseData = await apiTryEndpoints('put', userEndpointCandidates.update(selectedUser.id), payload, config);
     }
-    if (formData.role === 'siswa' && (!formData.class_id || !formData.parent_phone)) {
-      return addNotification('Untuk siswa, pilih kelas dan isi nomor telepon orang tua.', 'error');
+    
+    console.debug('📥 Update response:', responseData?.data);
+    setShowModal(false);
+    resetForm();
+    await fetchAllData();
+    await fetchDataGuru();
+    await fetchDataSiswa();
+    addNotification('User berhasil diupdate', 'success');
+  } catch (err) {
+    console.error('Update user failed:', err.response?.data || err.message);
+    const apiMessage = err.response?.data?.message || err.message || 'Cek log';
+    let details = '';
+    if (err.response?.data?.errors) {
+      details = Object.entries(err.response.data.errors)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+        .join('\n');
     }
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const payload = buildUserPayload();
-      console.debug('📤 Update payload:', payload);
-      let responseData;
-      if (profilePhoto) {
-        const formDataUpload = new FormData();
-        Object.entries(payload).forEach(([k, v]) => {
-          if (v !== undefined && v !== null) formDataUpload.append(k, v);
-        });
-        formDataUpload.append('photo', profilePhoto);
-        formDataUpload.append('_method', 'PUT');
-        responseData = await apiTryEndpoints('post', userEndpointCandidates.update(selectedUser.id), formDataUpload, {
-          ...config,
-          headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
-        });
-      } else {
-        if (!payload.password) delete payload.password;
-        responseData = await apiTryEndpoints('put', userEndpointCandidates.update(selectedUser.id), payload, config);
-      }
-      console.debug('📥 Update response:', responseData?.data);
-      setShowModal(false);
-      resetForm();
-      await fetchAllData();
-      await fetchDataGuru();
-      await fetchDataSiswa();
-      const checkRes = await apiTryEndpoints('get', userEndpointCandidates.index, config);
-      const found = (Array.isArray(checkRes.data) ? checkRes.data : (checkRes.data.data || [])).some(u => (u.user_id || u.nis || u.nisn)?.toString() === formData.user_id?.toString());
-      if (!found) {
-        addNotification('Update disimpan namun tidak ditemukan lagi saat reload.', 'warning');
-        return;
-      }
-      addNotification('User berhasil diupdate', 'success');
-    } catch (err) {
-      console.error('Update user failed:', err.response?.data || err.message);
-      const apiMessage = err.response?.data?.message || err.message || 'Cek log';
-      let details = '';
-      if (err.response?.data?.errors) {
-        details = Object.entries(err.response.data.errors)
-          .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
-          .join('\n');
-      }
-      addNotification(`Gagal mengupdate user: ${apiMessage}`, 'error');
-    }
-  };
+    addNotification(`Gagal mengupdate user: ${apiMessage}\n${details}`, 'error');
+  }
+};
 
   const handleDeleteUser = async (userId) => {
     setConfirmModal({
@@ -1647,7 +1662,7 @@ const fetchAllData = async () => {
         const token = localStorage.getItem('token');
         const config = { 
             headers: { Authorization: `Bearer ${token}` }, 
-            timeout: 30000 // Turunkan dari 60000 ke 30000
+            timeout: 10000 // Turunkan dari 60000 ke 30000
         };
 
         // Ambil data dengan timeout lebih pendek
@@ -1755,10 +1770,10 @@ const fetchAttendanceRecords = async (config = {}) => {
       ...config,
       params: {
         page: 1,
-        per_page: 100,
+        per_page: 50,
         ...(config.params || {})
       },
-      timeout: 15000 // Timeout 15 detik
+      timeout: 10000 // Timeout 15 detik
     });
     
     // Extract data dari response

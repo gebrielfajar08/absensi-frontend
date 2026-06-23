@@ -353,7 +353,7 @@ const fetchStats = async () => {
 
       const baseUrl = api.defaults.baseURL || 'http://127.0.0.1:8000/api';
       await axios.post(`${baseUrl}/public/attendance/student`, payload, {
-        timeout: 15000,
+        timeout: 30000,
         headers: { 'Content-Type': 'application/json' }
       });
 

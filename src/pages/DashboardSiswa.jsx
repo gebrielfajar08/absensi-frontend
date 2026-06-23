@@ -339,55 +339,70 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const fetchStudentData = async (silent = true) => {
-    if (!silent) setLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 };
+const fetchStudentData = async (silent = true) => {
+  if (!silent) setLoading(true);
+  try {
+    const token = localStorage.getItem('token');
+    
+    // ✅ PERBAIKAN: Gabungkan headers jadi satu, jangan duplikat
+    const config = { 
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      },
+      timeout: 120000
+    };
 
-      const results = await Promise.allSettled([
-        fetchWithRetry(() => api.get('/siswa/stats', config)).catch(e => { console.warn("Stats API fail", e); throw e; }),
-        fetchWithRetry(() => api.get('/siswa/attendance', config)).catch(e => { console.warn("History API fail", e); throw e; }),
-        fetchWithRetry(() => api.get('/siswa/class', config)).catch(e => { console.warn("Class API fail", e); throw e; })
-      ]);
+    // Tambahkan timestamp untuk menghindari cache
+    const timestamp = Date.now();
+    
+    const results = await Promise.allSettled([
+      fetchWithRetry(() => api.get(`/siswa/stats?t=${timestamp}`, config)).catch(e => { console.warn("Stats API fail", e); throw e; }),
+      fetchWithRetry(() => api.get(`/siswa/attendance?t=${timestamp}`, config)).catch(e => { console.warn("History API fail", e); throw e; }),
+      fetchWithRetry(() => api.get(`/siswa/class?t=${timestamp}`, config)).catch(e => { console.warn("Class API fail", e); throw e; })
+    ]);
 
-      const eventRes = await api.get('/public/events', config).catch(() => ({ data: [] }));
-      setEvents(Array.isArray(eventRes.data) ? eventRes.data : []);
+    const eventRes = await api.get('/public/events', config).catch(() => ({ data: [] }));
+    setEvents(Array.isArray(eventRes.data) ? eventRes.data : []);
 
-      const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
-      setStats({
-        totalAttendance: statsData.total_pertemuan || 0,
-        presentDays: (statsData.hadir || 0) + (statsData.terlambat || 0),
-        lateDays: statsData.terlambat || 0,
-        absentDays: statsData.absen || 0,
-        izinDays: statsData.izin || 0,
-        sakitDays: statsData.sakit || 0,
-        percentage: statsData.persentase || 0,
-      });
+    const statsData = results[0].status === 'fulfilled' ? results[0].value.data : {};
+    setStats({
+      totalAttendance: statsData.total_pertemuan || 0,
+      presentDays: (statsData.hadir || 0) + (statsData.terlambat || 0),
+      lateDays: statsData.terlambat || 0,
+      absentDays: statsData.absen || 0,
+      izinDays: statsData.izin || 0,
+      sakitDays: statsData.sakit || 0,
+      percentage: statsData.persentase || 0,
+    });
 
-      if (results[1].status === 'fulfilled') setAttendanceHistory(results[1].value.data);
-      if (results[2].status === 'fulfilled') {
-        setClassInfo(results[2].value.data.class);
-        setTeacherInfo(results[2].value.data.teacher);
-      }
-
-      // Sinkronisasi data user dari database ke state
-      const dbUser = (results[0].status === 'fulfilled' ? results[0].value.data.user_info : null) || 
-                     (results[2].status === 'fulfilled' ? results[2].value.data.user_info : null) || 
-                     {};
-      if (Object.keys(dbUser).length > 0) {
-        setUser(prevUser => ({
-          ...prevUser, ...dbUser
-        }));
-      }
+    // ✅ PERBAIKAN: Pastikan data attendance diambil dengan benar
+    if (results[1].status === 'fulfilled') {
+      const attendanceData = results[1].value.data;
+      console.log('📊 Raw attendance data:', attendanceData);
       
-    } catch (err) {
-      console.error('❌ Gagal mengambil data siswa:', err);
-      if (!silent) alert('⚠️ Gagal memuat data. Periksa koneksi server.');
-    } finally {
-      setLoading(false);
+      // Handle berbagai format response
+      const normalizedData = Array.isArray(attendanceData) 
+        ? attendanceData 
+        : attendanceData.data || attendanceData.attendances || attendanceData.records || [];
+      
+      console.log('✅ Normalized attendance data:', normalizedData);
+      setAttendanceHistory(normalizedData);
     }
-  };
+    
+    if (results[2].status === 'fulfilled') {
+      setClassInfo(results[2].value.data.class);
+      setTeacherInfo(results[2].value.data.teacher);
+    }
+    
+  } catch (err) {
+    console.error('❌ Gagal mengambil data siswa:', err);
+    if (!silent) alert('⚠️ Gagal memuat data. Periksa koneksi server.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ➕ TAMBAHAN: Fetch Jadwal Pelajaran
   const fetchSchedules = async () => {
@@ -809,32 +824,42 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
               {activeTab === 'ringkasan' && (
                 <div className="space-y-6">
                   {/* ✨ BANNER SELAMAT DATANG (Paling Atas) */}
-                  <div className="bg-blue-600 border-2 border-blue-400 rounded-3xl p-3 sm:p-6 mb-2 shadow-lg flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-300">
-                    {/* Ornamen Dekoratif */}
-                    <div className="absolute right-0 top-0 w-32 h-full bg-white/10 -skew-x-12 translate-x-16 pointer-events-none"></div>
-                    <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
-                      <span className="text-8xl">🧑‍</span>
-                    </div>
+<div className="bg-blue-600 border-2 border-blue-400 rounded-3xl p-3 sm:p-6 mb-2 shadow-lg flex flex-row items-center gap-3 sm:gap-5 relative overflow-hidden transition-all hover:border-blue-300">
+  {/* Ornamen Dekoratif */}
+  <div className="absolute right-0 top-0 w-32 h-full bg-white/10 -skew-x-12 translate-x-16 pointer-events-none"></div>
+  <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none hidden md:block">
+    <span className="text-8xl">
+      {user?.gender === 'Laki-laki' || user?.gender === 'L' ? '👨‍🎓' : 
+       user?.gender === 'Perempuan' || user?.gender === 'P' ? '👩‍🎓' : '🧑‍🎓'}
+    </span>
+  </div>
 
-                    <div className="relative z-10 flex-shrink-0">
-                      <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 sm:border-4 border-white shadow-md bg-white">
-                        <img
-                          src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Siswa')}&background=3b82f6&color=ffffff`}
-                          alt="Profile"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="text-left relative z-10">
-                      <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-white leading-tight">
-                        Halo, {user?.name}! 👋
-                      </h2>
-                      <p className="text-blue-100 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
-                        Tetap semangat belajar ya! Jangan lupa untuk selalu disiplin dalam presensi.
-                      </p>
-                    </div>
-                  </div>
+  <div className="relative z-10 flex-shrink-0">
+    <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 sm:border-4 border-white shadow-md bg-white">
+      <img
+        src={resolvePhotoUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Siswa')}&background=3b82f6&color=ffffff`}
+        alt="Profile"
+        className="w-full h-full object-cover"
+      />
+    </div>
+  </div>
+  
+  <div className="text-left relative z-10">
+    <h2 className="text-sm sm:text-xl lg:text-2xl font-black text-white leading-tight">
+      Halo, {user?.name}! {
+        user?.gender === 'Laki-laki' || user?.gender === 'L' ? '👋' : 
+        user?.gender === 'Perempuan' || user?.gender === 'P' ? '👋' : '👋'
+      }
+    </h2>
+    <p className="text-blue-100 text-[10px] sm:text-sm mt-0.5 sm:mt-1 font-medium">
+      {user?.gender === 'Laki-laki' || user?.gender === 'L' 
+        ? 'Tetap semangat belajar ya, Bro! Jangan lupa untuk selalu disiplin dalam presensi.' 
+        : user?.gender === 'Perempuan' || user?.gender === 'P'
+        ? 'Tetap semangat belajar ya, Sis! Jangan lupa untuk selalu disiplin dalam presensi.'
+        : 'Tetap semangat belajar ya! Jangan lupa untuk selalu disiplin dalam presensi.'}
+    </p>
+  </div>
+</div>
 
                   {/* 📅 Grid Kalender & Event (Sama dengan Admin) */}
                   <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-2">
@@ -1266,52 +1291,152 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
                 </div>
               )}
 
-              {/* TAB: Riwayat */}
-              {activeTab === 'riwayat' && (
-                <div>
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">Riwayat Absensi</h2>
-                    <p className="text-blue-600 text-sm">Catatan kehadiranmu sepanjang semester</p>
-                  </div>
-                  <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-lg">
-                    {loading ? (
-                      <div className="p-6 text-center text-blue-600">Memuat riwayat...</div>
-                    ) : attendanceHistory.length === 0 ? (
-                      <div className="p-6 text-center text-blue-600">
-                        <p className="text-3xl mb-2">📭</p>
-                        <p>Belum ada data absensi</p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-blue-50 border-b-2 border-blue-200">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase">Tanggal</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase">Kelas</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase">Status</th>
-                              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase">Catatan</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y-2 divide-blue-50">
-                            {attendanceHistory.map((item) => (
-                              <tr key={item.id} className="hover:bg-blue-50">
-                                <td className="px-6 py-4 text-sm text-blue-800">{formatDate(item.date)}</td>
-                                <td className="px-6 py-4 text-sm text-blue-600">{item.class_name || resolveClassName(user, classInfo)}</td>
-                                <td className="px-6 py-4">
-                                  <span className={`inline-flex px-3 py-1 text-xs font-bold rounded-full border-2 ${statusBadgeClass(item.status)}`}>
-                                    {statusLabel(item.status)}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-blue-600">{item.note || '-'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+{/* TAB: Riwayat */}
+{activeTab === 'riwayat' && (
+  <div className="animate-fade-in">
+    <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-blue-800 mb-1">📅 Riwayat Absensi</h2>
+          <p className="text-blue-600 text-sm">Catatan lengkap kehadiranmu sepanjang semester</p>
+        </div>
+        <button
+          onClick={() => fetchStudentData(false)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
+        >
+          <span>🔄</span> Refresh Data
+        </button>
+      </div>
+    </div>
+    
+    <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-lg">
+      {loading ? (
+        <div className="p-6 text-center text-blue-600">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p>Memuat riwayat...</p>
+        </div>
+      ) : attendanceHistory.length === 0 ? (
+        <div className="p-12 text-center text-blue-600">
+          <p className="text-5xl mb-4">📭</p>
+          <p className="font-medium">Belum ada data absensi</p>
+          <p className="text-sm mt-2">Silakan lakukan absensi terlebih dahulu</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-blue-50 border-b-2 border-blue-200">
+              <tr>
+                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Tanggal</th>
+                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Jam Datang</th>
+                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Jam Pulang</th>
+                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Metode</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y-2 divide-blue-50">
+              {[...attendanceHistory]
+                .sort((a, b) => {
+                  // Sort by date descending (newest first)
+                  const dateA = new Date(a.date || a.created_at || a.attendance_time);
+                  const dateB = new Date(b.date || b.created_at || b.attendance_time);
+                  return dateB - dateA;
+                })
+                .map((item, index) => {
+                  // Extract time from various fields
+                  const extractTime = (datetimeStr) => {
+                    if (!datetimeStr) return '-';
+                    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(datetimeStr)) {
+                      return datetimeStr.substring(0, 5);
+                    }
+                    try {
+                      const date = new Date(datetimeStr);
+                      if (!isNaN(date.getTime())) {
+                        return date.toLocaleTimeString('id-ID', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: false
+                        });
+                      }
+                    } catch (e) {
+                      console.warn('Invalid date:', datetimeStr);
+                    }
+                    return '-';
+                  };
+
+                  const timeIn = item.time_in || item.attendance_time || item.scan_time || item.created_at;
+                  const timeOut = item.time_out || item.departure || item.exit_time;
+                  
+                  const formattedTimeIn = extractTime(timeIn);
+                  const formattedTimeOut = extractTime(timeOut);
+                  
+                  const dateValue = item.date || item.created_at;
+                  const formattedDate = dateValue ? 
+                    new Date(dateValue).toLocaleDateString('id-ID', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    }) : '-';
+                  
+                  const method = item.created_via || item.method || item.type || 'manual';
+                  const methodLabel = method === 'qr_scan' ? '📱 QR Code' : 
+                                     method === 'manual' ? '✍️ Manual' : 
+                                     method === 'fingerprint' ? '👆 Fingerprint' : 
+                                     '📝 Manual';
+                  
+                  return (
+                    <tr key={item.id || index} className="hover:bg-blue-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <div className="text-sm font-semibold text-blue-900">{formattedDate}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex px-3 py-1.5 text-xs font-bold rounded-full border-2 ${
+                          item.status === 'hadir' ? 'bg-green-100 text-green-700 border-green-200' :
+                          item.status === 'terlambat' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                          item.status === 'izin' ? 'bg-sky-100 text-sky-700 border-sky-200' :
+                          item.status === 'sakit' ? 'bg-violet-100 text-violet-700 border-violet-200' :
+                          'bg-red-100 text-red-700 border-red-200'
+                        }`}>
+                          {item.status === 'hadir' ? '✓ Hadir' :
+                           item.status === 'terlambat' ? '⚠ Terlambat' :
+                           item.status === 'izin' ? '📋 Izin' :
+                           item.status === 'sakit' ? '🏥 Sakit' :
+                           '✗ Absen'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-600">🕐</span>
+                          <span className="text-sm font-mono font-bold text-emerald-700">{formattedTimeIn}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-rose-600">🏁</span>
+                          <span className="text-sm font-mono font-bold text-rose-700">{formattedTimeOut}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                          {methodLabel}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {attendanceHistory.length > 0 && (
+        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t-2 border-blue-100 text-sm text-slate-600 font-medium flex justify-between items-center">
+          <span>Menampilkan <span className="font-bold text-blue-600">{attendanceHistory.length}</span> data absensi</span>
+          <span className="text-xs text-slate-400">Data diurutkan dari yang terbaru</span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
             </div>
             </div>
           </div>
