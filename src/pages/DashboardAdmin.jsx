@@ -467,13 +467,16 @@ const fetchDataSiswa = async () => {
   try {
     setFeatureDataLoading(true);
     const token = localStorage.getItem('token');
-    const config = { headers: { Authorization: `Bearer ${token}` } };
+    const config = { 
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 60000 // Naikkan timeout
+    };
     const res = await apiTryEndpoints('get', ['/admin/users?role=siswa', '/users?role=siswa', '/admin/users', '/users'], config);
     const rawData = res.data?.data || res.data || [];
     setSiswaData(Array.isArray(rawData) ? rawData.map(normalizeUser) : []);
   } catch (err) {
     console.error('Gagal mengambil data siswa:', err);
-    setSiswaData([]);
+    setSiswaData([]); // Set empty array jika error
   } finally {
     setFeatureDataLoading(false);
   }
@@ -589,7 +592,7 @@ const fetchSettings = async () => {
   const token = localStorage.getItem('token');
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 10000 // Batas waktu dinaikkan ke 30 detik
+    timeout: 60000 // Batas waktu dinaikkan ke 30 detik
   };
 
   try {
@@ -682,8 +685,13 @@ const fetchSettings = async () => {
     setLoading(false);
   }, [navigate]);
 
-  // Fetch data dari backend
-  useEffect(() => { if (user) fetchAllData(); }, [user]);
+// Fetch data dari backend
+useEffect(() => { 
+  if (user) {
+    fetchAllData();
+    fetchDataSiswa(); // ✨ TAMBAH INI untuk monitoring
+  }
+}, [user]);
 
   // ✨ Refresh data saat tab overview dibuka untuk memastikan statistik akurat
   useEffect(() => {
@@ -1269,12 +1277,18 @@ if (section === 'notification') {
   data.append('enable_email_reports', settingsData.enableEmailReports ? 1 : 0);
 }
 
-    if (section === 'media') {
-      appendFileWithAliases('photo1', mediaPhotoFiles[1], ['dashboard_photo_1', 'dashboardPhoto1']);
-      appendFileWithAliases('photo2', mediaPhotoFiles[2], ['dashboard_photo_2', 'dashboardPhoto2']);
-      appendFileWithAliases('photo3', mediaPhotoFiles[3], ['dashboard_photo_3', 'dashboardPhoto3']);
-      appendFileWithAliases('video_profile', mediaVideoFile, ['dashboard_video', 'dashboardVideo', 'video']);
-    }
+// Cari bagian ini di handleSaveSettings function (sekitar line 1300-1320)
+if (section === 'media') {
+    appendFileWithAliases('photo1', mediaPhotoFiles[1], ['dashboard_photo_1', 'dashboardPhoto1']);
+    appendFileWithAliases('photo2', mediaPhotoFiles[2], ['dashboard_photo_2', 'dashboardPhoto2']);
+    appendFileWithAliases('photo3', mediaPhotoFiles[3], ['dashboard_photo_3', 'dashboardPhoto3']);
+    appendFileWithAliases('video_profile', mediaVideoFile, ['dashboard_video', 'dashboardVideo', 'video']);
+    
+    // ✨ TAMBAHKAN INI: Kirim field boolean yang benar
+    data.append('enable_notifications', settingsData.enableNotifications === true ? 1 : 0);
+    data.append('enable_email_reports', settingsData.enableEmailReports === true ? 1 : 0);
+    data.append('enable_qr_code', settingsData.enableQRCode === true ? 1 : 0);
+}
 
     if (section === 'sound') {
       appendField('attendanceStartTime', formatTime(settingsData.attendanceStartTime));
@@ -1656,68 +1670,72 @@ if (section === 'notification') {
   };
 
 const fetchAllData = async () => {
-    setDataLoading(true);
-    try {
-        setError('');
-        const token = localStorage.getItem('token');
-        const config = { 
-            headers: { Authorization: `Bearer ${token}` }, 
-            timeout: 10000 // Turunkan dari 60000 ke 30000
-        };
-
-        // Ambil data dengan timeout lebih pendek
-        const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
-            apiTryEndpoints('get', ['/admin/stats', '/stats'], config).catch(() => null),
-            apiTryEndpoints('get', userEndpointCandidates.index, config).catch(() => null),
-            apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config).catch(() => null),
-            fetchAttendanceRecords(config).catch(() => [])
-        ]);
-
-        // Process Stats
-        let calculatedStats = { totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 };
-        
-        if (statsRes && statsRes.value?.data) {
-            const statsData = statsRes.value.data;
-            calculatedStats = {
-                totalUsers: statsData.total_users ?? statsData.totalUsers ?? 0,
-                totalGuru: statsData.total_guru ?? statsData.totalGuru ?? 0,
-                totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? 0,
-                totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? 0,
-                kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? 0
-            };
-        }
-
-        setStats(calculatedStats);
-
-        // Process Users
-        if (usersRes && usersRes.value) {
-            const uData = usersRes.value?.data;
-            const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-            setUsers(rawUsers.map(normalizeUser));
-        }
-
-        // Process Classes
-        if (classesRes && classesRes.value) {
-            const classData = normalizeRecordsResponse(classesRes.value);
-            setClasses(classData.length > 0 ? classData : staticClassOptions);
-        } else {
-            setClasses(staticClassOptions);
-        }
-
-        // Process Attendance
-        if (attendanceRes && attendanceRes.value) {
-            const rawActivity = attendanceRes.value;
-            const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
-            setRecentActivity(normalizedActivity);
-            setAttendanceReports(normalizedActivity);
-        }
-
-    } catch (err) {
-        console.error('Gagal mengambil data:', err.message);
-        setError('Beberapa data gagal dimuat.');
-    } finally {
-        setDataLoading(false);
+  setDataLoading(true);
+  try {
+    setError('');
+    const token = localStorage.getItem('token');
+    const config = {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 60000 // Naikkan timeout jadi 60 detik
+    };
+    
+    // Ambil data dengan timeout lebih panjang & error handling lebih baik
+    const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
+      apiTryEndpoints('get', ['/admin/stats', '/stats'], config).catch(() => null),
+      apiTryEndpoints('get', userEndpointCandidates.index, {
+        ...config,
+        timeout: 60000 // Timeout lebih panjang untuk users
+      }).catch(() => null),
+      apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config).catch(() => null),
+      fetchAttendanceRecords(config).catch(() => [])
+    ]);
+    
+    // Process Stats
+    let calculatedStats = { totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 };
+    if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
+      const statsData = statsRes.value.data;
+      calculatedStats = {
+        totalUsers: statsData.total_users ?? statsData.totalUsers ?? 0,
+        totalGuru: statsData.total_guru ?? statsData.totalGuru ?? 0,
+        totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? 0,
+        totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? 0,
+        kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? 0
+      };
     }
+    setStats(calculatedStats);
+    
+    // Process Users - dengan error handling
+    if (usersRes.status === 'fulfilled' && usersRes.value) {
+      const uData = usersRes.value?.data;
+      const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
+      setUsers(rawUsers.map(normalizeUser));
+    } else {
+      console.warn('Failed to fetch users:', usersRes.reason);
+      setUsers([]); // Set empty array jika gagal
+    }
+    
+    // Process Classes
+    if (classesRes.status === 'fulfilled' && classesRes.value) {
+      const classData = normalizeRecordsResponse(classesRes.value);
+      setClasses(classData.length > 0 ? classData : staticClassOptions);
+    } else {
+      setClasses(staticClassOptions);
+    }
+    
+    // Process Attendance
+    if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
+      const rawActivity = attendanceRes.value;
+      const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
+      setRecentActivity(normalizedActivity);
+      setAttendanceReports(normalizedActivity);
+    }
+    
+  } catch (err) {
+    console.error('Gagal mengambil data:', err.message);
+    setError('Beberapa data gagal dimuat. Periksa koneksi server.');
+  } finally {
+    setDataLoading(false);
+  }
 };
 
   // ✨ TAMBAHAN: Filter data berdasarkan search
@@ -1773,7 +1791,7 @@ const fetchAttendanceRecords = async (config = {}) => {
         per_page: 50,
         ...(config.params || {})
       },
-      timeout: 10000 // Timeout 15 detik
+      timeout: 60000 // Timeout 15 detik
     });
     
     // Extract data dari response
@@ -2819,6 +2837,121 @@ const fetchAttendanceRecords = async (config = {}) => {
                       </div>
                     </div>
                   </div>
+
+{/* ✨ MONITORING KEHADIRAN PER KELAS - BARU */}
+<div className="bg-white rounded-2xl border-2 border-blue-100 shadow-lg p-5 mx-4 lg:mx-8 mb-6">
+  <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2 text-sm">
+    <span>📊</span> Monitoring Kehadiran Per Kelas Hari Ini
+  </h3>
+  <div className="space-y-3">
+    {[1, 2, 3].map((kelasNum) => {
+      // Pastikan siswaData adalah array
+      const studentsArray = Array.isArray(siswaData) ? siswaData : [];
+      const studentsInClass = studentsArray.filter(s => getClassGroup(s) === kelasNum.toString());
+      const todayKey = getJakartaDateKey(new Date());
+      
+      const attendedStudents = studentsInClass.filter(s => {
+        return attendanceReports.some(a => {
+          const attendanceDate = normalizeDateKey(a.date || a.created_at || a.attendance_time);
+          const isToday = attendanceDate === todayKey;
+          const isStudent = (a.student_id === s.id || a.user_id === s.id);
+          const isPresent = ['hadir', 'terlambat'].includes((a.status || '').toLowerCase());
+          return isToday && isStudent && isPresent;
+        });
+      });
+
+      const totalStudents = studentsInClass.length;
+      const attendedCount = attendedStudents.length;
+      const percentage = totalStudents > 0 ? Math.round((attendedCount / totalStudents) * 100) : 0;
+      const allAbsent = totalStudents > 0 && attendedCount === 0;
+      
+      // Tentukan warna berdasarkan persentase
+      let statusColor = 'bg-slate-300';
+      let barColor = 'bg-slate-400';
+      let statusText = 'Belum Ada Data';
+      
+      if (totalStudents === 0) {
+        statusColor = 'bg-slate-200';
+        barColor = 'bg-slate-300';
+        statusText = 'Tidak Ada Siswa';
+      } else if (percentage === 0) {
+        statusColor = 'bg-red-100';
+        barColor = 'bg-red-500';
+        statusText = 'Belum Ada yang Hadir';
+      } else if (percentage < 50) {
+        statusColor = 'bg-red-100';
+        barColor = 'bg-red-500';
+        statusText = 'Kurang';
+      } else if (percentage < 75) {
+        statusColor = 'bg-yellow-100';
+        barColor = 'bg-yellow-500';
+        statusText = 'Cukup';
+      } else if (percentage < 100) {
+        statusColor = 'bg-green-100';
+        barColor = 'bg-green-500';
+        statusText = 'Baik';
+      } else {
+        statusColor = 'bg-blue-100';
+        barColor = 'bg-blue-500';
+        statusText = 'Sempurna';
+      }
+
+      return (
+        <div
+          key={kelasNum}
+          className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+            allAbsent ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'
+          } ${statusColor} hover:shadow-md`}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm ${
+                allAbsent ? 'bg-blue-500 text-white' : 'bg-white text-slate-700'
+              }`}>
+                {kelasNum}
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-800">Kelas {kelasNum}</h4>
+                <p className="text-xs text-slate-600">{totalStudents} Siswa Total</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-black text-slate-800">{percentage}%</div>
+              <div className="text-[10px] font-bold text-slate-600 uppercase">{statusText}</div>
+            </div>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="relative w-full bg-white rounded-full h-3 overflow-hidden shadow-inner">
+            <div 
+              className={`absolute top-0 left-0 h-full ${barColor} transition-all duration-500 ease-out rounded-full`}
+              style={{ width: `${percentage}%` }}
+            >
+              {percentage > 0 && (
+                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex justify-between mt-2 text-xs">
+            <span className="font-semibold text-slate-700">
+              Hadir: <span className="text-green-600 font-bold">{attendedCount}</span>
+            </span>
+            <span className="font-semibold text-slate-700">
+              Belum: <span className="text-red-600 font-bold">{totalStudents - attendedCount}</span>
+            </span>
+          </div>
+          
+          {allAbsent && (
+            <div className="mt-2 text-xs text-blue-700 font-bold text-center bg-blue-200/50 py-1 rounded">
+              🔵 Semua siswa belum absen hari ini
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+</div>
 
                   {/* Seksi Media & Kegiatan Sekolah - Dipindahkan ke bawah sendiri */}
                   <div className="bg-green-800 rounded-2xl border-2 border-green-700 p-5 shadow-md mx-4 lg:mx-8 mt-6">

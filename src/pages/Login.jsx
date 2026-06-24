@@ -162,7 +162,7 @@ if (id.includes('@')) {
     } catch (err) {
       console.error('❌ Login error:', err);
 
-      let errorMsg = 'Login gagal! Periksa kembali kredensial Anda.';
+      let errorMsg = 'Login gagal! Periksa kembali akun Anda.';
 
       if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         errorMsg = 'Koneksi timeout. Server atau Tunnel sedang lambat. Silakan coba lagi.';
@@ -175,7 +175,7 @@ if (id.includes('@')) {
         if (status === 403) {
           errorMsg = 'Akses ditolak. Akun Anda tidak memiliki izin untuk masuk.';
         } else if (status === 401) {
-          errorMsg = 'Kredensial salah! Periksa kembali NIS/NIP/Email/Username dan kata sandi Anda.';
+          errorMsg = 'Kredensial salah! Periksa kembali Email dan kata sandi Anda.';
         } else if (status === 404) {
           errorMsg = 'Akun tidak ditemukan. Silakan daftar terlebih dahulu.';
         } else if (data?.message) {
