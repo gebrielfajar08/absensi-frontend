@@ -365,6 +365,15 @@ const DashboardAdmin = ({ theme, toggleTheme }) => {
     activeDays: 'Senin,Selasa,Rabu,Kamis,Jumat,Sabtu', // Default hari aktif
   });
 
+  // ✨ TAMBAHAN: State untuk Ranking Absensi
+const [rankingType, setRankingType] = useState('siswa'); // 'siswa' atau 'guru'
+const [rankingData, setRankingData] = useState([]);
+const [rankingLoading, setRankingLoading] = useState(false);
+const [selectedRankingUser, setSelectedRankingUser] = useState(null);
+const [showCertificateModal, setShowCertificateModal] = useState(false);
+const [rankingClassFilter, setRankingClassFilter] = useState(''); // Filter kelas untuk siswa
+const [rankingMonthFilter, setRankingMonthFilter] = useState(''); // Filter bulan
+
   const [settingsSection, setSettingsSection] = useState('school');
 
   const applySettingsToState = (settings) => {
@@ -632,6 +641,33 @@ const fetchSettings = async () => {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  // Cari useEffect ini (sekitar baris 530-550)
+useEffect(() => {
+  if (activeTab === 'dataGuru') fetchDataGuru();
+  if (activeTab === 'dataSiswa') fetchDataSiswa();
+  if (activeTab === 'pesanWA') fetchDataSiswa();
+  if (activeTab === 'promotion') {
+    fetchDataSiswa();
+    fetchClasses();
+  }
+  if (activeTab === 'classes') {
+    fetchClasses();
+    fetchDataSiswa();
+    fetchSchedules();
+  }
+  if (activeTab === 'subjects') fetchSubjects();
+  if (activeTab === 'schedules') fetchSchedules();
+  // ✨ TAMBAHKAN INI:
+  if (activeTab === 'ranking') fetchRankingData(rankingType);
+}, [activeTab, rankingType]); // Pastikan rankingType ada di dependency
+
+// ✨ Auto-fetch ranking saat filter berubah
+useEffect(() => {
+  if (activeTab === 'ranking') {
+    fetchRankingData(rankingType);
+  }
+}, [activeTab, rankingType, rankingClassFilter, rankingMonthFilter]);
 
   // 🔊 LOGIKA AUTO-PLAY BEL SEKOLAH
   const [lastRungMinute, setLastRungMinute] = useState('');
@@ -1576,6 +1612,7 @@ if (section === 'media') {
     { id: 'pesanWA', label: 'Pesan WA', icon: '💬' },
     { id: 'promotion', label: 'Naik Kelas', icon: '🚀' },
     { id: 'rekap', label: 'Rekap Absensi', icon: '📋' },
+    { id: 'ranking', label: 'Ranking Absensi', icon: '🏆' },
     { id: 'izin', label: 'Izin & Sakit', icon: '📝' },
     { id: 'classes', label: 'Data Kelas', icon: '🏫' },
     { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' },
@@ -1668,6 +1705,192 @@ if (section === 'media') {
       action: act.action || act.description || 'Absensi'
     };
   };
+
+// ✨ TAMBAHAN: Fetch Ranking Absensi - dengan filter kelas & bulan
+const fetchRankingData = async (type) => {
+  setRankingLoading(true);
+  try {
+    const token = localStorage.getItem('token');
+    const config = {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 30000
+    };
+    
+    const endpoint = type === 'guru'
+      ? '/admin/attendance/ranking/teachers'
+      : '/admin/attendance/ranking/students';
+    
+    const response = await api.get(endpoint, config);
+    let data = response.data?.data || response.data || [];
+    
+    // Filter berdasarkan kelas (untuk siswa)
+    if (type === 'siswa' && rankingClassFilter) {
+      data = data.filter(item => {
+        const className = item.class_name || item.kelas || '';
+        return className.includes(rankingClassFilter);
+      });
+    }
+    
+    // Filter berdasarkan bulan jika ada
+    if (rankingMonthFilter !== '') {
+      const month = parseInt(rankingMonthFilter);
+      data = data.filter(item => {
+        const date = new Date(item.date || item.created_at);
+        return date.getMonth() === month;
+      });
+    }
+    
+    // Urutkan berdasarkan rata-rata waktu datang (lebih awal = lebih baik)
+    // Kemudian berdasarkan persentase kehadiran
+    const sorted = data.sort((a, b) => {
+      // Pertama: persentase kehadiran
+      const percentA = a.attendance_rate || a.attendanceRate || 0;
+      const percentB = b.attendance_rate || b.attendanceRate || 0;
+      if (percentB !== percentA) return percentB - percentA;
+      
+      // Kedua: rata-rata waktu datang (lebih awal = lebih baik)
+      const timeA = a.avg_time_in || a.averageTimeIn || '23:59';
+      const timeB = b.avg_time_in || b.averageTimeIn || '23:59';
+      return timeA.localeCompare(timeB);
+    });
+    
+    setRankingData(sorted);
+  } catch (error) {
+    console.error('Gagal mengambil data ranking:', error);
+    setRankingData([]);
+  } finally {
+    setRankingLoading(false);
+  }
+};
+
+// ✨ TAMBAHAN: Export ke Excel
+const exportRankingToExcel = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const type = rankingType === 'guru' ? 'teachers' : 'students';
+    const response = await api.get(`/admin/attendance/ranking/${type}/export/excel`, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: 'blob',
+      timeout: 60000
+    });
+    
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Ranking_Absensi_${rankingType}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    addNotification('✅ Export Excel berhasil!', 'success');
+  } catch (error) {
+    console.error('Export Excel error:', error);
+    addNotification('❌ Gagal export Excel', 'error');
+  }
+};
+
+// ✨ TAMBAHAN: Export ke PDF
+const exportRankingToPDF = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const type = rankingType === 'guru' ? 'teachers' : 'students';
+    const response = await api.get(`/admin/attendance/ranking/${type}/export/pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: 'blob',
+      timeout: 60000
+    });
+    
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Ranking_Absensi_${rankingType}_${new Date().toISOString().split('T')[0]}.pdf`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    addNotification('✅ Export PDF berhasil!', 'success');
+  } catch (error) {
+    console.error('Export PDF error:', error);
+    addNotification('❌ Gagal export PDF', 'error');
+  }
+};
+
+// ✨ TAMBAHAN: Download Certificate sebagai GAMBAR (PNG)
+const downloadCertificateAsImage = async (user) => {
+  try {
+    addNotification('⏳ Membuat gambar piagam...', 'info');
+    
+    // Ambil element certificate
+    const certElement = document.getElementById('certificate-content');
+    if (!certElement) {
+      throw new Error('Element piagam tidak ditemukan');
+    }
+    
+    // Gunakan canvas untuk convert ke gambar
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const scale = 2; // High resolution
+    
+    canvas.width = certElement.offsetWidth * scale;
+    canvas.height = certElement.offsetHeight * scale;
+    ctx.scale(scale, scale);
+    
+    // Draw background
+    ctx.fillStyle = '#fefce8';
+    ctx.fillRect(0, 0, certElement.offsetWidth, certElement.offsetHeight);
+    
+    // Draw border
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, certElement.offsetWidth - 4, certElement.offsetHeight - 4);
+    
+    // Draw text
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = 'bold 24px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText('PIAGAM PENGHARGAAN', certElement.offsetWidth / 2, 80);
+    
+    ctx.fillStyle = '#475569';
+    ctx.font = '14px Arial';
+    ctx.fillText('Diberikan kepada:', certElement.offsetWidth / 2, 120);
+    
+    // Nama
+    ctx.fillStyle = '#1d4ed8';
+    ctx.font = 'bold 32px Georgia';
+    ctx.fillText(user.name, certElement.offsetWidth / 2, 170);
+    
+    // Kelas
+    ctx.fillStyle = '#475569';
+    ctx.font = '16px Arial';
+    ctx.fillText(user.class_name || user.department || '', certElement.offsetWidth / 2, 200);
+    
+    // Persentase
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = 'bold 20px Arial';
+    const rate = user.attendance_rate || user.attendanceRate || 0;
+    ctx.fillText(`Dengan persentase kehadiran ${rate}%`, certElement.offsetWidth / 2, 250);
+    
+    // Tanggal
+    ctx.fillStyle = '#64748b';
+    ctx.font = '12px Arial';
+    const today = new Date().toLocaleDateString('id-ID', { 
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+    });
+    ctx.fillText(`Dikeluarkan pada: ${today}`, certElement.offsetWidth / 2, 300);
+    
+    // Download
+    const link = document.createElement('a');
+    link.download = `Piagam_${user.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    
+    addNotification('✅ Piagam berhasil diunduh sebagai gambar!', 'success');
+    setShowCertificateModal(false);
+  } catch (error) {
+    console.error('Download certificate error:', error);
+    addNotification('❌ Gagal mengunduh piagam', 'error');
+  }
+};
 
 const fetchAllData = async () => {
   setDataLoading(true);
@@ -5061,6 +5284,426 @@ const fetchAttendanceRecords = async (config = {}) => {
                   </div>
                 </div>
               )}
+
+{/* ✨ TAB: Ranking Absensi */}
+{activeTab === 'ranking' && (
+  <div className="animate-fade-in space-y-6">
+    {/* Header dengan Filter */}
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h2 className="text-2xl font-black text-blue-900 tracking-tight">🏆 Ranking Absensi</h2>
+        <p className="text-slate-500 text-sm mt-1">Peringkat kehadiran terbaik {rankingType === 'guru' ? 'Guru' : 'Siswa'}</p>
+      </div>
+      
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Toggle Siswa/Guru */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => { setRankingType('siswa'); setRankingClassFilter(''); }}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              rankingType === 'siswa' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-600'
+            }`}
+          >
+            🧑‍🎓 Siswa
+          </button>
+          <button
+            onClick={() => { setRankingType('guru'); setRankingClassFilter(''); }}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              rankingType === 'guru' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-600'
+            }`}
+          >
+            👨‍🏫 Guru
+          </button>
+        </div>
+        
+        {/* Filter Kelas (hanya untuk siswa) */}
+        {rankingType === 'siswa' && (
+          <select
+            value={rankingClassFilter}
+            onChange={(e) => setRankingClassFilter(e.target.value)}
+            className="px-4 py-2 bg-white border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Semua Kelas</option>
+            <option value="1">Kelas 1</option>
+            <option value="2">Kelas 2</option>
+            <option value="3">Kelas 3</option>
+          </select>
+        )}
+
+        {/* Filter Bulan untuk Piagam */}
+        <select
+          value={rankingMonthFilter}
+          onChange={(e) => setRankingMonthFilter(e.target.value)}
+          className="px-4 py-2 bg-white border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500"
+        >
+          <option value="">Bulan Ini</option>
+          <option value="0">Januari</option>
+          <option value="1">Februari</option>
+          <option value="2">Maret</option>
+          <option value="3">April</option>
+          <option value="4">Mei</option>
+          <option value="5">Juni</option>
+          <option value="6">Juli</option>
+          <option value="7">Agustus</option>
+          <option value="8">September</option>
+          <option value="9">Oktober</option>
+          <option value="10">November</option>
+          <option value="11">Desember</option>
+        </select>
+        
+        {/* Export Buttons */}
+        <button
+          onClick={exportRankingToExcel}
+          className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-md flex items-center gap-2"
+        >
+          <span>📊</span> Excel
+        </button>
+        <button
+          onClick={exportRankingToPDF}
+          className="px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all shadow-md flex items-center gap-2"
+        >
+          <span>📄</span> PDF
+        </button>
+      </div>
+    </div>
+
+    {rankingLoading ? (
+      <div className="bg-white rounded-2xl border-2 border-blue-200 p-12 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+        <p className="text-blue-600 font-medium">Memuat data ranking...</p>
+      </div>
+    ) : rankingData.length === 0 ? (
+      <div className="bg-white rounded-2xl border-2 border-blue-200 p-12 text-center">
+        <p className="text-5xl mb-4">📊</p>
+        <p className="text-blue-700 font-medium">Belum ada data absensi</p>
+        <p className="text-slate-500 text-sm mt-2">Data akan muncul setelah ada aktivitas absensi</p>
+      </div>
+    ) : (
+      <>
+        {/* Kategori Kompeten (Top 3) */}
+        {rankingData.length >= 3 && (() => {
+          const categories = [
+            { 
+              label: 'SANGAT KOMPETEN', 
+              icon: '⭐', 
+              color: 'from-yellow-400 to-amber-500',
+              borderColor: 'border-yellow-400',
+              bgColor: 'bg-yellow-50',
+              textColor: 'text-yellow-700',
+              desc: 'Kehadiran sempurna dengan ketepatan waktu luar biasa'
+            },
+            { 
+              label: 'KOMPETEN', 
+              icon: '🏅', 
+              color: 'from-slate-400 to-slate-500',
+              borderColor: 'border-slate-400',
+              bgColor: 'bg-slate-50',
+              textColor: 'text-slate-700',
+              desc: 'Kehadiran baik dengan ketepatan waktu yang konsisten'
+            },
+            { 
+              label: 'CUKUP KOMPETEN', 
+              icon: '🎖️', 
+              color: 'from-orange-400 to-amber-600',
+              borderColor: 'border-orange-400',
+              bgColor: 'bg-orange-50',
+              textColor: 'text-orange-700',
+              desc: 'Kehadiran cukup dengan upaya untuk terus meningkat'
+            }
+          ];
+
+          return (
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl border-2 border-blue-200 p-6">
+              <h3 className="text-lg font-black text-blue-900 mb-2 text-center">🏆 Top 3 {rankingType === 'guru' ? 'Guru' : 'Siswa'} Terbaik</h3>
+              <p className="text-center text-slate-500 text-xs mb-6">Berdasarkan ketepatan waktu kehadiran</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {categories.map((cat, idx) => {
+                  const person = rankingData[idx];
+                  if (!person) return null;
+                  const attendanceRate = person.attendance_rate || person.attendanceRate || 0;
+                  const avgTime = person.avg_time_in || person.averageTimeIn || '-';
+                  
+                  return (
+                    <div key={idx} className={`${cat.bgColor} rounded-2xl p-5 shadow-lg border-2 ${cat.borderColor} text-center relative overflow-hidden`}>
+                      {/* Badge */}
+                      <div className={`absolute top-0 right-0 bg-gradient-to-r ${cat.color} text-white px-3 py-1 rounded-bl-xl text-xs font-black`}>
+                        {cat.label}
+                      </div>
+                      
+                      <div className="text-5xl mb-3">{cat.icon}</div>
+                      
+                      <div className="w-20 h-20 mx-auto mb-3 rounded-full overflow-hidden border-4 border-white shadow-lg bg-white">
+                        {person.photo ? (
+                          <img src={person.photo} alt={person.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className={`w-full h-full bg-gradient-to-br ${cat.color} flex items-center justify-center text-3xl text-white font-bold`}>
+                            {person.name?.charAt(0) || '?'}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <p className="font-black text-slate-800 text-base truncate">{person.name}</p>
+                      <p className="text-xs text-slate-500 mt-1">{person.class_name || person.department || '-'}</p>
+                      
+                      <div className="mt-3 space-y-2">
+                        <div className="bg-white rounded-xl p-2">
+                          <p className="text-[10px] text-slate-500 font-bold uppercase">Persentase</p>
+                          <p className={`text-xl font-black ${cat.textColor}`}>{attendanceRate}%</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2">
+                          <p className="text-[10px] text-slate-500 font-bold uppercase">Rata-rata Datang</p>
+                          <p className={`text-sm font-black ${cat.textColor}`}>{avgTime}</p>
+                        </div>
+                      </div>
+                      
+                      <p className="text-[10px] text-slate-600 mt-3 italic">{cat.desc}</p>
+                      
+                      <button
+                        onClick={() => {
+                          setSelectedRankingUser(person);
+                          setShowCertificateModal(true);
+                        }}
+                        className={`mt-3 w-full px-4 py-2 bg-gradient-to-r ${cat.color} text-white rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-md`}
+                      >
+                        📜 Lihat Piagam
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Tabel Ranking Lengkap */}
+        <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-xl overflow-hidden">
+          <div className="px-6 py-4 bg-blue-50 border-b-2 border-blue-100 flex justify-between items-center">
+            <h3 className="font-black text-blue-900 uppercase tracking-wider text-sm">📊 Daftar Peringkat Lengkap</h3>
+            <span className="text-xs text-slate-500">Diurutkan berdasarkan ketepatan waktu</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Peringkat</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Nama</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">
+                    {rankingType === 'guru' ? 'Mata Pelajaran' : 'Kelas'}
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Hadir</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Rata-rata Datang</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Persentase</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Kategori</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rankingData.map((item, index) => {
+                  const rank = index + 1;
+                  const attendanceRate = item.attendance_rate || item.attendanceRate || 0;
+                  const present = item.present || item.total_hadir || 0;
+                  const avgTime = item.avg_time_in || item.averageTimeIn || '-';
+                  
+                  // Kategori kompeten
+                  let category = { label: 'PERLU PERBAIKAN', color: 'bg-rose-100 text-rose-700 border-rose-200' };
+                  if (rank === 1) category = { label: 'SANGAT KOMPETEN', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+                  else if (rank === 2) category = { label: 'KOMPETEN', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+                  else if (rank === 3) category = { label: 'CUKUP KOMPETEN', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+                  else if (attendanceRate >= 75) category = { label: 'BAIK', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+                  
+                  return (
+                    <tr key={item.id} className="hover:bg-blue-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                          rank === 1 ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-400' :
+                          rank === 2 ? 'bg-slate-200 text-slate-700 border-2 border-slate-400' :
+                          rank === 3 ? 'bg-orange-100 text-orange-700 border-2 border-orange-400' :
+                          'bg-blue-50 text-blue-700 border-2 border-blue-200'
+                        }`}>
+                          {rank}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-slate-800">{item.name}</p>
+                        <p className="text-xs text-slate-500">{item.email}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-slate-600">{item.class_name || item.department || '-'}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold">{present}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="font-mono font-bold text-blue-700 text-sm">{avgTime}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-slate-200 rounded-full h-2 w-24">
+                            <div 
+                              className={`h-full rounded-full ${
+                                attendanceRate >= 90 ? 'bg-emerald-500' :
+                                attendanceRate >= 75 ? 'bg-blue-500' :
+                                attendanceRate >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                              }`}
+                              style={{ width: `${attendanceRate}%` }}
+                            ></div>
+                          </div>
+                          <span className="font-bold text-slate-700 text-sm">{attendanceRate}%</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black border-2 ${category.color}`}>
+                          {category.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => {
+                            setSelectedRankingUser(item);
+                            setShowCertificateModal(true);
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-all flex items-center gap-1"
+                        >
+                          <span>📜</span> Piagam
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* Modal Piagam dengan Logo Sekolah */}
+    {showCertificateModal && selectedRankingUser && (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+        <div className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl border-2 border-blue-200 animate-fade-in-up overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white flex justify-between items-center sticky top-0 z-10">
+            <h3 className="text-xl font-bold flex items-center gap-2">
+              <span>📜</span> Piagam Penghargaan
+            </h3>
+            <button 
+              onClick={() => setShowCertificateModal(false)} 
+              className="text-white/80 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="p-8">
+            {/* Certificate Preview */}
+            <div id="certificate-content" className="bg-gradient-to-br from-yellow-50 via-white to-blue-50 rounded-2xl p-8 border-4 border-yellow-400 text-center mb-6 relative overflow-hidden">
+              {/* Logo Sekolah di Background */}
+              {settingsData.schoolLogo && (
+                <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+                  <img 
+                    src={resolvePhotoUrl(settingsData.schoolLogo)} 
+                    alt="Logo" 
+                    className="w-96 h-96 object-contain"
+                  />
+                </div>
+              )}
+              
+              {/* Logo Sekolah di Header */}
+              <div className="relative z-10 mb-4">
+                {settingsData.schoolLogo ? (
+                  <img 
+                    src={resolvePhotoUrl(settingsData.schoolLogo)} 
+                    alt="Logo Sekolah" 
+                    className="w-20 h-20 mx-auto object-contain"
+                  />
+                ) : (
+                  <div className="text-6xl">🏆</div>
+                )}
+              </div>
+              
+              <div className="relative z-10">
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-2">
+                  {settingsData.schoolName || 'SEKOLAH'}
+                </p>
+                <h4 className="text-3xl font-black text-blue-900 mb-2">PIAGAM PENGHARGAAN</h4>
+                <p className="text-slate-600 mb-6 text-sm">Diberikan kepada siswa/guru berprestasi dalam kehadiran</p>
+                
+                <div className="mb-6">
+                  <h5 className="text-4xl font-black text-blue-700 mb-2" style={{ fontFamily: 'Georgia, serif' }}>
+                    {selectedRankingUser.name}
+                  </h5>
+                  <p className="text-slate-600">
+                    {selectedRankingUser.class_name || selectedRankingUser.department || ''}
+                  </p>
+                </div>
+                
+                <div className="bg-white/80 rounded-xl p-4 mb-6 border-2 border-yellow-200">
+                  <p className="text-sm text-slate-700 mb-2">
+                    Telah menunjukkan <span className="font-bold text-blue-700">
+                      {rankingData.indexOf(selectedRankingUser) === 0 ? 'KINERJA SANGAT KOMPETEN' :
+                       rankingData.indexOf(selectedRankingUser) === 1 ? 'KINERJA KOMPETEN' :
+                       rankingData.indexOf(selectedRankingUser) === 2 ? 'KINERJA CUKUP KOMPETEN' :
+                       'KINERJA BAIK'}
+                    </span>
+                  </p>
+                  <p className="text-sm text-slate-700">
+                    dalam kehadiran {rankingType === 'guru' ? 'Guru' : 'Siswa'}
+                    {rankingMonthFilter !== '' && ` bulan ${['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][rankingMonthFilter]}`}
+                  </p>
+                  <p className="text-lg font-black text-blue-900 mt-2">
+                    dengan persentase kehadiran {selectedRankingUser.attendance_rate || selectedRankingUser.attendanceRate || 0}%
+                  </p>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  <div className="bg-emerald-50 rounded-lg p-2">
+                    <p className="text-[10px] text-slate-500 font-bold">HADIR</p>
+                    <p className="text-lg font-black text-emerald-600">{selectedRankingUser.present || 0}</p>
+                  </div>
+                  <div className="bg-amber-50 rounded-lg p-2">
+                    <p className="text-[10px] text-slate-500 font-bold">TERLAMBAT</p>
+                    <p className="text-lg font-black text-amber-600">{selectedRankingUser.late || 0}</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-2">
+                    <p className="text-[10px] text-slate-500 font-bold">RATA-RATA</p>
+                    <p className="text-sm font-black text-blue-600">{selectedRankingUser.avg_time_in || '-'}</p>
+                  </div>
+                </div>
+                
+                <div className="text-xs text-slate-500 mt-6 pt-4 border-t-2 border-slate-200">
+                  <p>Dikeluarkan pada: {new Date().toLocaleDateString('id-ID', { 
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+                  })}</p>
+                  <p className="mt-4 font-bold text-slate-700">Kepala Sekolah</p>
+                  <p className="text-slate-400 text-[10px] mt-8 border-t border-slate-300 pt-1 inline-block">
+                    {settingsData.schoolName || 'SMPK DON BOSCO'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCertificateModal(false)}
+                className="flex-1 px-4 py-3 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+              >
+                Tutup
+              </button>
+              <button
+                onClick={() => downloadCertificateAsImage(selectedRankingUser)}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                <span>🖼️</span> Unduh Gambar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
               {/* ✨ TAMBAHAN: TAB: Alumni */}
               {activeTab === 'alumni' && (
