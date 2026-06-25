@@ -244,8 +244,11 @@ const DashboardAdmin = ({ theme, toggleTheme }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
-  // ✨ TAMBAHAN: State untuk filter rekap absensi
-  const [rekapRoleFilter, setRekapRoleFilter] = useState('all');
+// ✨ TAMBAHAN: State untuk filter rekap absensi (DIPERBAIKI)
+const [rekapRoleFilter, setRekapRoleFilter] = useState('siswa'); // default siswa
+const [rekapActionFilter, setRekapActionFilter] = useState('datang'); // 'datang' atau 'pulang'
+const [rekapMonthFilter, setRekapMonthFilter] = useState(''); // kosong = semua bulan
+const [rekapClassFilter, setRekapClassFilter] = useState(''); // kosong = semua kelas
 
   // ✨ TAMBAHAN: State untuk media cycling (foto berkedip ganti sendiri)
   const [activePhotoIndex, setActivePhotoIndex] = useState(1);
@@ -292,6 +295,12 @@ const DashboardAdmin = ({ theme, toggleTheme }) => {
   // ✨ TAMBAHAN: State untuk fitur WhatsApp
   const [waSearchQuery, setWaSearchQuery] = useState('');
   const [waMessageTemplate, setWaMessageTemplate] = useState('Halo, ini pesan dari admin sekolah. ');
+
+  // ✨ TAMBAHAN: State untuk WhatsApp Massal
+const [selectedParents, setSelectedParents] = useState([]);
+const [waTemplateType, setWaTemplateType] = useState('pulang'); // 'pulang' atau 'peringatan'
+const [waMassMessage, setWaMassMessage] = useState('');
+const [isSendingMass, setIsSendingMass] = useState(false);
   
   // State untuk modal/form
   const [showModal, setShowModal] = useState(false);
@@ -373,6 +382,7 @@ const [selectedRankingUser, setSelectedRankingUser] = useState(null);
 const [showCertificateModal, setShowCertificateModal] = useState(false);
 const [rankingClassFilter, setRankingClassFilter] = useState(''); // Filter kelas untuk siswa
 const [rankingMonthFilter, setRankingMonthFilter] = useState(''); // Filter bulan
+const [userRoleFilter, setUserRoleFilter] = useState('all'); 
 
   const [settingsSection, setSettingsSection] = useState('school');
 
@@ -720,6 +730,52 @@ useEffect(() => {
     } catch { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/'); }
     setLoading(false);
   }, [navigate]);
+
+  // ✨ FUNGSI fetchAllData YANG HILANG
+const fetchAllData = async () => {
+setDataLoading(true);
+setError('');
+try {
+const token = localStorage.getItem('token');
+const config = { headers: { Authorization: `Bearer ${token}` } };
+
+// Fetch stats
+const statsRes = await apiTryEndpoints('get', ['/admin/stats', '/stats'], config);
+setStats({
+totalUsers: statsRes.data?.totalUsers || statsRes.data?.total_users || 0,
+totalGuru: statsRes.data?.totalGuru || statsRes.data?.total_guru || 0,
+totalSiswa: statsRes.data?.totalSiswa || statsRes.data?.total_siswa || 0,
+totalKelas: statsRes.data?.totalKelas || statsRes.data?.total_kelas || 0,
+kehadiranHariIni: statsRes.data?.kehadiranHariIni || statsRes.data?.kehadiran_hari_ini || 0
+});
+
+// Fetch users
+const usersRes = await apiTryEndpoints('get', userEndpointCandidates.index, config);
+const usersData = Array.isArray(usersRes.data) 
+? usersRes.data 
+: (usersRes.data?.data || []);
+setUsers(usersData.map(normalizeUser));
+
+// Fetch classes
+const classesRes = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
+const classesData = Array.isArray(classesRes.data) 
+? classesRes.data 
+: (classesRes.data?.data || []);
+setClasses(classesData);
+
+// Fetch attendance reports
+const attendanceRes = await fetchAttendanceRecords(config);
+const normalizedAttendance = attendanceRes.map(act => normalizeAttendanceRecord(act));
+setAttendanceReports(normalizedAttendance);
+setRecentActivity(normalizedAttendance.slice(0, 10));
+
+} catch (err) {
+console.error('Error fetching all data:', err);
+setError('Gagal memuat data dashboard. Silakan refresh halaman.');
+} finally {
+setDataLoading(false);
+}
+};
 
 // Fetch data dari backend
 useEffect(() => { 
@@ -1603,6 +1659,132 @@ if (section === 'media') {
     window.open(waUrl, '_blank');
   };
 
+  // ✨ TAMBAHAN: Generate Template Pesan Otomatis
+const generateAutoMessage = (type, studentName, parentName, currentTime) => {
+  const schoolName = settingsData.schoolName || 'Sekolah';
+  const pulangTime = settingsData.pulangEndTime || '15:30';
+  const pulangStart = settingsData.pulangStartTime || '15:00';
+  
+  if (type === 'pulang') {
+    return `Yth. Bapak/Ibu ${parentName || 'Orang Tua/Wali'},
+
+Dengan hormat, kami sampaikan bahwa putra/putri Bapak/Ibu:
+
+Nama Siswa : ${studentName}
+Sekolah    : ${schoolName}
+
+Telah selesai mengikuti kegiatan belajar mengajar dan diperkenankan pulang pada pukul ${currentTime || pulangTime} WIB.
+
+Mohon Bapak/Ibu dapat menjemput atau memastikan anak tiba di rumah dengan selamat.
+
+Terima kasih atas perhatian dan kerjasamanya.
+
+Hormat kami,
+${schoolName}`;
+  } else if (type === 'peringatan') {
+    return `Yth. Bapak/Ibu ${parentName || 'Orang Tua/Wali'},
+
+Dengan hormat, kami sampaikan bahwa putra/putri Bapak/Ibu:
+
+Nama Siswa : ${studentName}
+Sekolah    : ${schoolName}
+
+Telah meninggalkan sekolah pada pukul ${currentTime} WIB, yaitu ${pulangTime} WIB (waktu pulang resmi).
+
+Kami mohon perhatian Bapak/Ibu untuk dapat mengantar/memput anak tepat waktu sesuai jadwal yang telah ditentukan.
+
+Kerjasama Bapak/Ibu sangat kami hargai demi kelancaran kegiatan belajar mengajar.
+
+Terima kasih.
+
+Hormat kami,
+${schoolName}`;
+  }
+};
+
+// ✨ TAMBAHAN: Handle Pilih Semua
+const handleSelectAllParents = () => {
+  const currentData = filterSiswaForWA(
+    siswaData.filter(s => getClassGroup(s) === activeWaSection),
+    waSearchQuery
+  );
+  
+  if (selectedParents.length === currentData.length) {
+    setSelectedParents([]);
+  } else {
+    setSelectedParents(currentData.map(s => s.id));
+  }
+};
+
+// ✨ TAMBAHAN: Handle Toggle Individual
+const handleToggleParent = (studentId) => {
+  setSelectedParents(prev => 
+    prev.includes(studentId) 
+      ? prev.filter(id => id !== studentId)
+      : [...prev, studentId]
+  );
+};
+
+// ✨ TAMBAHAN: Kirim Pesan Massal
+const handleSendMassWhatsApp = () => {
+  if (selectedParents.length === 0) {
+    addNotification('⚠️ Pilih minimal satu orang tua untuk mengirim pesan', 'warning');
+    return;
+  }
+  
+  if (!waMassMessage.trim()) {
+    addNotification('⚠️ Pesan tidak boleh kosong', 'warning');
+    return;
+  }
+  
+  setIsSendingMass(true);
+  
+  const selectedStudents = siswaData.filter(s => selectedParents.includes(s.id));
+  const currentTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  
+  let sentCount = 0;
+  
+  selectedStudents.forEach((siswa, index) => {
+    if (!siswa.parent_phone) return;
+    
+    setTimeout(() => {
+      const message = waMassMessage
+        .replace('{nama_siswa}', siswa.name)
+        .replace('{nama_ortu}', siswa.parent_name || 'Bapak/Ibu')
+        .replace('{waktu}', currentTime)
+        .replace('{sekolah}', settingsData.schoolName || 'Sekolah');
+      
+      const formattedPhone = siswa.parent_phone.replace(/\D/g, '');
+      const phone = formattedPhone.startsWith('0') ? '62' + formattedPhone.slice(1) : formattedPhone;
+      const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      
+      window.open(waUrl, '_blank');
+      sentCount++;
+      
+      if (sentCount === selectedStudents.filter(s => s.parent_phone).length) {
+        setIsSendingMass(false);
+        addNotification(`✅ Pesan berhasil dikirim ke ${sentCount} orang tua`, 'success');
+        setSelectedParents([]);
+      }
+    }, index * 500); // Delay 500ms antar pesan agar tidak diblokir browser
+  });
+};
+
+// ✨ TAMBAHAN: Update Template Otomatis
+useEffect(() => {
+  const currentData = filterSiswaForWA(
+    siswaData.filter(s => getClassGroup(s) === activeWaSection),
+    waSearchQuery
+  );
+  
+  if (currentData.length > 0) {
+    const firstStudent = currentData[0];
+    const currentTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const message = generateAutoMessage(waTemplateType, firstStudent.name, firstStudent.parent_name, currentTime);
+    setWaMassMessage(message);
+  }
+}, [waTemplateType, activeWaSection, siswaData]);
+
   // ✨ Menu items dengan tambahan Pesan WA
   const menuItems = [
     { id: 'overview', label: 'Ringkasan', icon: '📊' },
@@ -1706,7 +1888,7 @@ if (section === 'media') {
     };
   };
 
-// ✨ TAMBAHAN: Fetch Ranking Absensi - dengan filter kelas & bulan
+// ✨ TAMBAHAN: Fetch Ranking Absensi - DIHITUNG DARI JAM & DETIK
 const fetchRankingData = async (type) => {
   setRankingLoading(true);
   try {
@@ -1716,43 +1898,127 @@ const fetchRankingData = async (type) => {
       timeout: 30000
     };
     
-    const endpoint = type === 'guru'
-      ? '/admin/attendance/ranking/teachers'
-      : '/admin/attendance/ranking/students';
+    // Ambil semua data attendance
+    const attendanceRes = await api.get('/admin/attendances', {
+      ...config,
+      params: { per_page: 1000 }
+    });
     
-    const response = await api.get(endpoint, config);
-    let data = response.data?.data || response.data || [];
+    const allAttendance = attendanceRes.data?.data || attendanceRes.data || [];
     
-    // Filter berdasarkan kelas (untuk siswa)
+    // Ambil semua users
+    const usersRes = await api.get(`/admin/users?role=${type}`, config);
+    const allUsers = usersRes.data?.data || usersRes.data || [];
+    
+    // Filter berdasarkan kelas jika ada
+    let filteredUsers = allUsers;
     if (type === 'siswa' && rankingClassFilter) {
-      data = data.filter(item => {
-        const className = item.class_name || item.kelas || '';
+      filteredUsers = allUsers.filter(u => {
+        const className = u.class_name || u.kelas || '';
         return className.includes(rankingClassFilter);
       });
     }
     
-    // Filter berdasarkan bulan jika ada
-    if (rankingMonthFilter !== '') {
-      const month = parseInt(rankingMonthFilter);
-      data = data.filter(item => {
-        const date = new Date(item.date || item.created_at);
-        return date.getMonth() === month;
+    // Hitung statistik per user
+    const userStats = filteredUsers.map(user => {
+      // Filter attendance untuk user ini
+      const userAttendance = allAttendance.filter(a => {
+        const userId = a.user_id || a.student_id;
+        return userId == user.id;
       });
-    }
-    
-    // Urutkan berdasarkan rata-rata waktu datang (lebih awal = lebih baik)
-    // Kemudian berdasarkan persentase kehadiran
-    const sorted = data.sort((a, b) => {
-      // Pertama: persentase kehadiran
-      const percentA = a.attendance_rate || a.attendanceRate || 0;
-      const percentB = b.attendance_rate || b.attendanceRate || 0;
-      if (percentB !== percentA) return percentB - percentA;
       
-      // Kedua: rata-rata waktu datang (lebih awal = lebih baik)
-      const timeA = a.avg_time_in || a.averageTimeIn || '23:59';
-      const timeB = b.avg_time_in || b.averageTimeIn || '23:59';
-      return timeA.localeCompare(timeB);
+      // Filter berdasarkan bulan jika ada
+      let filteredAttendance = userAttendance;
+      if (rankingMonthFilter !== '') {
+        const month = parseInt(rankingMonthFilter);
+        const currentYear = new Date().getFullYear();
+        filteredAttendance = userAttendance.filter(a => {
+          const date = new Date(a.date || a.created_at);
+          return date.getMonth() === month && date.getFullYear() === currentYear;
+        });
+      }
+      
+      // Hitung total hadir
+      const present = filteredAttendance.filter(a => 
+        ['hadir', 'tepat_waktu', 'present', 'on_time'].includes((a.status || '').toLowerCase())
+      ).length;
+      
+      // Hitung terlambat
+      const late = filteredAttendance.filter(a => 
+        ['terlambat', 'late', 'tardy'].includes((a.status || '').toLowerCase())
+      ).length;
+      
+      // Hitung total absensi (hadir + terlambat)
+      const totalAttendance = present + late;
+      
+      // Hitung rata-rata waktu kedatangan (dalam detik)
+      let totalSeconds = 0;
+      let timeCount = 0;
+      
+      filteredAttendance.forEach(a => {
+        const timeIn = a.time_in || a.attendance_time || a.scan_time;
+        if (timeIn) {
+          // Konversi waktu ke detik
+          const timeStr = String(timeIn).substring(0, 5); // Ambil HH:MM
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          if (!isNaN(hours) && !isNaN(minutes)) {
+            totalSeconds += (hours * 3600) + (minutes * 60);
+            timeCount++;
+          }
+        }
+      });
+      
+      const avgSeconds = timeCount > 0 ? Math.round(totalSeconds / timeCount) : 0;
+      const avgHours = Math.floor(avgSeconds / 3600);
+      const avgMinutes = Math.floor((avgSeconds % 3600) / 60);
+      const avgTimeIn = timeCount > 0 ? `${String(avgHours).padStart(2, '0')}:${String(avgMinutes).padStart(2, '0')}` : '-';
+      
+      // Hitung persentase kehadiran
+      const totalDays = filteredAttendance.length > 0 ? 
+        Math.max(...filteredAttendance.map(a => {
+          const date = new Date(a.date || a.created_at);
+          return date.getTime();
+        })) - Math.min(...filteredAttendance.map(a => {
+          const date = new Date(a.date || a.created_at);
+          return date.getTime();
+        })) : 0;
+      
+      // Hitung jumlah hari unik
+      const uniqueDays = new Set(filteredAttendance.map(a => {
+        const date = new Date(a.date || a.created_at);
+        return date.toDateString();
+      })).size;
+      
+      const attendanceRate = uniqueDays > 0 ? Math.round((totalAttendance / uniqueDays) * 100) : 0;
+      
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        photo: user.photo ? resolvePhotoUrl(user.photo) : null,
+        class_name: user.class_name || user.kelas || '-',
+        department: user.class_name || user.kelas || '-',
+        present: present,
+        late: late,
+        total_days: uniqueDays,
+        attendance_rate: Math.min(attendanceRate, 100), // Maksimal 100%
+        avg_time_in: avgTimeIn,
+        avg_seconds: avgSeconds // Untuk sorting
+      };
     });
+    
+    // Urutkan berdasarkan rata-rata waktu kedatangan (lebih awal = ranking lebih tinggi)
+    // Jika waktu sama, urutkan berdasarkan persentase kehadiran
+    const sorted = userStats
+      .filter(u => u.present > 0) // Hanya yang punya data hadir
+      .sort((a, b) => {
+        // Pertama: urutkan berdasarkan rata-rata waktu (lebih awal = lebih baik)
+        if (a.avg_seconds !== b.avg_seconds) {
+          return a.avg_seconds - b.avg_seconds;
+        }
+        // Kedua: jika waktu sama, urutkan berdasarkan persentase
+        return b.attendance_rate - a.attendance_rate;
+      });
     
     setRankingData(sorted);
   } catch (error) {
@@ -1760,204 +2026,6 @@ const fetchRankingData = async (type) => {
     setRankingData([]);
   } finally {
     setRankingLoading(false);
-  }
-};
-
-// ✨ TAMBAHAN: Export ke Excel
-const exportRankingToExcel = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    const type = rankingType === 'guru' ? 'teachers' : 'students';
-    const response = await api.get(`/admin/attendance/ranking/${type}/export/excel`, {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: 'blob',
-      timeout: 60000
-    });
-    
-    const blob = new Blob([response.data], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-    });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Ranking_Absensi_${rankingType}_${new Date().toISOString().split('T')[0]}.xlsx`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    addNotification('✅ Export Excel berhasil!', 'success');
-  } catch (error) {
-    console.error('Export Excel error:', error);
-    addNotification('❌ Gagal export Excel', 'error');
-  }
-};
-
-// ✨ TAMBAHAN: Export ke PDF
-const exportRankingToPDF = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    const type = rankingType === 'guru' ? 'teachers' : 'students';
-    const response = await api.get(`/admin/attendance/ranking/${type}/export/pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: 'blob',
-      timeout: 60000
-    });
-    
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Ranking_Absensi_${rankingType}_${new Date().toISOString().split('T')[0]}.pdf`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    addNotification('✅ Export PDF berhasil!', 'success');
-  } catch (error) {
-    console.error('Export PDF error:', error);
-    addNotification('❌ Gagal export PDF', 'error');
-  }
-};
-
-// ✨ TAMBAHAN: Download Certificate sebagai GAMBAR (PNG)
-const downloadCertificateAsImage = async (user) => {
-  try {
-    addNotification('⏳ Membuat gambar piagam...', 'info');
-    
-    // Ambil element certificate
-    const certElement = document.getElementById('certificate-content');
-    if (!certElement) {
-      throw new Error('Element piagam tidak ditemukan');
-    }
-    
-    // Gunakan canvas untuk convert ke gambar
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const scale = 2; // High resolution
-    
-    canvas.width = certElement.offsetWidth * scale;
-    canvas.height = certElement.offsetHeight * scale;
-    ctx.scale(scale, scale);
-    
-    // Draw background
-    ctx.fillStyle = '#fefce8';
-    ctx.fillRect(0, 0, certElement.offsetWidth, certElement.offsetHeight);
-    
-    // Draw border
-    ctx.strokeStyle = '#facc15';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, certElement.offsetWidth - 4, certElement.offsetHeight - 4);
-    
-    // Draw text
-    ctx.fillStyle = '#1e3a8a';
-    ctx.font = 'bold 24px Georgia';
-    ctx.textAlign = 'center';
-    ctx.fillText('PIAGAM PENGHARGAAN', certElement.offsetWidth / 2, 80);
-    
-    ctx.fillStyle = '#475569';
-    ctx.font = '14px Arial';
-    ctx.fillText('Diberikan kepada:', certElement.offsetWidth / 2, 120);
-    
-    // Nama
-    ctx.fillStyle = '#1d4ed8';
-    ctx.font = 'bold 32px Georgia';
-    ctx.fillText(user.name, certElement.offsetWidth / 2, 170);
-    
-    // Kelas
-    ctx.fillStyle = '#475569';
-    ctx.font = '16px Arial';
-    ctx.fillText(user.class_name || user.department || '', certElement.offsetWidth / 2, 200);
-    
-    // Persentase
-    ctx.fillStyle = '#1e3a8a';
-    ctx.font = 'bold 20px Arial';
-    const rate = user.attendance_rate || user.attendanceRate || 0;
-    ctx.fillText(`Dengan persentase kehadiran ${rate}%`, certElement.offsetWidth / 2, 250);
-    
-    // Tanggal
-    ctx.fillStyle = '#64748b';
-    ctx.font = '12px Arial';
-    const today = new Date().toLocaleDateString('id-ID', { 
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-    });
-    ctx.fillText(`Dikeluarkan pada: ${today}`, certElement.offsetWidth / 2, 300);
-    
-    // Download
-    const link = document.createElement('a');
-    link.download = `Piagam_${user.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    
-    addNotification('✅ Piagam berhasil diunduh sebagai gambar!', 'success');
-    setShowCertificateModal(false);
-  } catch (error) {
-    console.error('Download certificate error:', error);
-    addNotification('❌ Gagal mengunduh piagam', 'error');
-  }
-};
-
-const fetchAllData = async () => {
-  setDataLoading(true);
-  try {
-    setError('');
-    const token = localStorage.getItem('token');
-    const config = {
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 60000 // Naikkan timeout jadi 60 detik
-    };
-    
-    // Ambil data dengan timeout lebih panjang & error handling lebih baik
-    const [statsRes, usersRes, classesRes, attendanceRes] = await Promise.allSettled([
-      apiTryEndpoints('get', ['/admin/stats', '/stats'], config).catch(() => null),
-      apiTryEndpoints('get', userEndpointCandidates.index, {
-        ...config,
-        timeout: 60000 // Timeout lebih panjang untuk users
-      }).catch(() => null),
-      apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config).catch(() => null),
-      fetchAttendanceRecords(config).catch(() => [])
-    ]);
-    
-    // Process Stats
-    let calculatedStats = { totalUsers: 0, totalGuru: 0, totalSiswa: 0, totalKelas: 0, kehadiranHariIni: 0 };
-    if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
-      const statsData = statsRes.value.data;
-      calculatedStats = {
-        totalUsers: statsData.total_users ?? statsData.totalUsers ?? 0,
-        totalGuru: statsData.total_guru ?? statsData.totalGuru ?? 0,
-        totalSiswa: statsData.total_siswa ?? statsData.totalSiswa ?? 0,
-        totalKelas: statsData.total_kelas ?? statsData.totalKelas ?? 0,
-        kehadiranHariIni: statsData.kehadiran_hari_ini ?? statsData.kehadiranHariIni ?? 0
-      };
-    }
-    setStats(calculatedStats);
-    
-    // Process Users - dengan error handling
-    if (usersRes.status === 'fulfilled' && usersRes.value) {
-      const uData = usersRes.value?.data;
-      const rawUsers = Array.isArray(uData) ? uData : (uData?.data || []);
-      setUsers(rawUsers.map(normalizeUser));
-    } else {
-      console.warn('Failed to fetch users:', usersRes.reason);
-      setUsers([]); // Set empty array jika gagal
-    }
-    
-    // Process Classes
-    if (classesRes.status === 'fulfilled' && classesRes.value) {
-      const classData = normalizeRecordsResponse(classesRes.value);
-      setClasses(classData.length > 0 ? classData : staticClassOptions);
-    } else {
-      setClasses(staticClassOptions);
-    }
-    
-    // Process Attendance
-    if (attendanceRes.status === 'fulfilled' && attendanceRes.value) {
-      const rawActivity = attendanceRes.value;
-      const normalizedActivity = rawActivity.map(act => normalizeAttendanceRecord(act));
-      setRecentActivity(normalizedActivity);
-      setAttendanceReports(normalizedActivity);
-    }
-    
-  } catch (err) {
-    console.error('Gagal mengambil data:', err.message);
-    setError('Beberapa data gagal dimuat. Periksa koneksi server.');
-  } finally {
-    setDataLoading(false);
   }
 };
 
@@ -2206,6 +2274,92 @@ const fetchAttendanceRecords = async (config = {}) => {
     
     return { total, hadir, terlambat, izin, sakit, absen, hadirPercent };
   };
+
+  // ✨ TAMBAHAN: Fungsi untuk mendapatkan daftar bulan dari data absensi
+const getAvailableMonths = () => {
+  const months = new Set();
+  attendanceReports.forEach(item => {
+    const rawDate = item.date || item.created_at || item.attendance_time;
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        months.add(key);
+      }
+    }
+  });
+  return Array.from(months).sort().reverse();
+};
+
+// ✨ TAMBAHAN: Fungsi untuk mendapatkan daftar kelas dari data siswa
+const getAvailableClasses = () => {
+  const classes = new Set();
+  siswaData.forEach(s => {
+    const className = s.class_name || s.kelas || '';
+    if (className) classes.add(className);
+  });
+  return Array.from(classes).sort();
+};
+
+// ✨ TAMBAHAN: Fungsi format nama bulan
+const formatMonthName = (monthKey) => {
+  if (!monthKey) return 'Semua Bulan';
+  const [year, month] = monthKey.split('-');
+  const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  return `${monthNames[parseInt(month) - 1]} ${year}`;
+};
+
+// ✨ TAMBAHAN: Fungsi untuk memfilter data rekap
+const getFilteredRekapData = () => {
+  const role = rekapRoleFilter; // 'siswa' atau 'guru'
+  const action = rekapActionFilter; // 'datang' atau 'pulang'
+  const month = rekapMonthFilter;
+  const classFilter = rekapClassFilter;
+
+  return attendanceReports
+    .map(record => {
+      const rawDate = record.date || record.created_at || record.attendance_time || record.time;
+      const d = new Date(rawDate);
+      const monthKey = !isNaN(d.getTime()) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : '';
+      
+      return {
+        ...record,
+        user_name: record.user_name || record.name || record.full_name || record.user?.name || 'Tidak Diketahui',
+        role: (record.role || record.user?.role || 'siswa').toLowerCase(),
+        rawDate: rawDate,
+        monthKey: monthKey,
+        arrival: record.arrival || record.time_in || record.attendance_time || record.scan_time || record.created_at,
+        departure: record.departure || record.time_out || record.pulang_time || null,
+        mode: record.type || record.method || record.action || record.created_via || 'QR Code',
+        status: record.status || 'unknown',
+        class_name: record.class_name || record.classroom_name || record.kelas || 
+                   (siswaData.find(s => s.id === record.user_id || s.id === record.student_id)?.class_name) || '-'
+      };
+    })
+    .filter(record => {
+      // Filter role
+      if (record.role !== role) return false;
+      
+      // Filter bulan
+      if (month && record.monthKey !== month) return false;
+      
+      // Filter kelas (hanya untuk siswa)
+      if (role === 'siswa' && classFilter && record.class_name !== classFilter) return false;
+      
+      // Filter action (datang/pulang)
+      if (action === 'datang') {
+        // Harus punya data kedatangan
+        return record.arrival && record.arrival !== 'Invalid Date';
+      } else if (action === 'pulang') {
+        // Harus punya data kepulangan
+        return record.departure && record.departure !== 'Invalid Date';
+      }
+      
+      return true;
+    })
+    .sort((a, b) => new Date(b.rawDate) - new Date(a.rawDate));
+};
 
   // ✨ TAMBAHAN: Tampilkan semua data rekap tanpa pengelompokan sehingga setiap baris absensi tampil lengkap
   const getGroupedRekapData = () => {
@@ -3207,373 +3361,533 @@ const fetchAttendanceRecords = async (config = {}) => {
                 </div>
               )}
 
-              {/* ✨ TAB: Rekap Absensi (Siswa & Guru) */}
-              {activeTab === 'rekap' && (
-                <div className="animate-fade-in space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-blue-900">📋 Rekap Absensi Real-Time</h2>
-                      <p className="text-slate-500 text-sm">Data kedatangan dan kepulangan seluruh warga sekolah</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      {/* Filter Pilihan di Atas Tabel */}
-                      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-2xl shadow-inner border border-slate-200">
-                        <button 
-                          onClick={() => setRekapRoleFilter('all')}
-                          className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all uppercase tracking-tighter ${rekapRoleFilter === 'all' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                          👥 Semua
-                        </button>
-                        <button 
-                          onClick={() => setRekapRoleFilter('siswa')}
-                          className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all uppercase tracking-tighter ${rekapRoleFilter === 'siswa' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                          🧑‍🎓 Siswa
-                        </button>
-                        <button 
-                          onClick={() => setRekapRoleFilter('guru')}
-                          className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all uppercase tracking-tighter ${rekapRoleFilter === 'guru' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                          👨‍🏫 Guru
-                        </button>
-                      </div>
+{/* ✨ TAB: Rekap Absensi (4 Kategori Terpisah) */}
+{activeTab === 'rekap' && (
+  <div className="animate-fade-in space-y-6">
+    {/* Header */}
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h2 className="text-xl font-bold text-blue-900">📋 Rekap Absensi Real-Time</h2>
+        <p className="text-slate-500 text-sm">Data kehadiran warga sekolah berdasarkan kategori</p>
+      </div>
+      {/* Tombol Export */}
+      <div className="flex gap-2">
+        <button onClick={() => handleExportData('pdf')} className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 transition-all flex items-center gap-2">
+          <span>📄</span> PDF
+        </button>
+        <button onClick={() => handleExportData('excel')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-700 transition-all flex items-center gap-2">
+          <span>📊</span> Excel
+        </button>
+      </div>
+    </div>
 
-                      {/* Tombol Export yang Mengikuti Filter Terpilih */}
-                      <div className="flex gap-2">
-                        <button onClick={() => handleExportData('pdf')} className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 transition-all flex items-center gap-2" title="Download PDF sesuai filter">
-                          <span>📄</span> PDF
-                        </button>
-                        <button onClick={() => handleExportData('excel')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-700 transition-all flex items-center gap-2" title="Download Excel sesuai filter">
-                          <span>📊</span> Excel
-                        </button>
+    {/* Tab Selector - 4 Kategori */}
+    <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm p-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[
+          { id: 'siswa-datang', label: 'Siswa Datang', icon: '🧑‍🎓', role: 'siswa', action: 'datang', color: 'emerald' },
+          { id: 'siswa-pulang', label: 'Siswa Pulang', icon: '🧑‍🎓', role: 'siswa', action: 'pulang', color: 'rose' },
+          { id: 'guru-datang', label: 'Guru Datang', icon: '👨‍🏫', role: 'guru', action: 'datang', color: 'indigo' },
+          { id: 'guru-pulang', label: 'Guru Pulang', icon: '👨‍', role: 'guru', action: 'pulang', color: 'amber' },
+        ].map((tab) => {
+          const isActive = rekapRoleFilter === tab.role && rekapActionFilter === tab.action;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setRekapRoleFilter(tab.role);
+                setRekapActionFilter(tab.action);
+              }}
+              className={`p-3 rounded-2xl border-2 transition-all text-left ${
+                isActive 
+                  ? tab.color === 'emerald' ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' :
+                    tab.color === 'rose' ? 'bg-rose-600 border-rose-500 text-white shadow-lg' :
+                    tab.color === 'indigo' ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' :
+                    'bg-amber-600 border-amber-500 text-white shadow-lg'
+                  : 'bg-slate-50 border-transparent text-slate-600 hover:border-blue-200 hover:bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${
+                  isActive ? 'bg-white/20' : 'bg-white shadow-sm border border-slate-100'
+                }`}>
+                  {tab.icon}
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-tight">{tab.label}</p>
+                  <p className={`text-[10px] font-medium ${isActive ? 'text-white/80' : 'text-slate-400'}`}>
+                    {tab.role === 'siswa' ? 'Siswa' : 'Guru'} - {tab.action === 'datang' ? 'Datang' : 'Pulang'}
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+
+    {/* Filter Section */}
+    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-sm p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Filter Bulan (untuk semua) */}
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">📅 Filter Bulan</label>
+          <select
+            value={rekapMonthFilter}
+            onChange={(e) => setRekapMonthFilter(e.target.value)}
+            className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white"
+          >
+            <option value="">Semua Bulan</option>
+            {getAvailableMonths().map(month => (
+              <option key={month} value={month}>{formatMonthName(month)}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Filter Kelas (hanya untuk siswa) */}
+        {rekapRoleFilter === 'siswa' && (
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">🏫 Filter Kelas</label>
+            <select
+              value={rekapClassFilter}
+              onChange={(e) => setRekapClassFilter(e.target.value)}
+              className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white"
+            >
+              <option value="">Semua Kelas</option>
+              {getAvailableClasses().map(cls => (
+                <option key={cls} value={cls}>{cls}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Info Filter Aktif */}
+        <div className="flex items-center gap-2 ml-auto">
+          <div className={`px-3 py-2 rounded-xl text-xs font-bold border-2 ${
+            rekapRoleFilter === 'siswa' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+          }`}>
+            {rekapRoleFilter === 'siswa' ? '🧑‍ Siswa' : '‍🏫 Guru'} - {rekapActionFilter === 'datang' ? '📥 Datang' : '📤 Pulang'}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Tabel Data */}
+    <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className={`${
+              rekapRoleFilter === 'siswa' 
+                ? rekapActionFilter === 'datang' ? 'bg-emerald-600' : 'bg-rose-600'
+                : rekapActionFilter === 'datang' ? 'bg-indigo-600' : 'bg-amber-600'
+            } text-white`}>
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">No</th>
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">Hari</th>
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">Tanggal</th>
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">Nama</th>
+              {rekapRoleFilter === 'siswa' && (
+                <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">Kelas</th>
+              )}
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">
+                {rekapActionFilter === 'datang' ? '📥 Jam Datang' : '📤 Jam Pulang'}
+              </th>
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">Mode</th>
+              <th className="px-4 py-4 text-left font-bold uppercase tracking-wider text-xs">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {(() => {
+              const filteredData = getFilteredRekapData();
+
+              return filteredData.length > 0 ? filteredData.map((item, idx) => (
+                <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                  <td className="px-4 py-4 text-slate-500 font-bold text-xs">{idx + 1}</td>
+                  <td className="px-4 py-4 font-bold text-slate-700 text-xs">{getDayName(item.rawDate)}</td>
+                  <td className="px-4 py-4 text-slate-600 text-xs">{formatDateSimple(item.rawDate)}</td>
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 overflow-hidden">
+                        {item.user_name?.charAt(0) || '?'}
                       </div>
+                      <div className="font-bold text-blue-900 text-xs">{item.user_name}</div>
                     </div>
+                  </td>
+                  {rekapRoleFilter === 'siswa' && (
+                    <td className="px-4 py-4">
+                      <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-200">
+                        {item.class_name || '-'}
+                      </span>
+                    </td>
+                  )}
+                  <td className={`px-4 py-4 font-mono font-bold text-xs ${
+                    rekapActionFilter === 'datang' ? 'text-emerald-600' : 'text-rose-600'
+                  }`}>
+                    {rekapActionFilter === 'datang' 
+                      ? formatTimeOnly(item.arrival) 
+                      : (item.departure ? formatTimeOnly(item.departure) : '--:--')
+                    }
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                      {item.mode}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                      item.status === 'hadir' ? 'bg-green-100 text-green-700' : 
+                      item.status === 'terlambat' ? 'bg-amber-100 text-amber-700' : 
+                      item.status === 'izin' ? 'bg-sky-100 text-sky-700' :
+                      item.status === 'sakit' ? 'bg-violet-100 text-violet-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {item.status}
+                    </span>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={rekapRoleFilter === 'siswa' ? 8 : 7} className="px-4 py-12 text-center text-slate-400 italic">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-4xl">📭</span>
+                      <p className="font-medium">Tidak ada data untuk ditampilkan</p>
+                      <p className="text-xs">
+                        {rekapRoleFilter === 'siswa' ? 'Siswa' : 'Guru'} - {rekapActionFilter === 'datang' ? 'Datang' : 'Pulang'}
+                        {rekapMonthFilter && ` - ${formatMonthName(rekapMonthFilter)}`}
+                        {rekapClassFilter && ` - Kelas ${rekapClassFilter}`}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })()}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer Info */}
+      {(() => {
+        const filteredData = getFilteredRekapData();
+        if (filteredData.length === 0) return null;
+
+        return (
+          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t border-blue-100 flex justify-between items-center">
+            <div className="text-sm text-slate-600 font-medium">
+              Menampilkan <span className="font-bold text-blue-600">{filteredData.length}</span> data
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>📅 {rekapMonthFilter ? formatMonthName(rekapMonthFilter) : 'Semua Bulan'}</span>
+              {rekapRoleFilter === 'siswa' && rekapClassFilter && (
+                <span>🏫 Kelas {rekapClassFilter}</span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  </div>
+)}
+
+{/* ✨ TAB: Users - REDESIGN MODERN */}
+{activeTab === 'users' && (
+  <div className="animate-fade-in space-y-6">
+    {/* Header dengan Tombol Aksi */}
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h2 className="text-2xl font-black text-blue-900 tracking-tight flex items-center gap-2">
+          <span>👥</span> Manajemen Pengguna
+        </h2>
+        <p className="text-slate-500 text-sm mt-1">Kelola akun admin, guru, dan siswa dalam satu dashboard</p>
+      </div>
+      <button 
+        onClick={() => openCreateModal()} 
+        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-sm font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-blue-300/50 flex items-center gap-2 border-2 border-blue-400"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+        </svg>
+        Tambah Pengguna
+      </button>
+    </div>
+
+    {/* ✨ Summary Cards - Statistik Pengguna */}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-5 border-2 border-slate-200 hover:shadow-lg transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm border border-slate-200">
+            👥
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Total</span>
+        </div>
+        <p className="text-3xl font-black text-slate-800">{users.length}</p>
+        <p className="text-xs text-slate-500 font-medium mt-1">Semua Pengguna</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5 border-2 border-blue-200 hover:shadow-lg hover:shadow-blue-200/50 transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center text-2xl shadow-sm">
+            🛡️
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">Admin</span>
+        </div>
+        <p className="text-3xl font-black text-blue-900">
+          {users.filter(u => u.role === 'admin').length}
+        </p>
+        <p className="text-xs text-blue-600 font-medium mt-1">Administrator</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border-2 border-indigo-200 hover:shadow-lg hover:shadow-indigo-200/50 transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <div className="w-12 h-12 bg-indigo-500 rounded-xl flex items-center justify-center text-2xl shadow-sm">
+            👨‍🏫
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Guru</span>
+        </div>
+        <p className="text-3xl font-black text-indigo-900">
+          {users.filter(u => u.role === 'guru').length}
+        </p>
+        <p className="text-xs text-indigo-600 font-medium mt-1">Tenaga Pengajar</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-5 border-2 border-emerald-200 hover:shadow-lg hover:shadow-emerald-200/50 transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-2xl shadow-sm">
+            🧑‍🎓
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Siswa</span>
+        </div>
+        <p className="text-3xl font-black text-emerald-900">
+          {users.filter(u => u.role === 'siswa').length}
+        </p>
+        <p className="text-xs text-emerald-600 font-medium mt-1">Peserta Didik</p>
+      </div>
+    </div>
+
+    {/* ✨ Search & Filter Bar */}
+    <div className="bg-white rounded-2xl border-2 border-blue-100 shadow-sm p-4">
+      <div className="flex flex-col md:flex-row gap-3">
+        {/* Search Input */}
+        <div className="flex-1 relative">
+          <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Cari nama, email, atau NIS/NIP..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+          />
+        </div>
+
+        {/* Filter Role */}
+        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+          {[
+            { id: 'all', label: 'Semua', icon: '👥' },
+            { id: 'admin', label: 'Admin', icon: '🛡️' },
+            { id: 'guru', label: 'Guru', icon: '👨‍🏫' },
+            { id: 'siswa', label: 'Siswa', icon: '🧑‍🎓' },
+          ].map((filter) => {
+            const isActive = userRoleFilter === filter.id;
+            return (
+              <button
+                key={filter.id}
+                onClick={() => setUserRoleFilter(filter.id)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  isActive 
+                    ? 'bg-white text-blue-600 shadow-md' 
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <span>{filter.icon}</span>
+                <span>{filter.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+
+    {/* ✨ User Cards Grid */}
+    {(() => {
+      const filteredUsers = filterData(users, searchQuery).filter(u => 
+        userRoleFilter === 'all' || u.role === userRoleFilter
+      );
+
+      if (filteredUsers.length === 0) {
+        return (
+          <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl p-12 text-center">
+            <div className="w-20 h-20 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center text-4xl">
+              👥
+            </div>
+            <h3 className="text-lg font-bold text-slate-700 mb-2">
+              {searchQuery ? 'Tidak ditemukan' : 'Belum ada pengguna'}
+            </h3>
+            <p className="text-sm text-slate-500 mb-6">
+              {searchQuery 
+                ? `Tidak ada pengguna yang cocok dengan "${searchQuery}"`
+                : 'Klik tombol "Tambah Pengguna" untuk menambahkan pengguna baru'}
+            </p>
+            {!searchQuery && (
+              <button 
+                onClick={() => openCreateModal()}
+                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all"
+              >
+                ➕ Tambah Pengguna Pertama
+              </button>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredUsers.map((u) => {
+            // Konfigurasi berdasarkan role
+            const roleConfig = {
+              admin: {
+                bgGradient: 'from-blue-500 to-indigo-600',
+                bgLight: 'bg-blue-50',
+                borderColor: 'border-blue-200',
+                textColor: 'text-blue-700',
+                icon: '🛡️',
+                label: 'Administrator'
+              },
+              guru: {
+                bgGradient: 'from-indigo-500 to-purple-600',
+                bgLight: 'bg-indigo-50',
+                borderColor: 'border-indigo-200',
+                textColor: 'text-indigo-700',
+                icon: '👨‍🏫',
+                label: 'Guru'
+              },
+              siswa: {
+                bgGradient: 'from-emerald-500 to-teal-600',
+                bgLight: 'bg-emerald-50',
+                borderColor: 'border-emerald-200',
+                textColor: 'text-emerald-700',
+                icon: '🧑‍🎓',
+                label: 'Siswa'
+              }
+            }[u.role] || {
+              bgGradient: 'from-slate-500 to-slate-600',
+              bgLight: 'bg-slate-50',
+              borderColor: 'border-slate-200',
+              textColor: 'text-slate-700',
+              icon: '👤',
+              label: u.role
+            };
+
+            return (
+              <div 
+                key={u.id} 
+                className={`bg-white rounded-2xl border-2 ${roleConfig.borderColor} shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden group`}
+              >
+                {/* Header Card dengan Gradient */}
+                <div className={`bg-gradient-to-r ${roleConfig.bgGradient} p-4 relative`}>
+                  <div className="absolute top-3 right-3">
+                    <span className="px-2.5 py-1 bg-white/20 backdrop-blur-sm text-white text-[10px] font-black rounded-full border border-white/30 uppercase tracking-wider">
+                      {roleConfig.label}
+                    </span>
                   </div>
-
-                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-blue-600 text-white">
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Hari</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Tanggal</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Nama</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Role</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Datang</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Pulang</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Mode</th>
-                            <th className="px-4 py-4 text-left font-bold uppercase tracking-wider">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {(() => {
-                            const filteredData = getGroupedRekapData().filter(item => 
-                              rekapRoleFilter === 'all' || (item.role || '').toLowerCase() === rekapRoleFilter
-                            );
-
-                            return filteredData.length > 0 ? filteredData.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                                <td className="px-4 py-4 font-bold text-slate-700">{getDayName(item.rawDate)}</td>
-                                <td className="px-4 py-4 text-slate-600">{formatDateSimple(item.rawDate)}</td>
-                                <td className="px-4 py-4">
-                                  <div className="font-bold text-blue-900">{item.user_name}</div>
-                                </td>
-                                <td className="px-4 py-4">
-                                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border ${
-                                    item.role === 'guru' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                  }`}>
-                                    {item.role}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-4 font-mono font-bold text-emerald-600">
-                                  {formatTimeOnly(item.arrival)}
-                                </td>
-                                <td className="px-4 py-4 font-mono font-bold text-rose-600">
-                                  {item.departure ? formatTimeOnly(item.departure) : '--:--'}
-                                </td>
-                                <td className="px-4 py-4">
-                                  <span className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                    {item.mode}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-4">
-                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                                    item.status === 'hadir' ? 'bg-green-100 text-green-700' : 
-                                    item.status === 'terlambat' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                                  }`}>
-                                    {item.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            )) : (
-                              <tr><td colSpan="8" className="px-4 py-12 text-center text-slate-400 italic">Tidak ada data {rekapRoleFilter !== 'all' ? rekapRoleFilter : ''} untuk ditampilkan.</td></tr>
-                            );
-                          })()}
-                        </tbody>
-                      </table>
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl border-2 border-white/30 shadow-lg">
+                      {u.photo ? (
+                        <img src={u.photo} alt={u.name} className="w-full h-full object-cover rounded-2xl" />
+                      ) : (
+                        <span>{roleConfig.icon}</span>
+                      )}
                     </div>
-
-                    {(() => {
-                      const filteredData = getGroupedRekapData().filter(item => 
-                        rekapRoleFilter === 'all' || (item.role || '').toLowerCase() === rekapRoleFilter
-                      );
-
-                      if (filteredData.length === 0) return null;
-
-                      return (
-                        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t border-blue-100 text-sm text-slate-600 font-medium">
-                          Menampilkan <span className="font-bold text-blue-600">{filteredData.length}</span> data dari seluruh database tanpa pembatasan.
-                        </div>
-                      );
-                    })()}
+                    <div className="text-white flex-1 min-w-0">
+                      <h3 className="font-black text-base truncate">{u.name}</h3>
+                      <p className="text-xs text-white/80 truncate">{u.email}</p>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {activeTab === 'izin' && (
-                <div className="animate-fade-in space-y-6">
-                  <div className="bg-white rounded-3xl border-2 border-amber-100 shadow-xl p-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div>
-                        <h2 className="text-xl font-bold text-amber-900">📝 Persetujuan Izin & Sakit</h2>
-                        <p className="text-sm text-slate-500">Tinjau permintaan dari siswa atau guru dan putuskan apakah disetujui atau ditolak.</p>
-                      </div>
-                      <div className="px-4 py-2 rounded-full bg-amber-50 text-amber-700 text-xs font-black">
-                        {pendingPermissionRequests.length} menunggu
-                      </div>
-                    </div>
+                {/* Body Card */}
+                <div className="p-4 space-y-3">
+                  {/* Info NIS/NIP */}
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      {u.role === 'guru' ? 'NIP' : u.role === 'siswa' ? 'NIS' : 'ID'}
+                    </span>
+                    <span className={`px-2.5 py-1 ${roleConfig.bgLight} ${roleConfig.textColor} rounded-lg text-xs font-mono font-bold`}>
+                      {u.user_id || u.nis || '-'}
+                    </span>
                   </div>
 
-                  {pendingPermissionRequests.length === 0 ? (
-                    <div className="bg-white rounded-2xl border-2 border-slate-100 p-10 text-center text-slate-500">
-                      Tidak ada permintaan izin atau sakit yang menunggu persetujuan.
-                    </div>
-                  ) : (
-                    <div className="grid gap-4">
-                      {pendingPermissionRequests.map((request) => {
-                        const loadingKey = `${request.id || request.attendance_id || request.record_id || request.request_id}-approve`;
-                        const rejectKey = `${request.id || request.attendance_id || request.record_id || request.request_id}-reject`;
-                        return (
-                          <div key={request.id || request.attendance_id || request.record_id || request.request_id} className="bg-white rounded-2xl border-2 border-amber-100 shadow-lg p-5">
-                            <div className="flex flex-col lg:flex-row lg:justify-between gap-4">
-                              <div className="space-y-3">
-                                <div>
-                                  <p className="text-xs font-black text-amber-700 uppercase tracking-wide">{request.status === 'sakit' ? 'Sakit' : 'Izin'}</p>
-                                  <h3 className="text-lg font-bold text-slate-900">{request.user_name || request.name || request.full_name || 'Pengguna'}</h3>
-                                </div>
-                                <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                                  <span className="px-2.5 py-1 rounded-full bg-slate-100">Role: {request.role || '-'}</span>
-                                  <span className="px-2.5 py-1 rounded-full bg-slate-100">Tanggal: {formatDateSimple(request.date || request.created_at || request.attendance_time)}</span>
-                                </div>
-                                <p className="text-sm text-slate-600 leading-relaxed">{request.notes || request.reason || request.keterangan || 'Tidak ada alasan tambahan.'}</p>
-                              </div>
-                              <div className="flex flex-col gap-2 lg:min-w-[220px]">
-                                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-black text-center">Menunggu Persetujuan</span>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => handlePermissionDecision(request, 'approve')}
-                                    disabled={permissionDecisionLoading === loadingKey}
-                                    className="flex-1 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-60"
-                                  >
-                                    {permissionDecisionLoading === loadingKey ? 'Memproses...' : 'Setujui'}
-                                  </button>
-                                  <button
-                                    onClick={() => handlePermissionDecision(request, 'reject')}
-                                    disabled={permissionDecisionLoading === rejectKey}
-                                    className="flex-1 px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-bold disabled:opacity-60"
-                                  >
-                                    {permissionDecisionLoading === rejectKey ? 'Memproses...' : 'Tolak'}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                  {/* Info Kelas (khusus siswa) */}
+                  {u.role === 'siswa' && (
+                    <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Kelas</span>
+                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold">
+                        {u.class_name || u.kelas || '-'}
+                      </span>
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* TAB: Users */}
-              {activeTab === 'users' && (
-                <div className="animate-fade-in">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h2 className="text-lg font-bold text-blue-800">Daftar Pengguna</h2>
-                      <p className="text-slate-500 text-sm">Kelola semua user sistem</p>
-                    </div>
-                    <button onClick={() => openCreateModal()} className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-medium hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 border-2 border-blue-300">
-                      <span>➕</span> Tambah User
+                  {/* Info Telepon */}
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <span>📱</span> Telepon
+                    </span>
+                    <span className="text-xs text-slate-700 font-medium">
+                      {u.phone || '-'}
+                    </span>
+                  </div>
+
+                  {/* Tombol Aksi */}
+                  <div className="flex gap-2 pt-2">
+                    <button 
+                      onClick={() => openEditModal(u)} 
+                      className="flex-1 px-3 py-2.5 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-blue-200 hover:border-blue-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteUser(u.id)} 
+                      className="flex-1 px-3 py-2.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-rose-200 hover:border-rose-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a2 2 0 012-2h2a2 2 0 012 2v3" />
+                      </svg>
+                      Hapus
                     </button>
                   </div>
-                  <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-md overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-blue-50 border-b-2 border-blue-200">
-                          <tr>
-                            {['Foto', 'Nama', 'Email', 'NIS/NIP', 'Role', 'Aksi'].map((h) => (
-                              <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wide">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-blue-50">
-                          {filterData(users, searchQuery).map((u) => (
-                            <tr key={u.id} className="hover:bg-blue-50 transition-colors">
-                              <td className="px-6 py-4">
-                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border-2 border-blue-200">
-                                  {u.photo ? (
-                                    <img src={u.photo} alt={u.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <span className="text-blue-400 font-bold">{u.name?.charAt(0) || '?'}</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className="font-medium text-blue-800 text-sm">{u.name}</span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-slate-600">{u.email}</td>
-                              <td className="px-6 py-4 text-sm text-slate-600 font-mono">{u.user_id || '-'}</td>
-                              <td className="px-6 py-4">
-                                <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border-2 ${u.role === 'guru' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                  u.role === 'siswa' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                                    'bg-blue-100 text-blue-700 border-blue-200'
-                                  }`}>
-                                  {u.role}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex gap-2">
-                                  <button onClick={() => openEditModal(u)} className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all border border-blue-200">Edit</button>
-                                  <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 hover:text-red-800 font-medium text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all border border-red-200">Hapus</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </div>
-              )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    })()}
 
-              {/* TAB: Data Guru */}
-              {activeTab === 'dataGuru' && (
-                <div className="animate-fade-in">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                    <div>
-                      <h2 className="text-2xl font-black text-blue-900 tracking-tight">🎓 Manajemen Data Guru</h2>
-                      <p className="text-slate-500 text-sm">Kelola profil tenaga pendidik, NIP, dan akses pengajaran</p>
-                    </div>
-                    <button onClick={() => openCreateModal({ role: 'guru' })} className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-sm font-black hover:shadow-lg transition-all flex items-center gap-2 border-2 border-blue-400">
-                      <span>➕</span> Tambah Guru
-                    </button>
-                  </div>
-
-                  <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-sm p-4 mb-8">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-xl shadow-lg border-2 border-blue-400 text-white">
-                        👨‍🏫
-                      </div>
-                      <div>
-                        <p className="text-xs font-black uppercase text-blue-900 tracking-tighter">Daftar Tenaga Pendidik</p>
-                        <p className="text-[10px] font-medium text-slate-400">Total guru terdaftar: {guruData.length} Orang</p>
-                      </div>
-                      <div className="ml-auto relative max-w-xs w-full hidden sm:block">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                        <input
-                          type="text"
-                          placeholder="Cari nama atau NIP..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-3xl border-2 border-blue-200 shadow-xl overflow-hidden">
-                    <div className="px-6 py-4 bg-blue-50 border-b-2 border-blue-100 flex justify-between items-center">
-                      <h3 className="font-black text-blue-900 uppercase tracking-wider text-xs">Informasi Guru Aktif</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-slate-50/50 border-b border-slate-100">
-                          <tr>
-                            {['Profil Guru', 'Email', 'NIP / ID', 'Aksi'].map((h) => (
-                              <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {guruData.length === 0 ? (
-                            <tr>
-                              <td colSpan="4" className="px-6 py-16 text-center text-slate-400 italic">Belum ada data guru.</td>
-                            </tr>
-                          ) : (
-                            filterData(guruData, searchQuery).map((guru) => (
-                              <tr key={guru.id} className="group hover:bg-blue-50/30 transition-colors">
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center overflow-hidden border border-blue-200 group-hover:scale-105 transition-transform">
-                                      {guru.photo ? (
-                                        <img src={guru.photo} alt={guru.name} className="w-full h-full object-cover" />
-                                      ) : (
-                                        <span className="font-black text-blue-600">{guru.name?.charAt(0)}</span>
-                                      )}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-bold text-slate-800 truncate">{guru.name}</p>
-                                      <p className="text-[10px] font-medium text-blue-500 uppercase tracking-tighter">Tenaga Pendidik</p>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-xs font-bold text-slate-600">{guru.email}</td>
-                                <td className="px-6 py-4">
-                                  <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
-                                    {guru.user_id || '-'}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => handleShowQR(guru, 'guru')}
-                                      className="p-2 bg-white text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                                      title="Lihat QR Code"
-                                    >
-                                      📱
-                                    </button>
-                                    <button 
-                                      onClick={() => { setSelectedProfileUser(guru); setShowProfileModal(true); }}
-                                      className="p-2 bg-white text-indigo-600 rounded-xl border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
-                                      title="Detail Profil"
-                                    >
-                                      👤
-                                    </button>
-                                    <button 
-                                      onClick={() => openEditModal(guru)}
-                                      className="p-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
-                                    >
-                                      ✏️
-                                    </button>
-                                    <button 
-                                      onClick={() => handleDeleteUser(guru.id)}
-                                      className="p-2 bg-white text-red-600 rounded-xl border border-red-100 hover:bg-red-600 hover:text-white transition-all shadow-sm"
-                                    >
-                                      🗑️
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
+    {/* Footer Info */}
+    {(() => {
+      const filteredUsers = filterData(users, searchQuery).filter(u => 
+        userRoleFilter === 'all' || u.role === userRoleFilter
+      );
+      
+      if (filteredUsers.length === 0) return null;
+      
+      return (
+        <div className="bg-gradient-to-r from-blue-50 to-slate-50 rounded-2xl border-2 border-blue-100 px-6 py-4 flex items-center justify-between">
+          <p className="text-sm text-slate-600">
+            Menampilkan <span className="font-black text-blue-600">{filteredUsers.length}</span> pengguna
+          </p>
+          <p className="text-xs text-slate-500">
+            {userRoleFilter !== 'all' && `Filter: ${userRoleFilter.charAt(0).toUpperCase() + userRoleFilter.slice(1)}`}
+          </p>
+        </div>
+      );
+    })()}
+  </div>
+)}
 
               {/* TAB: Data Siswa */}
               {activeTab === 'dataSiswa' && (
@@ -3885,109 +4199,252 @@ const fetchAttendanceRecords = async (config = {}) => {
                 </div>
               )}
 
-              {/* ✨ TAMBAHAN: TAB: Pesan WhatsApp */}
-              {activeTab === 'pesanWA' && (
-                <div className="animate-fade-in">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                    <div>
-                      <h2 className="text-2xl font-black text-emerald-900 tracking-tight">💬 Komunikasi Orang Tua</h2>
-                      <p className="text-slate-500 text-sm">Kirim notifikasi atau pesan personal ke nomor WhatsApp orang tua</p>
-                    </div>
-                  </div>
+{/* ✨ TAMBAHAN: TAB: Pesan WhatsApp - DENGAN FITUR MASSAL */}
+{activeTab === 'pesanWA' && (
+  <div className="animate-fade-in">
+    <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+      <div>
+        <h2 className="text-2xl font-black text-emerald-900 tracking-tight">💬 Komunikasi Orang Tua</h2>
+        <p className="text-slate-500 text-sm">Kirim notifikasi atau pesan personal ke nomor WhatsApp orang tua</p>
+      </div>
+    </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <div className="lg:col-span-2 bg-white rounded-3xl border-2 border-emerald-100 p-6 shadow-sm">
-                      <div className="flex items-center gap-3 mb-4">
-                        <span className="text-xl">📝</span>
-                        <p className="text-xs font-black uppercase text-emerald-900 tracking-widest">Template Pesan Otomatis</p>
-                      </div>
-                      <textarea
-                        value={waMessageTemplate}
-                        onChange={(e) => setWaMessageTemplate(e.target.value)}
-                        rows="3"
-                        className="w-full p-4 bg-emerald-50/30 border-2 border-emerald-100 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all resize-none"
-                        placeholder="Tulis template pesan di sini..."
-                      />
-                      <p className="mt-3 text-[10px] font-bold text-slate-400">💡 Tip: Nama siswa akan otomatis disematkan di akhir pesan untuk kemudahan personalisasi.</p>
-                    </div>
-                    <div className="bg-emerald-600 rounded-3xl p-6 text-white shadow-lg border-2 border-emerald-400 flex flex-col justify-center">
-                      <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-2xl mb-4">📱</div>
-                      <h4 className="text-lg font-black leading-tight mb-2">WhatsApp Gateway Aktif</h4>
-                      <p className="text-emerald-100 text-xs font-medium">Pastikan browser Anda memberikan izin pop-up untuk membuka jendela percakapan WhatsApp.</p>
-                    </div>
-                  </div>
+    {/* Template Selector */}
+    <div className="bg-white rounded-3xl border-2 border-emerald-100 shadow-sm p-6 mb-6">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-2xl">📝</span>
+        <div>
+          <p className="text-sm font-black uppercase text-emerald-900 tracking-widest">Template Pesan Otomatis</p>
+          <p className="text-xs text-slate-500">Pilih template pesan yang sesuai dengan kebutuhan</p>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <button
+          onClick={() => setWaTemplateType('pulang')}
+          className={`p-4 rounded-2xl border-2 text-left transition-all ${
+            waTemplateType === 'pulang' 
+              ? 'bg-emerald-50 border-emerald-500 shadow-md' 
+              : 'bg-slate-50 border-slate-200 hover:border-emerald-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+              waTemplateType === 'pulang' ? 'bg-emerald-500 text-white' : 'bg-white'
+            }`}>
+              🏠
+            </div>
+            <div>
+              <p className="font-bold text-slate-800">Pesan Waktu Pulang</p>
+              <p className="text-xs text-slate-500">Informasi siswa telah pulang</p>
+            </div>
+          </div>
+        </button>
+        
+        <button
+          onClick={() => setWaTemplateType('peringatan')}
+          className={`p-4 rounded-2xl border-2 text-left transition-all ${
+            waTemplateType === 'peringatan' 
+              ? 'bg-amber-50 border-amber-500 shadow-md' 
+              : 'bg-slate-50 border-slate-200 hover:border-amber-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+              waTemplateType === 'peringatan' ? 'bg-amber-500 text-white' : 'bg-white'
+            }`}>
+              ⚠️
+            </div>
+            <div>
+              <p className="font-bold text-slate-800">Pesan Peringatan</p>
+              <p className="text-xs text-slate-500">Anak pulang lebih awal dari jadwal</p>
+            </div>
+          </div>
+        </button>
+      </div>
+      
+      <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+        <p className="text-xs font-bold text-blue-700 mb-2">📋 Preview Template:</p>
+        <textarea
+          value={waMassMessage}
+          onChange={(e) => setWaMassMessage(e.target.value)}
+          rows="8"
+          className="w-full p-3 bg-white border border-blue-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+        />
+        <p className="mt-2 text-[10px] text-slate-500">
+          💡 Variabel otomatis: {'{nama_siswa}'}, {'{nama_ortu}'}, {'{waktu}'}, {'{sekolah}'}
+        </p>
+      </div>
+    </div>
 
-                  <div className="bg-white rounded-3xl border-2 border-emerald-100 shadow-sm p-4 mb-8">
-                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                      {['1', '2', '3'].map((kelas) => (
-                        <button
-                          key={kelas}
-                          onClick={() => setActiveWaSection(kelas)}
-                          className={`min-w-[150px] flex-shrink-0 group rounded-2xl border-2 p-3 transition-all text-left ${activeWaSection === kelas ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-slate-50 border-transparent text-slate-600 hover:border-emerald-200'}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${activeWaSection === kelas ? 'bg-white/20' : 'bg-white border border-slate-100 shadow-sm'}`}>🏫</div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-tight">Pilih Kelas</p>
-                              <p className={`text-xs font-bold ${activeWaSection === kelas ? 'text-emerald-100' : 'text-slate-800'}`}>Tingkat {kelas}</p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+    {/* Class Selector */}
+    <div className="bg-white rounded-3xl border-2 border-emerald-100 shadow-sm p-4 mb-6">
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        {['1', '2', '3'].map((kelas) => (
+          <button
+            key={kelas}
+            onClick={() => { setActiveWaSection(kelas); setSelectedParents([]); }}
+            className={`min-w-[150px] flex-shrink-0 group rounded-2xl border-2 p-3 transition-all text-left ${
+              activeWaSection === kelas 
+                ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' 
+                : 'bg-slate-50 border-transparent text-slate-600 hover:border-emerald-200'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${
+                activeWaSection === kelas ? 'bg-white/20' : 'bg-white border border-slate-100 shadow-sm'
+              }`}>🏫</div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-tight">Pilih Kelas</p>
+                <p className={`text-xs font-bold ${activeWaSection === kelas ? 'text-emerald-100' : 'text-slate-800'}`}>
+                  Tingkat {kelas}
+                </p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
 
-                  <div className="space-y-6">
-                    <div className="bg-white rounded-3xl border-2 border-emerald-200 shadow-xl overflow-hidden">
-                      <div className="px-6 py-4 bg-emerald-50 border-b-2 border-emerald-100 flex justify-between items-center">
-                        <h3 className="font-black text-emerald-900 uppercase tracking-wider text-xs">Kontak Orang Tua Siswa Kelas {activeWaSection}</h3>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-slate-50/50 border-b border-slate-100">
-                            <tr>
-                              {['Siswa', 'Nama Orang Tua', 'Nomor WhatsApp', 'Aksi'].map((h) => (
-                                <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(() => {
-                              const currentData = filterSiswaForWA(siswaData.filter(s => getClassGroup(s) === activeWaSection), waSearchQuery);
-                              if (currentData.length === 0) return (
-                                <tr><td colSpan="4" className="px-6 py-12 text-center text-slate-400 italic">Tidak ada data siswa untuk dihubungi.</td></tr>
-                              );
-                              return currentData.map((siswa) => (
-                                <tr key={siswa.id} className="group hover:bg-emerald-50/30 transition-colors">
-                                  <td className="px-6 py-4">
-                                    <p className="text-sm font-bold text-slate-800">{siswa.name}</p>
-                                    <p className="text-[10px] font-medium text-slate-400 font-mono">NIS: {siswa.user_id}</p>
-                                  </td>
-                                  <td className="px-6 py-4 text-xs font-bold text-slate-600">{siswa.parent_name || '-'}</td>
-                                  <td className="px-6 py-4">
-                                    <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
-                                      {siswa.parent_phone || 'Tidak ada nomor'}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                    <button 
-                                      onClick={() => handleSendWhatsApp(siswa.parent_phone, siswa.name)}
-                                      disabled={!siswa.parent_phone}
-                                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter hover:bg-emerald-700 transition-all shadow-md disabled:bg-slate-200 disabled:shadow-none"
-                                    >
-                                      <span>💬</span> Kirim Pesan
-                                    </button>
-                                  </td>
-                                </tr>
-                              ));
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+    {/* Table dengan Pilih Semua */}
+    <div className="bg-white rounded-3xl border-2 border-emerald-200 shadow-xl overflow-hidden">
+      <div className="px-6 py-4 bg-emerald-50 border-b-2 border-emerald-100 flex justify-between items-center">
+        <h3 className="font-black text-emerald-900 uppercase tracking-wider text-xs">
+          Kontak Orang Tua Siswa Kelas {activeWaSection}
+        </h3>
+        {selectedParents.length > 0 && (
+          <span className="px-3 py-1 bg-emerald-600 text-white rounded-full text-xs font-bold">
+            {selectedParents.length} dipilih
+          </span>
+        )}
+      </div>
+      
+      {/* Action Bar */}
+      <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+        <button
+          onClick={handleSelectAllParents}
+          className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-emerald-600 transition-colors"
+        >
+          <input
+            type="checkbox"
+            checked={
+              filterSiswaForWA(
+                siswaData.filter(s => getClassGroup(s) === activeWaSection),
+                waSearchQuery
+              ).length > 0 && 
+              filterSiswaForWA(
+                siswaData.filter(s => getClassGroup(s) === activeWaSection),
+                waSearchQuery
+              ).every(s => selectedParents.includes(s.id))
+            }
+            onChange={handleSelectAllParents}
+            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+          />
+          Pilih Semua
+        </button>
+        
+        <button
+          onClick={handleSendMassWhatsApp}
+          disabled={selectedParents.length === 0 || isSendingMass || !waMassMessage.trim()}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all shadow-md disabled:bg-slate-300 disabled:shadow-none"
+        >
+          {isSendingMass ? (
+            <>
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Mengirim...
+            </>
+          ) : (
+            <>
+              <span>💬</span>
+              Kirim Pesan Massal ({selectedParents.length})
+            </>
+          )}
+        </button>
+      </div>
+      
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-slate-50/50 border-b border-slate-100">
+            <tr>
+              <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] w-16">
+                <input
+                  type="checkbox"
+                  checked={
+                    filterSiswaForWA(
+                      siswaData.filter(s => getClassGroup(s) === activeWaSection),
+                      waSearchQuery
+                    ).length > 0 && 
+                    filterSiswaForWA(
+                      siswaData.filter(s => getClassGroup(s) === activeWaSection),
+                      waSearchQuery
+                    ).every(s => selectedParents.includes(s.id))
+                  }
+                  onChange={handleSelectAllParents}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+              </th>
+              {['Siswa', 'Nama Orang Tua', 'Nomor WhatsApp', 'Aksi'].map((h) => (
+                <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {(() => {
+              const currentData = filterSiswaForWA(
+                siswaData.filter(s => getClassGroup(s) === activeWaSection),
+                waSearchQuery
+              );
+              if (currentData.length === 0) return (
+                <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-400 italic">Tidak ada data siswa untuk dihubungi.</td></tr>
+              );
+              return currentData.map((siswa) => (
+                <tr key={siswa.id} className={`group transition-colors ${
+                  selectedParents.includes(siswa.id) ? 'bg-emerald-50/50' : 'hover:bg-emerald-50/30'
+                }`}>
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedParents.includes(siswa.id)}
+                      onChange={() => handleToggleParent(siswa.id)}
+                      disabled={!siswa.parent_phone}
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                    />
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-sm font-bold text-slate-800">{siswa.name}</p>
+                    <p className="text-[10px] font-medium text-slate-400 font-mono">NIS: {siswa.user_id}</p>
+                  </td>
+                  <td className="px-6 py-4 text-xs font-bold text-slate-600">{siswa.parent_name || '-'}</td>
+                  <td className="px-6 py-4">
+                    <span className={`text-xs font-black px-2 py-1 rounded-lg border ${
+                      siswa.parent_phone 
+                        ? 'text-emerald-600 bg-emerald-50 border-emerald-100' 
+                        : 'text-slate-400 bg-slate-50 border-slate-200'
+                    }`}>
+                      {siswa.parent_phone || 'Tidak ada nomor'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <button 
+                      onClick={() => handleSendWhatsApp(siswa.parent_phone, siswa.name)}
+                      disabled={!siswa.parent_phone}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter hover:bg-emerald-700 transition-all shadow-md disabled:bg-slate-200 disabled:shadow-none"
+                    >
+                      <span>💬</span> Kirim
+                    </button>
+                  </td>
+                </tr>
+              ));
+            })()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+)}
 
               {/* TAB: Classes */}
               {activeTab === 'classes' && (
@@ -5292,7 +5749,7 @@ const fetchAttendanceRecords = async (config = {}) => {
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
         <h2 className="text-2xl font-black text-blue-900 tracking-tight">🏆 Ranking Absensi</h2>
-        <p className="text-slate-500 text-sm mt-1">Peringkat kehadiran terbaik {rankingType === 'guru' ? 'Guru' : 'Siswa'}</p>
+        <p className="text-slate-500 text-sm mt-1">Peringkat berdasarkan ketepatan waktu kedatangan {rankingType === 'guru' ? 'Guru' : 'Siswa'}</p>
       </div>
       
       <div className="flex flex-wrap items-center gap-3">
@@ -5415,14 +5872,14 @@ const fetchAttendanceRecords = async (config = {}) => {
           return (
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl border-2 border-blue-200 p-6">
               <h3 className="text-lg font-black text-blue-900 mb-2 text-center">🏆 Top 3 {rankingType === 'guru' ? 'Guru' : 'Siswa'} Terbaik</h3>
-              <p className="text-center text-slate-500 text-xs mb-6">Berdasarkan ketepatan waktu kehadiran</p>
+              <p className="text-center text-slate-500 text-xs mb-6">Berdasarkan ketepatan waktu kedatangan</p>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {categories.map((cat, idx) => {
                   const person = rankingData[idx];
                   if (!person) return null;
-                  const attendanceRate = person.attendance_rate || person.attendanceRate || 0;
-                  const avgTime = person.avg_time_in || person.averageTimeIn || '-';
+                  const attendanceRate = person.attendance_rate || 0;
+                  const avgTime = person.avg_time_in || '-';
                   
                   return (
                     <div key={idx} className={`${cat.bgColor} rounded-2xl p-5 shadow-lg border-2 ${cat.borderColor} text-center relative overflow-hidden`}>
@@ -5448,12 +5905,12 @@ const fetchAttendanceRecords = async (config = {}) => {
                       
                       <div className="mt-3 space-y-2">
                         <div className="bg-white rounded-xl p-2">
-                          <p className="text-[10px] text-slate-500 font-bold uppercase">Persentase</p>
-                          <p className={`text-xl font-black ${cat.textColor}`}>{attendanceRate}%</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase">Rata-rata Datang</p>
+                          <p className={`text-xl font-black ${cat.textColor}`}>{avgTime}</p>
                         </div>
                         <div className="bg-white rounded-xl p-2">
-                          <p className="text-[10px] text-slate-500 font-bold uppercase">Rata-rata Datang</p>
-                          <p className={`text-sm font-black ${cat.textColor}`}>{avgTime}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase">Persentase Hadir</p>
+                          <p className={`text-xl font-black ${cat.textColor}`}>{attendanceRate}%</p>
                         </div>
                       </div>
                       
@@ -5480,7 +5937,7 @@ const fetchAttendanceRecords = async (config = {}) => {
         <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-xl overflow-hidden">
           <div className="px-6 py-4 bg-blue-50 border-b-2 border-blue-100 flex justify-between items-center">
             <h3 className="font-black text-blue-900 uppercase tracking-wider text-sm">📊 Daftar Peringkat Lengkap</h3>
-            <span className="text-xs text-slate-500">Diurutkan berdasarkan ketepatan waktu</span>
+            <span className="text-xs text-slate-500">Diurutkan berdasarkan ketepatan waktu kedatangan</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -5491,7 +5948,7 @@ const fetchAttendanceRecords = async (config = {}) => {
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">
                     {rankingType === 'guru' ? 'Mata Pelajaran' : 'Kelas'}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Hadir</th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Total Hadir</th>
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Rata-rata Datang</th>
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Persentase</th>
                   <th className="px-6 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider">Kategori</th>
@@ -5501,9 +5958,9 @@ const fetchAttendanceRecords = async (config = {}) => {
               <tbody className="divide-y divide-slate-100">
                 {rankingData.map((item, index) => {
                   const rank = index + 1;
-                  const attendanceRate = item.attendance_rate || item.attendanceRate || 0;
-                  const present = item.present || item.total_hadir || 0;
-                  const avgTime = item.avg_time_in || item.averageTimeIn || '-';
+                  const attendanceRate = item.attendance_rate || 0;
+                  const present = item.present || 0;
+                  const avgTime = item.avg_time_in || '-';
                   
                   // Kategori kompeten
                   let category = { label: 'PERLU PERBAIKAN', color: 'bg-rose-100 text-rose-700 border-rose-200' };
@@ -5532,7 +5989,7 @@ const fetchAttendanceRecords = async (config = {}) => {
                         <span className="text-sm text-slate-600">{item.class_name || item.department || '-'}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold">{present}</span>
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold">{present} hari</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-mono font-bold text-blue-700 text-sm">{avgTime}</span>
@@ -5601,11 +6058,11 @@ const fetchAttendanceRecords = async (config = {}) => {
             <div id="certificate-content" className="bg-gradient-to-br from-yellow-50 via-white to-blue-50 rounded-2xl p-8 border-4 border-yellow-400 text-center mb-6 relative overflow-hidden">
               {/* Logo Sekolah di Background */}
               {settingsData.schoolLogo && (
-                <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+                <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
                   <img 
                     src={resolvePhotoUrl(settingsData.schoolLogo)} 
                     alt="Logo" 
-                    className="w-96 h-96 object-contain"
+                    className="w-[500px] h-[500px] object-contain"
                   />
                 </div>
               )}
@@ -5653,21 +6110,24 @@ const fetchAttendanceRecords = async (config = {}) => {
                     {rankingMonthFilter !== '' && ` bulan ${['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][rankingMonthFilter]}`}
                   </p>
                   <p className="text-lg font-black text-blue-900 mt-2">
-                    dengan persentase kehadiran {selectedRankingUser.attendance_rate || selectedRankingUser.attendanceRate || 0}%
+                    dengan rata-rata kedatangan pukul {selectedRankingUser.avg_time_in || '-'}
+                  </p>
+                  <p className="text-sm font-bold text-blue-700 mt-1">
+                    dan persentase kehadiran {selectedRankingUser.attendance_rate || 0}%
                   </p>
                 </div>
                 
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   <div className="bg-emerald-50 rounded-lg p-2">
-                    <p className="text-[10px] text-slate-500 font-bold">HADIR</p>
-                    <p className="text-lg font-black text-emerald-600">{selectedRankingUser.present || 0}</p>
+                    <p className="text-[10px] text-slate-500 font-bold">TOTAL HADIR</p>
+                    <p className="text-lg font-black text-emerald-600">{selectedRankingUser.present || 0} hari</p>
                   </div>
                   <div className="bg-amber-50 rounded-lg p-2">
                     <p className="text-[10px] text-slate-500 font-bold">TERLAMBAT</p>
-                    <p className="text-lg font-black text-amber-600">{selectedRankingUser.late || 0}</p>
+                    <p className="text-lg font-black text-amber-600">{selectedRankingUser.late || 0} kali</p>
                   </div>
                   <div className="bg-blue-50 rounded-lg p-2">
-                    <p className="text-[10px] text-slate-500 font-bold">RATA-RATA</p>
+                    <p className="text-[10px] text-slate-500 font-bold">RATA-RATA DATANG</p>
                     <p className="text-sm font-black text-blue-600">{selectedRankingUser.avg_time_in || '-'}</p>
                   </div>
                 </div>
