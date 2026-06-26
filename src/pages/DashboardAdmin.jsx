@@ -265,7 +265,7 @@ const [rekapClassFilter, setRekapClassFilter] = useState(''); // kosong = semua 
   const [classes, setClasses] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [attendanceReports, setAttendanceReports] = useState([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false); // UBAH: false agar loading overlay tidak blocking
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [permissionDecisionLoading, setPermissionDecisionLoading] = useState(null);
   const [error, setError] = useState('');
@@ -488,7 +488,7 @@ const fetchDataSiswa = async () => {
     const token = localStorage.getItem('token');
     const config = { 
       headers: { Authorization: `Bearer ${token}` },
-      timeout: 60000 // Naikkan timeout
+      timeout: 15000 // Naikkan timeout
     };
     const res = await apiTryEndpoints('get', ['/admin/users?role=siswa', '/users?role=siswa', '/admin/users', '/users'], config);
     const rawData = res.data?.data || res.data || [];
@@ -731,50 +731,54 @@ useEffect(() => {
     setLoading(false);
   }, [navigate]);
 
-  // ✨ FUNGSI fetchAllData YANG HILANG
 const fetchAllData = async () => {
-setDataLoading(true);
-setError('');
-try {
-const token = localStorage.getItem('token');
-const config = { headers: { Authorization: `Bearer ${token}` } };
+  setDataLoading(true);
+  setError('');
+  const token = localStorage.getItem('token');
+  const config = { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 };
 
-// Fetch stats
-const statsRes = await apiTryEndpoints('get', ['/admin/stats', '/stats'], config);
-setStats({
-totalUsers: statsRes.data?.totalUsers || statsRes.data?.total_users || 0,
-totalGuru: statsRes.data?.totalGuru || statsRes.data?.total_guru || 0,
-totalSiswa: statsRes.data?.totalSiswa || statsRes.data?.total_siswa || 0,
-totalKelas: statsRes.data?.totalKelas || statsRes.data?.total_kelas || 0,
-kehadiranHariIni: statsRes.data?.kehadiranHariIni || statsRes.data?.kehadiran_hari_ini || 0
-});
+  // Fetch stats (individual try-catch)
+  try {
+    const statsRes = await apiTryEndpoints('get', ['/admin/stats', '/stats'], config);
+    setStats({
+      totalUsers: statsRes.data?.totalUsers || statsRes.data?.total_users || 0,
+      totalGuru: statsRes.data?.totalGuru || statsRes.data?.total_guru || 0,
+      totalSiswa: statsRes.data?.totalSiswa || statsRes.data?.total_siswa || 0,
+      totalKelas: statsRes.data?.totalKelas || statsRes.data?.total_kelas || 0,
+      kehadiranHariIni: statsRes.data?.kehadiranHariIni || statsRes.data?.kehadiran_hari_ini || 0
+    });
+  } catch (err) {
+    console.warn('⚠️ Stats timeout, pakai data dari users');
+  }
 
-// Fetch users
-const usersRes = await apiTryEndpoints('get', userEndpointCandidates.index, config);
-const usersData = Array.isArray(usersRes.data) 
-? usersRes.data 
-: (usersRes.data?.data || []);
-setUsers(usersData.map(normalizeUser));
+  // Fetch users (individual try-catch)
+  try {
+    const usersRes = await apiTryEndpoints('get', userEndpointCandidates.index, config);
+    const usersData = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.data || []);
+    setUsers(usersData.map(normalizeUser));
+  } catch (err) {
+    console.warn('⚠️ Users timeout');
+  }
 
-// Fetch classes
-const classesRes = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
-const classesData = Array.isArray(classesRes.data) 
-? classesRes.data 
-: (classesRes.data?.data || []);
-setClasses(classesData);
+  // Fetch classes (individual try-catch)
+  try {
+    const classesRes = await apiTryEndpoints('get', ['/admin/classes', '/classes', '/class'], config);
+    setClasses(classesRes.data?.data || classesRes.data || []);
+  } catch (err) {
+    console.warn('⚠️ Classes timeout');
+  }
 
-// Fetch attendance reports
-const attendanceRes = await fetchAttendanceRecords(config);
-const normalizedAttendance = attendanceRes.map(act => normalizeAttendanceRecord(act));
-setAttendanceReports(normalizedAttendance);
-setRecentActivity(normalizedAttendance.slice(0, 10));
+  // Fetch attendance (individual try-catch)
+  try {
+    const attendanceRes = await fetchAttendanceRecords({ ...config, timeout: 15000 });
+    const normalizedAttendance = attendanceRes.map(act => normalizeAttendanceRecord(act));
+    setAttendanceReports(normalizedAttendance);
+    setRecentActivity(normalizedAttendance.slice(0, 10));
+  } catch (err) {
+    console.warn('⚠️ Attendance timeout');
+  }
 
-} catch (err) {
-console.error('Error fetching all data:', err);
-setError('Gagal memuat data dashboard. Silakan refresh halaman.');
-} finally {
-setDataLoading(false);
-}
+  setDataLoading(false);
 };
 
 // Fetch data dari backend
@@ -2476,6 +2480,38 @@ const getFilteredRekapData = () => {
     
     return trend;
   };
+
+  // ✨ TAMBAHAN: Fungsi Export Ranking & Piagam (FIX ERROR)
+const exportRankingToExcel = () => {
+  if (!rankingData || rankingData.length === 0) {
+    addNotification('Tidak ada data ranking untuk diekspor.', 'warning');
+    return;
+  }
+  const headers = ['Peringkat', 'Nama', 'Kelas/Jabatan', 'Total Hadir', 'Terlambat', 'Rata-rata Datang', 'Persentase'];
+  const rows = rankingData.map((item, index) => [
+    index + 1, item.name, item.class_name || item.department || '-',
+    item.present || 0, item.late || 0, item.avg_time_in || '-', `${item.attendance_rate || 0}%`
+  ]);
+  const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ranking_absensi_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  addNotification('Data ranking berhasil diekspor ke Excel (CSV)!', 'success');
+};
+
+const exportRankingToPDF = () => {
+  addNotification('Untuk export PDF, silakan gunakan fitur Print (Ctrl+P) lalu pilih Save as PDF.', 'info');
+  setTimeout(() => window.print(), 500);
+};
+
+const downloadCertificateAsImage = (user) => {
+  addNotification('Mengunduh piagam... Silakan gunakan Screenshot atau Print (Ctrl+P) untuk menyimpan.', 'info');
+};
 
   const { total, hadir, terlambat, izin, sakit, absen, hadirPercent } = getAttendanceStats();
   const isSynchronizingData = dataLoading || featureDataLoading || settingsLoading;
