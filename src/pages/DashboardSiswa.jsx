@@ -95,6 +95,8 @@ const DashboardSiswa = ({ theme, toggleTheme }) => {
   const [notifications, setNotifications] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
+  const [riwayatMonthFilter, setRiwayatMonthFilter] = useState('');
+  const [riwayatStatusFilter, setRiwayatStatusFilter] = useState('');
 
   // ✨ TAMBAHAN: State untuk media cycling (foto berkedip ganti sendiri)
   const [activePhotoIndex, setActivePhotoIndex] = useState(1);
@@ -1089,75 +1091,230 @@ const fetchStudentData = async (silent = true) => {
                 </div>
               )}
 
-              {/* TAB: Absensi */}
-              {activeTab === 'absensi' && (
-                <div className="animate-fade-in">
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">🪪 Kode QR Presensi Digital</h2>
-                    <p className="text-blue-600 text-sm">Gunakan kode di bawah ini untuk melakukan scan pada perangkat scanner sekolah.</p>
+{/* TAB: Absensi */}
+{activeTab === 'absensi' && (
+  <div className="animate-fade-in space-y-6">
+    {/* 🎨 Hero Header */}
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 p-6 md:p-8 shadow-2xl">
+      <div className="absolute -right-10 -top-10 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+      <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-pink-300/20 rounded-full blur-3xl"></div>
+      <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full border border-white/30 mb-3">
+            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+            <span className="text-[10px] font-black text-white uppercase tracking-widest">Aktif</span>
+          </div>
+          <h2 className="text-2xl md:text-3xl font-black text-white mb-1 tracking-tight">
+            🪪 Kartu Presensi Digital
+          </h2>
+          <p className="text-blue-100 text-sm md:text-base">Scan QR Code untuk mencatat kehadiran</p>
+        </div>
+        <button 
+          onClick={downloadQRCode}
+          className="px-6 py-3 bg-white text-blue-600 rounded-2xl text-sm font-black hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl flex items-center gap-2 border-2 border-white"
+        >
+          <span className="text-lg">📥</span>
+          <span className="uppercase tracking-wider">Unduh QR</span>
+        </button>
+      </div>
+    </div>
+
+    <div className="max-w-5xl mx-auto">
+      {/* 🎯 Main QR Card */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-100 dark:border-slate-700 shadow-2xl overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+          
+          {/* Kiri: QR Code Area dengan Background Pattern */}
+          <div className="relative p-8 md:p-12 bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-700 dark:to-slate-800 flex flex-col items-center justify-center border-b-2 lg:border-b-0 lg:border-r-2 border-slate-100 dark:border-slate-700">
+            {/* Decorative dots */}
+            <div className="absolute inset-0 opacity-5 dark:opacity-10" style={{
+              backgroundImage: 'radial-gradient(circle, #6366f1 1px, transparent 1px)',
+              backgroundSize: '20px 20px'
+            }}></div>
+            
+            <div className="relative z-10 flex flex-col items-center">
+              {/* QR Frame dengan Glow Effect */}
+              <div className="relative group">
+                {/* Outer glow ring */}
+                <div className="absolute -inset-4 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-[2rem] blur-xl opacity-30 group-hover:opacity-50 transition-opacity duration-500"></div>
+                
+                {/* Main QR Container */}
+                <div className="relative bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-2xl border-4 border-white dark:border-slate-800 group-hover:scale-105 transition-transform duration-500">
+                  {/* Corner decorations */}
+                  <div className="absolute top-2 left-2 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                  <div className="absolute top-2 right-2 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                  <div className="absolute bottom-2 left-2 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                  <div className="absolute bottom-2 right-2 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                  
+                  {/* QR Code */}
+                  {qrLoading ? (
+                    <div className="w-56 h-56 flex items-center justify-center">
+                      <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : (
+                    <img src={myQRCode} alt="QR Saya" className="w-56 h-56 object-contain" />
+                  )}
+                </div>
+              </div>
+
+              {/* Label di bawah QR */}
+              <div className="mt-6 text-center">
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.25em]">
+                  Scan untuk Presensi
+                </p>
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <div className="h-px w-8 bg-gradient-to-r from-transparent to-blue-300 dark:to-blue-600"></div>
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">KARTU DIGITAL</span>
+                  <div className="h-px w-8 bg-gradient-to-l from-transparent to-blue-300 dark:to-blue-600"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Kanan: Info Detail */}
+          <div className="p-8 md:p-10 flex flex-col">
+            <div className="mb-6">
+              <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                Informasi Siswa
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+                Data yang terdaftar di sistem
+              </p>
+            </div>
+
+            {/* Info Cards */}
+            <div className="space-y-3 flex-1">
+              {/* Nama */}
+              <div className="group relative overflow-hidden bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-700 rounded-2xl p-4 border-2 border-blue-100 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-600 transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white dark:bg-slate-600 rounded-xl flex items-center justify-center text-lg shadow-sm border border-blue-100 dark:border-slate-500 flex-shrink-0">
+                    👤
                   </div>
-
-                  <div className="max-w-4xl mx-auto">
-                    <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 shadow-xl overflow-hidden relative group">
-                      <div className="p-8 lg:p-12 grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12 items-center">
-                        {/* Area QR Code */}
-                        <div className="lg:col-span-2 flex flex-col items-center">
-                          <div className="p-6 bg-white rounded-[2rem] shadow-sm border-2 border-slate-50 transition-all duration-500 group-hover:border-blue-100 group-hover:scale-105">
-                          {qrLoading ? (
-                              <div className="w-48 h-48 flex items-center justify-center">
-                              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                          ) : (
-                              <img src={myQRCode} alt="QR Saya" className="w-48 h-48" />
-                          )}
-                        </div>
-                          <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] lg:hidden">Scan untuk Presensi</p>
-                        </div>
-
-                        {/* Data Info (Sisi Kanan di Laptop) */}
-                        <div className="lg:col-span-3 flex flex-col">
-                          <div className="mb-8 hidden lg:block">
-                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Kartu Presensi Digital</h3>
-                            <p className="text-slate-500 text-sm mt-1 font-medium">Tunjukkan kode QR ini ke alat scanner untuk mencatat kehadiran.</p>
-                          </div>
-
-                          <div className="w-full space-y-4 mb-10">
-                            <div className="flex justify-between items-center py-3 border-b border-slate-100 group/item">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Lengkap</span>
-                              <span className="text-base font-bold text-slate-800 group-hover/item:text-blue-600 transition-colors">{user.name}</span>
-                            </div>
-                            <div className="flex justify-between items-center py-3 border-b border-slate-100 group/item">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nomor Induk (NIS)</span>
-                              <span className="text-base font-bold text-blue-600 group-hover/item:scale-105 transition-transform">{user.nis || user.user_id}</span>
-                            </div>
-                            <div className="flex justify-between items-center py-3">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peran / Role</span>
-                              <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-tighter border border-blue-100">Siswa Aktif</span>
-                            </div>
-                          </div>
-
-                        <button 
-                          onClick={downloadQRCode}
-                          className="w-full py-4 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-2xl transition-all duration-300 shadow-lg hover:shadow-blue-500/30 flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
-                        >
-                          <span>📥</span> Download Kartu QR
-                        </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-8 bg-amber-50 border-2 border-amber-100 rounded-2xl p-5 flex items-start gap-4">
-                      <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl flex-shrink-0">💡</div>
-                      <div>
-                        <p className="text-xs font-bold text-amber-900 uppercase tracking-wide mb-1">Tips Penting</p>
-                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
-                          Simpan QR Code ini ke galeri HP Anda agar tetap bisa melakukan presensi meskipun tidak ada koneksi internet di sekolah.
-                        </p>
-                      </div>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Nama Lengkap</p>
+                    <p className="text-base font-bold text-slate-800 dark:text-slate-100 truncate">{user.name || '-'}</p>
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* NIS */}
+              <div className="group relative overflow-hidden bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-slate-700 dark:to-slate-700 rounded-2xl p-4 border-2 border-emerald-100 dark:border-slate-600 hover:border-emerald-300 dark:hover:border-emerald-600 transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white dark:bg-slate-600 rounded-xl flex items-center justify-center text-lg shadow-sm border border-emerald-100 dark:border-slate-500 flex-shrink-0">
+                    🆔
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Nomor Induk Siswa</p>
+                    <p className="text-base font-black text-emerald-700 dark:text-emerald-300 font-mono">{user.nis || user.user_id || '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Kelas */}
+              <div className="group relative overflow-hidden bg-gradient-to-r from-violet-50 to-purple-50 dark:from-slate-700 dark:to-slate-700 rounded-2xl p-4 border-2 border-violet-100 dark:border-slate-600 hover:border-violet-300 dark:hover:border-violet-600 transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white dark:bg-slate-600 rounded-xl flex items-center justify-center text-lg shadow-sm border border-violet-100 dark:border-slate-500 flex-shrink-0">
+                    🏫
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-widest">Kelas</p>
+                    <p className="text-base font-bold text-slate-800 dark:text-slate-100">
+                      {typeof resolveClassName === 'function' ? resolveClassName(user, classInfo) : (user.class_name || user.kelas || '-')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Role Badge */}
+              <div className="flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 dark:from-slate-700 dark:to-slate-700 rounded-2xl p-4 border-2 border-amber-100 dark:border-slate-600">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white dark:bg-slate-600 rounded-xl flex items-center justify-center text-lg shadow-sm border border-amber-100 dark:border-slate-500">
+                    🎓
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest">Status</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Peserta Didik Aktif</p>
+                  </div>
+                </div>
+                <span className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider shadow-md">
+                  ✓ Aktif
+                </span>
+              </div>
+            </div>
+
+            {/* Download Button - Main CTA */}
+            <button 
+              onClick={downloadQRCode}
+              className="mt-6 w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-2xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-blue-500/30 flex items-center justify-center gap-3 uppercase tracking-widest text-sm group"
+            >
+              <span className="text-xl group-hover:scale-110 transition-transform">📥</span>
+              <span>Unduh Kartu QR</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 💡 Tips Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-2 border-amber-200 dark:border-amber-800/50 rounded-2xl p-5 flex items-start gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-xl shadow-lg flex-shrink-0">
+            💡
+          </div>
+          <div>
+            <p className="text-xs font-black text-amber-900 dark:text-amber-200 uppercase tracking-wide mb-1">Tips Offline</p>
+            <p className="text-xs text-amber-800 dark:text-amber-100 leading-relaxed font-medium">
+              Simpan QR Code ke galeri HP agar tetap bisa presensi meski tanpa internet.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800/50 rounded-2xl p-5 flex items-start gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center text-xl shadow-lg flex-shrink-0">
+            🔒
+          </div>
+          <div>
+            <p className="text-xs font-black text-blue-900 dark:text-blue-200 uppercase tracking-wide mb-1">Keamanan</p>
+            <p className="text-xs text-blue-800 dark:text-blue-100 leading-relaxed font-medium">
+              Jangan bagikan QR Code ini kepada orang lain karena bersifat pribadi.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 📊 Quick Stats */}
+      <div className="mt-6 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 p-5 shadow-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+            <span className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white text-sm shadow-md">📊</span>
+            Statistik Kehadiran
+          </h4>
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">Bulan Ini</span>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: 'Hadir', value: typeof attendanceHistory !== 'undefined' ? attendanceHistory.filter(a => a.status === 'hadir').length : 0, icon: '✓', color: 'emerald' },
+            { label: 'Terlambat', value: typeof attendanceHistory !== 'undefined' ? attendanceHistory.filter(a => a.status === 'terlambat').length : 0, icon: '⚠', color: 'amber' },
+            { label: 'Izin', value: typeof attendanceHistory !== 'undefined' ? attendanceHistory.filter(a => a.status === 'izin').length : 0, icon: '📋', color: 'sky' },
+            { label: 'Sakit', value: typeof attendanceHistory !== 'undefined' ? attendanceHistory.filter(a => a.status === 'sakit').length : 0, icon: '🏥', color: 'violet' },
+          ].map((stat, idx) => (
+            <div key={idx} className={`bg-gradient-to-br ${
+              stat.color === 'emerald' ? 'from-emerald-500 to-teal-600' :
+              stat.color === 'amber' ? 'from-amber-500 to-orange-600' :
+              stat.color === 'sky' ? 'from-sky-500 to-blue-600' :
+              'from-violet-500 to-purple-600'
+            } rounded-xl p-3 text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-lg">{stat.icon}</span>
+                <span className="text-[8px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full uppercase">{stat.label}</span>
+              </div>
+              <p className="text-2xl font-black">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
               {/* TAB: Jadwal Pelajaran */}
               {activeTab === 'jadwal' && (
@@ -1218,221 +1375,678 @@ const fetchStudentData = async (silent = true) => {
                 </div>
               )}
 
-              {/* TAB: Profil Saya */}
-              {activeTab === 'profil' && (
-                <div>
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-800 mb-1">👤 Profil Saya</h2>
-                    <p className="text-blue-600 text-sm">Informasi lengkap tentang akun Anda</p>
+{/* TAB: Profil Saya - Modern Redesign with Dark Mode */}
+{activeTab === 'profil' && (
+  <div className="animate-fade-in space-y-6">
+    {/* 🎨 Hero Profile Card */}
+    <div className="relative overflow-hidden rounded-3xl shadow-2xl">
+      {/* Background Gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.15),_transparent_50%)]"></div>
+      <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+      <div className="absolute -top-10 -left-10 w-48 h-48 bg-pink-300/20 rounded-full blur-3xl"></div>
+
+      {/* Content */}
+      <div className="relative z-10 p-8 md:p-10">
+        <div className="flex flex-col md:flex-row items-center gap-8">
+          {/* Avatar dengan ring decoration */}
+          <div className="relative">
+            {/* Outer glow ring */}
+            <div className="absolute -inset-2 bg-gradient-to-r from-yellow-300 via-pink-300 to-blue-300 rounded-full blur-md opacity-60"></div>
+            {/* Main avatar */}
+            <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full bg-white dark:bg-slate-800 p-1.5 shadow-2xl">
+              <div className="w-full h-full rounded-full overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center border-4 border-white dark:border-slate-800">
+                {user.photo ? (
+                  <img src={resolvePhotoUrl(user.photo)} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-5xl md:text-6xl font-black bg-gradient-to-br from-blue-500 to-purple-600 bg-clip-text text-transparent">
+                    {user.name?.charAt(0) || 'S'}
+                  </span>
+                )}
+              </div>
+            </div>
+            {/* Status badge */}
+            <div className="absolute bottom-2 right-2 w-8 h-8 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-800 flex items-center justify-center shadow-lg">
+              <span className="text-white text-xs font-black">✓</span>
+            </div>
+          </div>
+
+          {/* Name & Info */}
+          <div className="text-center md:text-left flex-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full border border-white/30 mb-3">
+              <span className="text-xs font-black text-white uppercase tracking-widest">
+                {user.role || 'Siswa'}
+              </span>
+              <span className="w-1 h-1 bg-white rounded-full"></span>
+              <span className="text-xs text-white/80 font-medium">Aktif</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-black text-white mb-2 drop-shadow-sm">
+              {user.name || 'Siswa'}
+            </h2>
+            <p className="text-blue-100 text-base md:text-lg font-medium mb-4">
+              {resolveClassName(user, classInfo) || '-'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/15 backdrop-blur-sm rounded-xl border border-white/20">
+                <span className="text-sm">📧</span>
+                <span className="text-xs font-bold text-white truncate max-w-[180px]">
+                  {user.email || '-'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/15 backdrop-blur-sm rounded-xl border border-white/20">
+                <span className="text-sm">🆔</span>
+                <span className="text-xs font-black text-white font-mono">
+                  {user.nis || user.user_id || '-'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* 📊 Quick Stats - 4 Kartu Statistik */}
+    {(() => {
+      const history = typeof attendanceHistory !== 'undefined' ? attendanceHistory : [];
+      const totalHadir = history.filter(a => ['hadir', 'tepat_waktu'].includes((a.status || '').toLowerCase())).length;
+      const totalTerlambat = history.filter(a => ['terlambat', 'late'].includes((a.status || '').toLowerCase())).length;
+      const totalIzin = history.filter(a => ['izin', 'sakit'].includes((a.status || '').toLowerCase())).length;
+      const total = history.length;
+      const percent = total > 0 ? Math.round(((totalHadir + totalTerlambat) / total) * 100) : 0;
+
+      const stats = [
+        { label: 'Total Hadir', value: totalHadir, icon: '✓', color: 'emerald', gradient: 'from-emerald-500 to-teal-600' },
+        { label: 'Terlambat', value: totalTerlambat, icon: '⚠', color: 'amber', gradient: 'from-amber-500 to-orange-600' },
+        { label: 'Izin/Sakit', value: totalIzin, icon: '📋', color: 'sky', gradient: 'from-sky-500 to-blue-600' },
+        { label: 'Kehadiran', value: `${percent}%`, icon: '📈', color: 'violet', gradient: 'from-violet-500 to-purple-600' },
+      ];
+
+      return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          {stats.map((stat, idx) => (
+            <div
+              key={idx}
+              className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${stat.gradient} p-5 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 group`}
+            >
+              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/10 rounded-full blur-xl group-hover:bg-white/20 transition-all"></div>
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-xl border border-white/30">
+                    {stat.icon}
                   </div>
-                  <div className="bg-white rounded-xl border-2 border-blue-200 p-8 shadow-lg">
-                    <div className="flex flex-col items-center mb-8">
-                      <div className="w-32 h-32 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border-4 border-blue-200 shadow-md mb-4">
-                        {user.photo ? (
-                          <img src={resolvePhotoUrl(user.photo)} alt={user.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-5xl text-blue-400 font-bold">{user.name?.charAt(0) || 'S'}</span>
-                        )}
-                      </div>
-                      <h3 className="text-2xl font-bold text-blue-800">{user.name}</h3>
-                      <p className="text-blue-600 text-sm font-medium">{resolveClassName(user, classInfo)}</p>
-                    </div>
+                  <span className="text-[9px] font-black text-white/80 uppercase tracking-widest">
+                    {stat.label}
+                  </span>
+                </div>
+                <p className="text-3xl md:text-4xl font-black text-white">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
 
-                    <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-left mb-6">
-                      <h4 className="font-semibold text-blue-900 mb-4 flex items-center gap-2">
-                        <span>ℹ️</span> Detail Akun
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm text-blue-800">
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">Nama Lengkap:</span>
-                          <span className="font-medium">{user.name || '-'}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">Email:</span>
-                          <span className="font-medium">{user.email || '-'}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">NIS:</span>
-                          <span className="font-medium">{user.nis || user.user_id || '-'}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">Kelas:</span>
-                          <span className="font-medium">{resolveClassName(user, classInfo)}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">Jenis Kelamin:</span>
-                          <span className="font-medium">{user.gender || '-'}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">No. Telepon Siswa:</span>
-                          <span className="font-medium">{user.phone || '-'}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">Nama Orang Tua:</span>
-                          <span className="font-medium">{user.parent_name || '-'}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b-2 border-blue-200">
-                          <span className="text-blue-600">No. Telepon Orang Tua:</span>
-                          <span className="font-medium">{user.parent_phone || '-'}</span>
-                        </div>
-                      </div>
-                    </div>
+    {/* 📋 Detail Information - Two Column Layout */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* Main Info - 2 Columns */}
+      <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 shadow-lg overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-700 border-b-2 border-blue-100 dark:border-slate-600 flex items-center justify-between">
+          <h3 className="font-black text-blue-900 dark:text-blue-200 flex items-center gap-2 text-sm uppercase tracking-wider">
+            <span className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white text-sm shadow-md">
+              👤
+            </span>
+            Informasi Pribadi
+          </h3>
+          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-600 px-2.5 py-1 rounded-full border border-blue-200 dark:border-slate-500">
+            DATA RESMI
+          </span>
+        </div>
 
-                    <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-left">
-                      <h4 className="font-semibold text-blue-900 mb-4 flex items-center gap-2">
-                        <span>💡</span> Catatan
-                      </h4>
-                      <p className="text-sm text-blue-800">
-                        Informasi profil ini diambil dari data yang terdaftar di sistem. Jika ada kesalahan atau perubahan data,
-                        silakan hubungi administrator sekolah untuk melakukan pembaruan.
+        {/* Content Grid */}
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              { label: 'Nama Lengkap', value: user.name, icon: '👤', accent: 'blue' },
+              { label: 'Email', value: user.email, icon: '📧', accent: 'indigo' },
+              { label: 'NIS / ID Siswa', value: user.nis || user.user_id, icon: '🆔', accent: 'purple' },
+              { label: 'Kelas', value: resolveClassName(user, classInfo), icon: '🏫', accent: 'emerald' },
+              { label: 'Jenis Kelamin', value: user.gender, icon: '⚧', accent: 'pink' },
+              { label: 'No. Telepon', value: user.phone, icon: '📱', accent: 'sky' },
+            ].map((item, idx) => {
+              const accentMap = {
+                blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-800' },
+                indigo: { bg: 'bg-indigo-50 dark:bg-indigo-900/20', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-200 dark:border-indigo-800' },
+                purple: { bg: 'bg-purple-50 dark:bg-purple-900/20', text: 'text-purple-600 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-800' },
+                emerald: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-800' },
+                pink: { bg: 'bg-pink-50 dark:bg-pink-900/20', text: 'text-pink-600 dark:text-pink-400', border: 'border-pink-200 dark:border-pink-800' },
+                sky: { bg: 'bg-sky-50 dark:bg-sky-900/20', text: 'text-sky-600 dark:text-sky-400', border: 'border-sky-200 dark:border-sky-800' },
+              };
+              const colors = accentMap[item.accent];
+
+              return (
+                <div
+                  key={idx}
+                  className={`group relative overflow-hidden rounded-xl ${colors.bg} border-2 ${colors.border} p-4 hover:shadow-md transition-all`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-lg ${colors.text} bg-white dark:bg-slate-700 flex items-center justify-center text-lg shadow-sm flex-shrink-0`}>
+                      {item.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">
+                        {item.label}
+                      </p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                        {item.value || '-'}
                       </p>
                     </div>
                   </div>
                 </div>
-              )}
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 📞 Parent Info - 1 Column (Side Panel) */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-100 dark:border-slate-700 shadow-lg overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-4 bg-gradient-to-r from-rose-50 to-pink-50 dark:from-slate-700 dark:to-slate-700 border-b-2 border-rose-100 dark:border-slate-600">
+          <h3 className="font-black text-rose-900 dark:text-rose-200 flex items-center gap-2 text-sm uppercase tracking-wider">
+            <span className="w-8 h-8 bg-rose-500 rounded-lg flex items-center justify-center text-white text-sm shadow-md">
+              👨‍👩‍👦
+            </span>
+            Data Orang Tua
+          </h3>
+          <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1">Kontak darurat & wali</p>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 flex-1 space-y-4">
+          {/* Parent Name */}
+          <div className="bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 rounded-xl border-2 border-rose-100 dark:border-rose-800/50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">👤</span>
+              <p className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                Nama Orang Tua
+              </p>
+            </div>
+            <p className="text-sm font-bold text-rose-900 dark:text-rose-100">
+              {user.parent_name || '-'}
+            </p>
+          </div>
+
+          {/* Parent Phone */}
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border-2 border-emerald-100 dark:border-emerald-800/50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">📱</span>
+              <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                No. WhatsApp
+              </p>
+            </div>
+            <p className="text-sm font-bold text-emerald-900 dark:text-emerald-100 font-mono mb-3">
+              {user.parent_phone || '-'}
+            </p>
+            {user.parent_phone && (
+              <a
+                href={`https://wa.me/${user.parent_phone.replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
+              >
+                <span>💬</span>
+                <span>Hubungi via WA</span>
+              </a>
+            )}
+          </div>
+
+          {/* QR Code Quick Access */}
+          <button
+            onClick={() => {
+              if (typeof handleShowQR === 'function') {
+                handleShowQR(user, 'siswa');
+              }
+            }}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl p-4 shadow-lg transition-all hover:shadow-xl group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center text-xl border border-white/30">
+                  📱
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-black uppercase tracking-widest">QR Code Absensi</p>
+                  <p className="text-[10px] text-blue-100">Tampilkan untuk scan</p>
+                </div>
+              </div>
+              <span className="text-xl group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* 💡 Info Card */}
+    <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-2xl border-2 border-amber-200 dark:border-amber-800/50 p-5 shadow-md flex items-start gap-4">
+      <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl shadow-lg flex-shrink-0">
+        💡
+      </div>
+      <div className="flex-1">
+        <h4 className="font-black text-amber-900 dark:text-amber-200 text-sm mb-1.5 uppercase tracking-wider">
+          Informasi Penting
+        </h4>
+        <p className="text-sm text-amber-800 dark:text-amber-100 leading-relaxed">
+          Informasi profil ini diambil dari data resmi yang terdaftar di sistem. Jika ada kesalahan atau perubahan data,
+          silakan hubungi <span className="font-bold">administrator sekolah</span> untuk melakukan pembaruan.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
 
 {/* TAB: Riwayat */}
 {activeTab === 'riwayat' && (
-  <div className="animate-fade-in">
-    <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
-      <div className="flex items-center justify-between">
+  <div className="animate-fade-in space-y-6">
+    {/* 🎯 Header dengan Statistik Ringkas */}
+    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 shadow-xl text-white relative overflow-hidden">
+      <div className="absolute -right-8 -top-8 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+      <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+      <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-blue-800 mb-1">📅 Riwayat Absensi</h2>
-          <p className="text-blue-600 text-sm">Catatan lengkap kehadiranmu sepanjang semester</p>
+          <h2 className="text-2xl font-black mb-1 flex items-center gap-2">
+            <span>📅</span> Riwayat Absensiku
+          </h2>
+          <p className="text-blue-100 text-sm">Catatan lengkap kehadiran sepanjang semester</p>
         </div>
         <button
           onClick={() => fetchStudentData(false)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
+          className="px-5 py-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl text-sm font-bold transition-all flex items-center gap-2 border border-white/30"
         >
           <span>🔄</span> Refresh Data
         </button>
       </div>
     </div>
-    
-    <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-lg">
+
+    {/* 📊 Statistik Kehadiran - Cards */}
+    {attendanceHistory.length > 0 && (() => {
+      const stats = {
+        hadir: attendanceHistory.filter(a => a.status === 'hadir').length,
+        terlambat: attendanceHistory.filter(a => a.status === 'terlambat').length,
+        izin: attendanceHistory.filter(a => a.status === 'izin').length,
+        sakit: attendanceHistory.filter(a => a.status === 'sakit').length,
+        absen: attendanceHistory.filter(a => ['absen', 'alpha', 'tidak hadir'].includes((a.status || '').toLowerCase())).length,
+      };
+      const total = attendanceHistory.length;
+      const presentRate = total > 0 ? Math.round(((stats.hadir + stats.terlambat) / total) * 100) : 0;
+
+      const statCards = [
+        { label: 'Hadir', value: stats.hadir, icon: '✓', color: 'emerald', bg: 'from-emerald-500 to-emerald-600' },
+        { label: 'Terlambat', value: stats.terlambat, icon: '⚠', color: 'amber', bg: 'from-amber-500 to-amber-600' },
+        { label: 'Izin', value: stats.izin, icon: '📋', color: 'sky', bg: 'from-sky-500 to-sky-600' },
+        { label: 'Sakit', value: stats.sakit, icon: '🏥', color: 'violet', bg: 'from-violet-500 to-violet-600' },
+        { label: 'Absen', value: stats.absen, icon: '✗', color: 'rose', bg: 'from-rose-500 to-rose-600' },
+      ];
+
+      return (
+        <>
+          {/* Progress Kehadiran */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-blue-100 dark:border-slate-700 p-5 shadow-lg">
+            <div className="flex flex-col md:flex-row md:items-center gap-5">
+              <div className="relative w-24 h-24 flex-shrink-0">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15.9155" fill="none" className="text-slate-100 dark:text-slate-700" stroke="currentColor" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15.9155" fill="none"
+                    className={`${presentRate >= 80 ? 'text-emerald-500' : presentRate >= 60 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000`}
+                    stroke="currentColor" strokeWidth="3"
+                    strokeDasharray={`${presentRate}, 100`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className={`text-xl font-black ${presentRate >= 80 ? 'text-emerald-600 dark:text-emerald-400' : presentRate >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {presentRate}%
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">Hadir</span>
+                </div>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">
+                  Persentase Kehadiran: <span className="text-blue-600 dark:text-blue-400">{presentRate}%</span> dari {total} hari
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {statCards.map((s, idx) => (
+                    <div key={idx} className={`bg-gradient-to-br ${s.bg} rounded-xl p-2.5 text-white shadow-md`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-lg">{s.icon}</span>
+                        <span className="text-[9px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full">{s.label}</span>
+                      </div>
+                      <p className="text-2xl font-black">{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 🔍 Filter Bar */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-blue-100 dark:border-slate-700 p-4 shadow-md">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">📅 Filter Bulan</label>
+                <select
+                  value={riwayatMonthFilter || ''}
+                  onChange={(e) => setRiwayatMonthFilter?.(e.target.value)}
+                  className="w-full px-3 py-2 border-2 border-slate-200 dark:border-slate-600 rounded-xl text-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                >
+                  <option value="">Semua Bulan</option>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() - i);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    const label = d.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+                    return <option key={key} value={key}>{label}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">🎯 Filter Status</label>
+                <select
+                  value={riwayatStatusFilter || ''}
+                  onChange={(e) => setRiwayatStatusFilter?.(e.target.value)}
+                  className="w-full px-3 py-2 border-2 border-slate-200 dark:border-slate-600 rounded-xl text-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                >
+                  <option value="">Semua Status</option>
+                  <option value="hadir">✓ Hadir</option>
+                  <option value="terlambat">⚠ Terlambat</option>
+                  <option value="izin">📋 Izin</option>
+                  <option value="sakit">🏥 Sakit</option>
+                  <option value="absen">✗ Absen</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    })()}
+
+    {/* 📋 Tabel Riwayat */}
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-blue-100 dark:border-slate-700 overflow-hidden shadow-xl">
       {loading ? (
-        <div className="p-6 text-center text-blue-600">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p>Memuat riwayat...</p>
+        <div className="p-12 text-center">
+          <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-600 dark:text-blue-400 font-bold">Memuat riwayat absensi...</p>
         </div>
       ) : attendanceHistory.length === 0 ? (
-        <div className="p-12 text-center text-blue-600">
-          <p className="text-5xl mb-4">📭</p>
-          <p className="font-medium">Belum ada data absensi</p>
-          <p className="text-sm mt-2">Silakan lakukan absensi terlebih dahulu</p>
+        <div className="p-16 text-center">
+          <div className="w-24 h-24 mx-auto mb-4 bg-blue-50 dark:bg-slate-700 rounded-full flex items-center justify-center">
+            <span className="text-5xl">📭</span>
+          </div>
+          <p className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">Belum ada data absensi</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Silakan lakukan absensi terlebih dahulu</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-blue-50 border-b-2 border-blue-200">
-              <tr>
-                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Tanggal</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Jam Datang</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Jam Pulang</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Metode</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y-2 divide-blue-50">
-              {[...attendanceHistory]
-                .sort((a, b) => {
-                  // Sort by date descending (newest first)
-                  const dateA = new Date(a.date || a.created_at || a.attendance_time);
-                  const dateB = new Date(b.date || b.created_at || b.attendance_time);
-                  return dateB - dateA;
-                })
-                .map((item, index) => {
-                  // Extract time from various fields
-                  const extractTime = (datetimeStr) => {
-                    if (!datetimeStr) return '-';
-                    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(datetimeStr)) {
-                      return datetimeStr.substring(0, 5);
-                    }
-                    try {
-                      const date = new Date(datetimeStr);
-                      if (!isNaN(date.getTime())) {
-                        return date.toLocaleTimeString('id-ID', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: false
-                        });
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-700 border-b-2 border-blue-200 dark:border-slate-600">
+                <tr>
+                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Tanggal</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Status</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Jam Datang</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Jam Pulang</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Durasi</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Metode</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {[...attendanceHistory]
+                  .sort((a, b) => {
+                    const dateA = new Date(a.date || a.created_at || a.attendance_time);
+                    const dateB = new Date(b.date || b.created_at || b.attendance_time);
+                    return dateB - dateA;
+                  })
+                  .map((item, index) => {
+                    // 🕐 Helper: Extract time dari berbagai format
+                    const extractTime = (datetimeStr) => {
+                      if (!datetimeStr) return null;
+                      const str = String(datetimeStr).trim();
+                      // Format HH:MM atau HH:MM:SS
+                      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)) {
+                        return str.substring(0, 5);
                       }
-                    } catch (e) {
-                      console.warn('Invalid date:', datetimeStr);
-                    }
-                    return '-';
-                  };
+                      try {
+                        const date = new Date(str);
+                        if (!isNaN(date.getTime())) {
+                          return date.toLocaleTimeString('id-ID', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                          });
+                        }
+                      } catch (e) {}
+                      return null;
+                    };
 
-                  const timeIn = item.time_in || item.attendance_time || item.scan_time || item.created_at;
-                  const timeOut = item.time_out || item.departure || item.exit_time;
-                  
-                  const formattedTimeIn = extractTime(timeIn);
-                  const formattedTimeOut = extractTime(timeOut);
-                  
-                  const dateValue = item.date || item.created_at;
-                  const formattedDate = dateValue ? 
-                    new Date(dateValue).toLocaleDateString('id-ID', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    }) : '-';
-                  
-                  const method = item.created_via || item.method || item.type || 'manual';
-                  const methodLabel = method === 'qr_scan' ? '📱 QR Code' : 
-                                     method === 'manual' ? '✍️ Manual' : 
-                                     method === 'fingerprint' ? '👆 Fingerprint' : 
-                                     '📝 Manual';
-                  
-                  return (
-                    <tr key={item.id || index} className="hover:bg-blue-50 transition-colors">
-                      <td className="px-4 py-4">
-                        <div className="text-sm font-semibold text-blue-900">{formattedDate}</div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className={`inline-flex px-3 py-1.5 text-xs font-bold rounded-full border-2 ${
-                          item.status === 'hadir' ? 'bg-green-100 text-green-700 border-green-200' :
-                          item.status === 'terlambat' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                          item.status === 'izin' ? 'bg-sky-100 text-sky-700 border-sky-200' :
-                          item.status === 'sakit' ? 'bg-violet-100 text-violet-700 border-violet-200' :
-                          'bg-red-100 text-red-700 border-red-200'
-                        }`}>
-                          {item.status === 'hadir' ? '✓ Hadir' :
-                           item.status === 'terlambat' ? '⚠ Terlambat' :
-                           item.status === 'izin' ? '📋 Izin' :
-                           item.status === 'sakit' ? '🏥 Sakit' :
-                           '✗ Absen'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className="text-emerald-600">🕐</span>
-                          <span className="text-sm font-mono font-bold text-emerald-700">{formattedTimeIn}</span>
+                    // 🚪 Helper: Cari jam pulang dari BANYAK kemungkinan field
+                    const findTimeOut = (item) => {
+                      const candidates = [
+                        item.time_out,
+                        item.departure,
+                        item.exit_time,
+                        item.pulang_time,
+                        item.jam_pulang,
+                        item.check_out,
+                        item.clock_out,
+                        item.end_time,
+                        item.time_out_actual,
+                      ];
+                      for (const c of candidates) {
+                        const t = extractTime(c);
+                        if (t) return t;
+                      }
+                      return null;
+                    };
+
+                    const timeIn = extractTime(item.time_in || item.attendance_time || item.scan_time || item.created_at);
+                    const timeOut = findTimeOut(item);
+                    
+                    // ⏱️ Hitung durasi
+                    let duration = '-';
+                    if (timeIn && timeOut) {
+                      const [h1, m1] = timeIn.split(':').map(Number);
+                      const [h2, m2] = timeOut.split(':').map(Number);
+                      const mins1 = h1 * 60 + m1;
+                      const mins2 = h2 * 60 + m2;
+                      const diff = mins2 - mins1;
+                      if (diff > 0) {
+                        const hours = Math.floor(diff / 60);
+                        const mins = diff % 60;
+                        duration = hours > 0 ? `${hours}j ${mins}m` : `${mins}m`;
+                      }
+                    }
+
+                    const dateValue = item.date || item.created_at;
+                    const dateObj = dateValue ? new Date(dateValue) : null;
+                    const formattedDate = dateObj && !isNaN(dateObj.getTime()) ? 
+                      dateObj.toLocaleDateString('id-ID', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric'
+                      }) : '-';
+                    const dayName = dateObj && !isNaN(dateObj.getTime()) ?
+                      dateObj.toLocaleDateString('id-ID', { weekday: 'short' }) : '';
+                    const dayNum = dateObj && !isNaN(dateObj.getTime()) ?
+                      String(dateObj.getDate()).padStart(2, '0') : '--';
+                    const monthName = dateObj && !isNaN(dateObj.getTime()) ?
+                      dateObj.toLocaleDateString('id-ID', { month: 'short' }) : '';
+                    
+                    const method = (item.created_via || item.method || item.type || 'manual').toLowerCase();
+                    const methodLabel = method === 'qr_scan' || method === 'qr' ? { icon: '📱', text: 'QR Code' } : 
+                                       method === 'fingerprint' ? { icon: '👆', text: 'Fingerprint' } : 
+                                       { icon: '✍️', text: 'Manual' };
+
+                    // Status styling
+                    const statusConfig = {
+                      hadir: { bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-300 dark:border-emerald-700', icon: '✓', label: 'Hadir' },
+                      terlambat: { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-300 dark:border-amber-700', icon: '⚠', label: 'Terlambat' },
+                      izin: { bg: 'bg-sky-100 dark:bg-sky-900/40', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-300 dark:border-sky-700', icon: '📋', label: 'Izin' },
+                      sakit: { bg: 'bg-violet-100 dark:bg-violet-900/40', text: 'text-violet-700 dark:text-violet-300', border: 'border-violet-300 dark:border-violet-700', icon: '🏥', label: 'Sakit' },
+                    };
+                    const status = (item.status || 'absen').toLowerCase();
+                    const sc = statusConfig[status] || { bg: 'bg-rose-100 dark:bg-rose-900/40', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-300 dark:border-rose-700', icon: '✗', label: 'Absen' };
+
+                    return (
+                      <tr key={item.id || index} className="hover:bg-blue-50/50 dark:hover:bg-slate-700/50 transition-colors group">
+                        {/* Tanggal - dengan visual calendar */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex flex-col items-center justify-center shadow-md flex-shrink-0">
+                              <span className="text-[9px] font-bold uppercase leading-none">{dayName}</span>
+                              <span className="text-xl font-black leading-tight">{dayNum}</span>
+                              <span className="text-[8px] font-bold uppercase leading-none opacity-80">{monthName}</span>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate capitalize">{formattedDate}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {/* Status */}
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-full border-2 ${sc.bg} ${sc.text} ${sc.border}`}>
+                            <span>{sc.icon}</span>
+                            <span>{sc.label}</span>
+                          </span>
+                        </td>
+                        {/* Jam Datang */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
+                              <span className="text-sm">🕐</span>
+                            </div>
+                            <span className="text-sm font-mono font-black text-emerald-700 dark:text-emerald-300">
+                              {timeIn || '--:--'}
+                            </span>
+                          </div>
+                        </td>
+                        {/* Jam Pulang */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center flex-shrink-0">
+                              <span className="text-sm">🏁</span>
+                            </div>
+                            <span className={`text-sm font-mono font-black ${timeOut ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 dark:text-slate-500 italic'}`}>
+                              {timeOut || 'Belum absen'}
+                            </span>
+                          </div>
+                        </td>
+                        {/* Durasi */}
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg">
+                            <span>⏱️</span>
+                            <span>{duration}</span>
+                          </span>
+                        </td>
+                        {/* Metode */}
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                            <span>{methodLabel.icon}</span>
+                            <span>{methodLabel.text}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 📱 Mobile Card View */}
+          <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
+            {[...attendanceHistory]
+              .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at))
+              .map((item, index) => {
+                const extractTime = (datetimeStr) => {
+                  if (!datetimeStr) return null;
+                  const str = String(datetimeStr).trim();
+                  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)) return str.substring(0, 5);
+                  try {
+                    const date = new Date(str);
+                    if (!isNaN(date.getTime())) {
+                      return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    }
+                  } catch (e) {}
+                  return null;
+                };
+                const findTimeOut = (item) => {
+                  const candidates = [item.time_out, item.departure, item.exit_time, item.pulang_time, item.jam_pulang, item.check_out, item.clock_out, item.end_time];
+                  for (const c of candidates) {
+                    const t = extractTime(c);
+                    if (t) return t;
+                  }
+                  return null;
+                };
+                const timeIn = extractTime(item.time_in || item.attendance_time || item.scan_time || item.created_at);
+                const timeOut = findTimeOut(item);
+                const dateValue = item.date || item.created_at;
+                const dateObj = dateValue ? new Date(dateValue) : null;
+                const formattedDate = dateObj && !isNaN(dateObj.getTime()) ? 
+                  dateObj.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
+                
+                const statusConfig = {
+                  hadir: { bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-300', icon: '✓' },
+                  terlambat: { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300', icon: '⚠' },
+                  izin: { bg: 'bg-sky-100 dark:bg-sky-900/40', text: 'text-sky-700 dark:text-sky-300', icon: '📋' },
+                  sakit: { bg: 'bg-violet-100 dark:bg-violet-900/40', text: 'text-violet-700 dark:text-violet-300', icon: '🏥' },
+                };
+                const status = (item.status || 'absen').toLowerCase();
+                const sc = statusConfig[status] || { bg: 'bg-rose-100 dark:bg-rose-900/40', text: 'text-rose-700 dark:text-rose-300', icon: '✗' };
+
+                return (
+                  <div key={item.id || index} className="p-4 hover:bg-blue-50/50 dark:hover:bg-slate-700/50 transition-colors">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex flex-col items-center justify-center shadow-md">
+                          <span className="text-lg font-black leading-none">{dateObj ? String(dateObj.getDate()).padStart(2, '0') : '--'}</span>
+                          <span className="text-[8px] font-bold uppercase">{dateObj ? dateObj.toLocaleDateString('id-ID', { month: 'short' }) : ''}</span>
                         </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className="text-rose-600">🏁</span>
-                          <span className="text-sm font-mono font-bold text-rose-700">{formattedTimeOut}</span>
+                        <div>
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 capitalize">{formattedDate}</p>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-black rounded-full ${sc.bg} ${sc.text} mt-1`}>
+                            <span>{sc.icon}</span>
+                            <span className="uppercase">{status}</span>
+                          </span>
                         </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                          {methodLabel}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {attendanceHistory.length > 0 && (
-        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-slate-50 border-t-2 border-blue-100 text-sm text-slate-600 font-medium flex justify-between items-center">
-          <span>Menampilkan <span className="font-bold text-blue-600">{attendanceHistory.length}</span> data absensi</span>
-          <span className="text-xs text-slate-400">Data diurutkan dari yang terbaru</span>
-        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-2.5 border border-emerald-200 dark:border-emerald-800">
+                        <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-0.5">🕐 Datang</p>
+                        <p className="text-sm font-mono font-black text-emerald-700 dark:text-emerald-300">{timeIn || '--:--'}</p>
+                      </div>
+                      <div className="bg-rose-50 dark:bg-rose-900/20 rounded-lg p-2.5 border border-rose-200 dark:border-rose-800">
+                        <p className="text-[9px] font-bold text-rose-600 dark:text-rose-400 uppercase mb-0.5">🏁 Pulang</p>
+                        <p className={`text-sm font-mono font-black ${timeOut ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 italic'}`}>
+                          {timeOut || 'Belum'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Footer Info */}
+          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-700 border-t-2 border-blue-100 dark:border-slate-600 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">
+              Menampilkan <span className="font-black text-blue-600 dark:text-blue-400">{attendanceHistory.length}</span> data absensi
+            </span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">📊 Diurutkan dari yang terbaru</span>
+          </div>
+        </>
       )}
     </div>
   </div>
