@@ -606,7 +606,7 @@ const fetchStudentData = async (silent = true) => {
     { id: 'ringkasan', label: 'Ringkasan', icon: '📊' },
     { id: 'absensi', label: 'Absensi', icon: '✅' },
     { id: 'jadwal', label: 'Jadwal', icon: '📚' },
-    { id: 'riwayat', label: 'Riwayat', icon: '📅' },
+    // { id: 'riwayat', label: 'Riwayat', icon: '📅' },
     { id: 'profil', label: 'Profil', icon: '👤' },
   ];
 
@@ -1316,7 +1316,7 @@ const fetchStudentData = async (silent = true) => {
   </div>
 )}
 
-              {/* TAB: Jadwal Pelajaran */}
+              {/* TAB: Jadwal Pelajaran
               {activeTab === 'jadwal' && (
                 <div className="animate-fade-in">
                   <div className="bg-white rounded-xl border-2 border-blue-200 p-6 mb-6 shadow-lg">
@@ -1373,7 +1373,7 @@ const fetchStudentData = async (silent = true) => {
                     </div>
                   )}
                 </div>
-              )}
+              )} */}
 
 {/* TAB: Profil Saya - Modern Redesign with Dark Mode */}
 {activeTab === 'profil' && (

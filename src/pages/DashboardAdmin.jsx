@@ -1800,8 +1800,8 @@ useEffect(() => {
     { id: 'rekap', label: 'Rekap Absensi', icon: '📋' },
     { id: 'ranking', label: 'Ranking Absensi', icon: '🏆' },
     { id: 'izin', label: 'Izin & Sakit', icon: '📝' },
-    { id: 'classes', label: 'Data Kelas', icon: '🏫' },
-    { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' },
+    // { id: 'classes', label: 'Data Kelas', icon: '🏫' },
+    // { id: 'alumni', label: 'Alumni', icon: '🧑‍🎓' },
     { id: 'settings', label: 'Pengaturan', icon: '⚙️' },
   ];
 
@@ -6201,7 +6201,7 @@ const downloadCertificateAsImage = (user) => {
   </div>
 )}
 
-              {/* ✨ TAMBAHAN: TAB: Alumni */}
+              {/* ✨ TAMBAHAN: TAB: Alumni
               {activeTab === 'alumni' && (
                 <div className="animate-fade-in">
                   <div className="mb-6">
@@ -6265,7 +6265,7 @@ const downloadCertificateAsImage = (user) => {
                     </div>
                   )}
                 </div>
-              )}
+              )} */}
             </div>
           </div>
         </main>

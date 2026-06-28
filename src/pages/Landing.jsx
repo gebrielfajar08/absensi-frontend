@@ -507,7 +507,7 @@ useEffect(() => {
               </div>
 
               {/* Stats Cards */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -533,7 +533,7 @@ useEffect(() => {
                   <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{attendance.attendanceStats.keterlambatan}</p>
                   <p className="text-xs text-slate-500 mt-1">Hari ini</p>
                 </div>
-              </div>
+              </div> */}
             </div>
 
             {/* Right Column */}
@@ -623,7 +623,7 @@ useEffect(() => {
               </div>
 
               {/* CTA Card */}
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl">
+              {/* <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl">
                 <h3 className="text-xl font-bold mb-2">Siap untuk Absen?</h3>
                 <p className="text-slate-300 text-sm mb-4">Mulai absen sekarang dan jadilah bagian dari sekolah digital.</p>
                 <button
@@ -635,7 +635,7 @@ useEffect(() => {
                   </svg>
                   Mulai Absensi
                 </button>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

@@ -8,6 +8,11 @@ const BASE_URL =
 
   console.log('🔥 API BASE URL:', BASE_URL);
 
+  api.interceptors.request.use((config) => {
+    console.log("REQUEST URL =", config.baseURL + config.url);
+    return config;
+});
+
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
