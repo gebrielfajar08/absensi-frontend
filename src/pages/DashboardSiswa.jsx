@@ -605,8 +605,8 @@ const fetchStudentData = async (silent = true) => {
   const menuItems = [
     { id: 'ringkasan', label: 'Ringkasan', icon: '📊' },
     { id: 'absensi', label: 'Absensi', icon: '✅' },
-    { id: 'jadwal', label: 'Jadwal', icon: '📚' },
-    // { id: 'riwayat', label: 'Riwayat', icon: '📅' },
+    // { id: 'jadwal', label: 'Jadwal', icon: '📚' },
+    { id: 'riwayat', label: 'Riwayat', icon: '📅' },
     { id: 'profil', label: 'Profil', icon: '👤' },
   ];
 
@@ -1731,7 +1731,7 @@ const fetchStudentData = async (silent = true) => {
           </div>
 
           {/* 🔍 Filter Bar */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-blue-100 dark:border-slate-700 p-4 shadow-md">
+          {/* <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-blue-100 dark:border-slate-700 p-4 shadow-md">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[180px]">
                 <label className="block text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">📅 Filter Bulan</label>
@@ -1766,7 +1766,7 @@ const fetchStudentData = async (silent = true) => {
                 </select>
               </div>
             </div>
-          </div>
+          </div> */}
         </>
       );
     })()}
@@ -1797,7 +1797,7 @@ const fetchStudentData = async (silent = true) => {
                   <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Status</th>
                   <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Jam Datang</th>
                   <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Jam Pulang</th>
-                  <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Durasi</th>
+                  {/* <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Durasi</th> */}
                   <th className="px-5 py-4 text-left text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Metode</th>
                 </tr>
               </thead>
@@ -1944,12 +1944,12 @@ const fetchStudentData = async (silent = true) => {
                           </div>
                         </td>
                         {/* Durasi */}
-                        <td className="px-5 py-4">
+                        {/* <td className="px-5 py-4">
                           <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg">
                             <span>⏱️</span>
                             <span>{duration}</span>
                           </span>
-                        </td>
+                        </td> */}
                         {/* Metode */}
                         <td className="px-5 py-4">
                           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">
