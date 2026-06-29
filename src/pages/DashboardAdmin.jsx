@@ -789,12 +789,12 @@ useEffect(() => {
   }
 }, [user]);
 
-  // ✨ Refresh data saat tab overview dibuka untuk memastikan statistik akurat
-  useEffect(() => {
-    if (activeTab === 'overview' && !dataLoading) {
-      fetchAllData();
-    }
-  }, [activeTab]);
+useEffect(() => {
+  if (activeTab === "overview") {
+    fetchAllData();
+  }
+  // eslint-disable-next-line
+}, [activeTab]);
 
   // Fetch Data Guru dan Siswa saat tab aktif
   useEffect(() => {
